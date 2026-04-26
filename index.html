@@ -951,9 +951,9 @@ function drawStar(cc, cx, cy, r, color) {
   cc.restore();
 }
 
-/** Round up to the next multiple of `step`. */
+/** Round up to the next clean multiple of `step`, adding one extra step for headroom. */
 function niceMax(val, step) {
-  return Math.ceil(val / step) * step + step;
+  return Math.ceil(val / step) * step;
 }
 
 // ─────────────────────────────────────────────

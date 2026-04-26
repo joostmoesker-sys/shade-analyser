@@ -13,7 +13,7 @@ No server, no build step — open `index.html` directly in any modern browser.
 | **Panel model** | Lucksolar LS-MD120-340W — single-diode model (5 parameters) |
 | **Shade interaction** | Click or drag panels to shade/unshade; presets for common scenarios |
 | **Wiring configs** | Three options (A / B / C) selectable at runtime |
-| **IV + PV curves** | Live Chart.js plot showing I–V (solid) and P–V (dashed) curves |
+| **IV + PV curves** | Live canvas-based plot showing I–V (solid) and P–V (dashed) curves — no external charting library |
 | **MPP tracking** | Maximum power point (★) computed and displayed per MPPT |
 | **Mobile friendly** | Touch events supported |
 
@@ -78,12 +78,12 @@ xdg-open index.html      # Linux
 start index.html         # Windows
 ```
 
-> **Note:** The app loads Chart.js from a CDN (`cdn.jsdelivr.net`).  
-> An internet connection is required on first load unless you cache the file offline.
+> The app has **no external dependencies** — everything runs in `index.html` with built-in canvas rendering.  
+> An internet connection is **not required**.
 
 ### Option 2 — Serve with a local HTTP server
 
-Some browsers block local `file://` resources. Use any simple HTTP server:
+Some browsers restrict local `file://` resources. Use any simple HTTP server:
 
 ```bash
 # Python 3
@@ -97,16 +97,6 @@ npx serve .
 # VS Code
 # Install the "Live Server" extension and click "Go Live"
 ```
-
-### Option 3 — Offline / self-contained build
-
-If you need to run without internet access, download Chart.js and host it locally:
-
-```bash
-curl -o chart.min.js https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js
-```
-
-Then edit the `<script src="…">` tag in `index.html` to point to `./chart.min.js`.
 
 ---
 
