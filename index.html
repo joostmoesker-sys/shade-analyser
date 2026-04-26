@@ -4,185 +4,84 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PV Array Shade Analyser</title>
-  <!-- No external dependencies — all rendering is built-in -->
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #111827; color: #e5e7eb; min-height: 100vh; }
 
-    body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: #111827;
-      color: #e5e7eb;
-      min-height: 100vh;
-    }
-
-    /* ── Header ── */
     header {
       background: linear-gradient(135deg, #1e3a5f 0%, #0f2a47 100%);
-      padding: 14px 24px;
-      border-bottom: 2px solid #e94560;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
+      padding: 14px 24px; border-bottom: 2px solid #e94560;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
     }
     header h1 { font-size: 1.35rem; color: #fff; white-space: nowrap; }
     header p  { font-size: 0.8rem; color: #94a3b8; }
 
-    /* ── Body layout ── */
-    .app-body {
-      display: flex;
-      gap: 14px;
-      padding: 14px;
-      align-items: flex-start;
-      flex-wrap: wrap;
-    }
+    .app-body { display: flex; gap: 14px; padding: 14px; align-items: flex-start; flex-wrap: wrap; }
     .left-panel  { flex: 0 0 auto; }
     .right-panel { flex: 1 1 600px; min-width: 0; }
 
-    /* ── Card ── */
-    .card {
-      background: #1f2937;
-      border: 1px solid #374151;
-      border-radius: 10px;
-      padding: 14px;
-      margin-bottom: 12px;
-    }
-    .card h3 {
-      font-size: 0.78rem;
-      color: #e94560;
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-      margin-bottom: 10px;
-    }
+    .card { background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+    .card h3 { font-size: 0.78rem; color: #e94560; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px; }
 
-    /* ── Array canvas ── */
     .array-wrap { overflow-x: auto; border-radius: 6px; }
     #arrayCanvas { display: block; cursor: crosshair; touch-action: none; }
 
-    /* ── Array controls ── */
-    .array-ctrls {
-      display: flex; gap: 8px; margin-top: 10px;
-      align-items: center; flex-wrap: wrap;
-    }
-    .btn {
-      padding: 5px 12px;
-      border: 1px solid #374151; border-radius: 6px;
-      background: #111827; color: #e5e7eb;
-      cursor: pointer; font-size: 0.78rem; transition: all 0.18s;
-    }
+    .array-ctrls { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+    .btn { padding: 5px 12px; border: 1px solid #374151; border-radius: 6px; background: #111827; color: #e5e7eb; cursor: pointer; font-size: 0.78rem; transition: all 0.18s; }
     .btn:hover { background: #1e3a5f; border-color: #e94560; }
-    .shade-row {
-      display: flex; align-items: center; gap: 6px;
-      font-size: 0.77rem; color: #9ca3af;
-    }
-    input[type="range"] {
-      -webkit-appearance: none;
-      width: 90px; height: 4px;
-      background: #374151; border-radius: 2px; outline: none;
-    }
-    input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 13px; height: 13px;
-      border-radius: 50%; background: #e94560; cursor: pointer;
-    }
+    .shade-row { display: flex; align-items: center; gap: 6px; font-size: 0.77rem; color: #9ca3af; }
+    input[type="range"] { -webkit-appearance: none; width: 90px; height: 4px; background: #374151; border-radius: 2px; outline: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: #e94560; cursor: pointer; }
 
-    /* ── Array legend ── */
-    .array-legend { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; font-size: 0.75rem; }
+    .array-legend { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 0.73rem; }
     .legend-item  { display: flex; align-items: center; gap: 4px; }
-    .legend-dot   { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; }
+    .legend-dot   { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 
-    /* ── Shade presets ── */
     .preset-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-    .preset-btn {
-      padding: 4px 9px; font-size: 0.72rem;
-      border: 1px solid #374151; border-radius: 5px;
-      background: #111827; color: #9ca3af;
-      cursor: pointer; transition: all 0.15s;
-    }
+    .preset-btn { padding: 4px 9px; font-size: 0.72rem; border: 1px solid #374151; border-radius: 5px; background: #111827; color: #9ca3af; cursor: pointer; transition: all 0.15s; }
     .preset-btn:hover { border-color: #6366f1; color: #e5e7eb; background: #1e1b4b; }
-
-    /* ── Instructions ── */
     .instructions { font-size: 0.73rem; color: #6b7280; margin-top: 7px; line-height: 1.5; }
 
-    /* ── Comparison table ── */
+    /* Comparison table */
     .comp-wrap { overflow-x: auto; }
-    .comp-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.8rem;
-    }
-    .comp-table th {
-      background: #111827;
-      color: #6b7280;
-      font-weight: 600;
-      padding: 6px 8px;
-      text-align: left;
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-      white-space: nowrap;
-    }
-    .comp-table td {
-      padding: 7px 8px;
-      border-bottom: 1px solid #1a2535;
-      white-space: nowrap;
-      vertical-align: middle;
-    }
-    .comp-table tbody tr {
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    .comp-table tbody tr:hover  { background: #1a2535; }
-    .comp-table tbody tr.selected {
-      background: #1c2f45;
-      border-left: 3px solid var(--cfg-color, #38bdf8);
-    }
-    .comp-table tbody tr.selected td:first-child {
-      padding-left: 5px;
-    }
-    .cfg-dot {
-      display: inline-block;
-      width: 9px; height: 9px;
-      border-radius: 2px;
-      margin-right: 5px;
-      vertical-align: middle;
-      flex-shrink: 0;
-    }
-    .cfg-name  { font-weight: 600; color: #e5e7eb; }
-    .best-val  { color: #4ade80; font-weight: 700; }
-    .sub-detail { font-size: 0.67rem; color: #6b7280; display: block; }
-    .empty-cell { color: #374151; text-align: center; }
-    .mppt-val   { color: inherit; }
+    .comp-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .comp-table th { background: #111827; color: #6b7280; font-weight: 600; padding: 6px 8px; text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+    .comp-table td { padding: 7px 8px; border-bottom: 1px solid #1a2535; white-space: nowrap; vertical-align: middle; }
+    .comp-table tbody tr { cursor: pointer; transition: background 0.15s; }
+    .comp-table tbody tr:hover { background: #1a2535; }
+    .comp-table tbody tr.selected { background: #1c2f45; outline: 2px solid var(--cfg-color, #38bdf8); outline-offset: -1px; }
+    .cfg-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+    .cfg-name { font-weight: 600; color: #e5e7eb; }
+    .best-val { color: #4ade80; font-weight: 700; }
+    .mini-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 20px; vertical-align: middle; }
+    .mini-bar  { width: 5px; border-radius: 1px 1px 0 0; min-height: 3px; }
 
-    /* ── Chart ── */
+    /* Power detail grid */
+    .power-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px,1fr)); gap: 8px; margin-top: 4px; }
+    .power-card { background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 9px 10px; text-align: center; }
+    .power-card .p-label { font-size: 0.68rem; color: #6b7280; }
+    .power-card .p-value { font-size: 1.3rem; font-weight: 700; color: #38bdf8; margin-top: 2px; }
+    .power-card .p-unit  { font-size: 0.65rem; color: #6b7280; }
+    .power-card .p-sub   { font-size: 0.68rem; color: #4ade80; margin-top: 2px; }
+
     .chart-wrap { position: relative; height: 300px; }
-
-    /* ── Panel specs ── */
-    .specs-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      gap: 6px;
-      font-size: .78rem;
-      color: #9ca3af;
-    }
+    .specs-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); gap: 6px; font-size:.78rem; color:#9ca3af; }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>☀️ PV Array Shade Analyser</h1>
-  <p>Lucksolar LS-MD120-340W &nbsp;·&nbsp; 3 × 10 Array &nbsp;·&nbsp; Landscape Mode &nbsp;·&nbsp; 5 Wiring Configurations</p>
+  <h1>&#9728;&#65039; PV Array Shade Analyser</h1>
+  <p>Lucksolar LS-MD120-340W &nbsp;&middot;&nbsp; 8 &times; 9 Array (72 panels) &nbsp;&middot;&nbsp; Landscape Mode &nbsp;&middot;&nbsp; 5 Wiring Configurations</p>
 </header>
 
 <div class="app-body">
 
-  <!-- ═══════════ LEFT PANEL — array editor ═══════════ -->
+  <!-- LEFT PANEL -->
   <div class="left-panel">
     <div class="card">
       <h3>PV Array &nbsp;<span style="font-size:.72rem;color:#6b7280;text-transform:none">left-drag = shade &nbsp;|&nbsp; right-drag / Shift = clear</span></h3>
-      <div class="array-wrap">
-        <canvas id="arrayCanvas"></canvas>
-      </div>
+      <div class="array-wrap"><canvas id="arrayCanvas"></canvas></div>
       <div class="array-ctrls">
         <button class="btn" id="clearBtn">Clear All Shade</button>
         <div class="shade-row">
@@ -194,847 +93,622 @@
       <div class="preset-row">
         <span style="font-size:.72rem;color:#6b7280;align-self:center">Presets:</span>
         <button class="preset-btn" data-preset="row0">Row 1</button>
-        <button class="preset-btn" data-preset="row1">Row 2</button>
-        <button class="preset-btn" data-preset="row2">Row 3</button>
-        <button class="preset-btn" data-preset="col">Column</button>
+        <button class="preset-btn" data-preset="row3">Row 4</button>
+        <button class="preset-btn" data-preset="row6">Row 7</button>
+        <button class="preset-btn" data-preset="col4">Col 5</button>
         <button class="preset-btn" data-preset="corner">Corner</button>
-        <button class="preset-btn" data-preset="checker">Checkerboard</button>
+        <button class="preset-btn" data-preset="checker">Checker</button>
       </div>
-      <!-- Array annotation: MPPT legend for selected config -->
       <div class="array-legend" id="arrayLegend"></div>
-      <div id="cfgDescText" style="font-size:.73rem;color:#6b7280;margin-top:5px;line-height:1.5;"></div>
-      <p class="instructions">Click table rows (right panel) to switch wiring annotation on the array.</p>
+      <div id="cfgDescText" style="font-size:.71rem;color:#6b7280;margin-top:5px;line-height:1.5;"></div>
+      <p class="instructions">Click a table row (right) to switch config annotation.</p>
     </div>
-
-    <!-- Panel specs (compact) -->
     <div class="card">
-      <h3>Panel — Lucksolar LS-MD120-340W</h3>
+      <h3>Panel &mdash; Lucksolar LS-MD120-340W</h3>
       <div class="specs-grid">
         <span>Pmax: <b style="color:#e5e7eb">340 W</b></span>
-        <span>Vmp:  <b style="color:#e5e7eb">38.4 V</b></span>
-        <span>Imp:  <b style="color:#e5e7eb">8.85 A</b></span>
-        <span>Voc:  <b style="color:#e5e7eb">46.4 V</b></span>
-        <span>Isc:  <b style="color:#e5e7eb">9.35 A</b></span>
-        <span>Bypass: <b style="color:#e5e7eb">3 × 0.5 V</b></span>
+        <span>Vmp: <b style="color:#e5e7eb">38.4 V</b></span>
+        <span>Imp: <b style="color:#e5e7eb">8.85 A</b></span>
+        <span>Voc: <b style="color:#e5e7eb">46.4 V</b></span>
+        <span>Isc: <b style="color:#e5e7eb">9.35 A</b></span>
+        <span>Bypass: <b style="color:#e5e7eb">3 &times; 0.5 V</b></span>
       </div>
     </div>
-  </div><!-- /left-panel -->
+  </div>
 
-  <!-- ═══════════ RIGHT PANEL — comparison + chart ═══════════ -->
+  <!-- RIGHT PANEL -->
   <div class="right-panel">
 
-    <!-- Comparison table — always shows all 5 configs -->
     <div class="card">
-      <h3>Configuration Comparison &nbsp;<span style="font-size:.71rem;color:#6b7280;text-transform:none">click a row to annotate the array and see IV curves</span></h3>
+      <h3>Configuration Comparison &nbsp;<span style="font-size:.71rem;color:#6b7280;text-transform:none">click a row to annotate array &amp; update chart</span></h3>
       <div class="comp-wrap">
         <table class="comp-table">
-          <thead>
-            <tr>
-              <th>Configuration</th>
-              <th>Total Power</th>
-              <th>% STC</th>
-              <th>MPPT 1</th>
-              <th>MPPT 2</th>
-              <th>MPPT 3</th>
-            </tr>
-          </thead>
+          <thead><tr>
+            <th>Config</th><th>Total Power</th><th>% STC</th><th>MPPT powers (hover for detail)</th>
+          </tr></thead>
           <tbody id="compTableBody"></tbody>
         </table>
       </div>
-      <div style="font-size:0.7rem;color:#4b5563;margin-top:7px;">
-        STC reference: 30 panels × 340 W = 10.20 kW &nbsp;·&nbsp; <span style="color:#4ade80">★ green = best</span> &nbsp;·&nbsp;
-        <span style="color:#9ca3af">SP = series-parallel &nbsp;|&nbsp; TCT = total cross-tied &nbsp;|&nbsp; V = vertical ties &nbsp;|&nbsp; H = horizontal ties</span>
+      <div style="font-size:0.69rem;color:#4b5563;margin-top:7px;">
+        STC ref: 72 panels &times; 340 W = 24.48 kW &nbsp;&middot;&nbsp;
+        <span style="color:#4ade80">&#9733; green = best total</span> &nbsp;&middot;&nbsp;
+        SP = series-parallel &nbsp;|&nbsp; TCT = total cross-tied (V = vertical ties)
       </div>
     </div>
 
-    <!-- IV + PV chart for highlighted config -->
     <div class="card">
-      <h3>I–V &amp; P–V Curves &nbsp;·&nbsp; <span id="chartCfgLabel" style="color:#38bdf8">Option A (SP)</span>
-        <span style="font-size:.7rem;color:#4b5563;text-transform:none;font-weight:400"> — solid = I(A) &nbsp;·&nbsp; dashed = P(W) &nbsp;·&nbsp; ★ = MPP</span>
-      </h3>
-      <div class="chart-wrap">
-        <canvas id="ivChart"></canvas>
-      </div>
+      <h3>MPPT Detail &nbsp;&middot;&nbsp; <span id="detailCfgLabel" style="color:#38bdf8">Option A</span></h3>
+      <div class="power-grid" id="powerGrid"></div>
     </div>
 
-  </div><!-- /right-panel -->
+    <div class="card">
+      <h3>I&ndash;V &amp; P&ndash;V Curves &nbsp;&middot;&nbsp; <span id="chartCfgLabel" style="color:#38bdf8">Option A</span>
+        <span style="font-size:.7rem;color:#4b5563;text-transform:none;font-weight:400">&mdash; solid = I(A) &nbsp;&middot;&nbsp; dashed = P(W) &nbsp;&middot;&nbsp; &#9733; = MPP</span>
+      </h3>
+      <div class="chart-wrap"><canvas id="ivChart"></canvas></div>
+    </div>
 
-</div><!-- /app-body -->
+  </div>
+</div>
 
 <script>
 'use strict';
 
-// ─────────────────────────────────────────────
-//  CONSTANTS & PANEL PARAMETERS
-// ─────────────────────────────────────────────
-const ROWS = 3;
-const COLS = 10;
-const BYPASS_VD = 0.5;
-const VT_25 = 0.025693;
+// ── Constants ──────────────────────────────────────────────────────────────
+const ROWS = 8, COLS = 9;
+const BYPASS_VD = 0.5, VT_25 = 0.025693;
 
-const PNL = {
-  Pmax: 340, Vmp: 38.4, Imp: 8.85, Voc: 46.4, Isc: 9.35,
-  Ns: 60, n: 1.3, Rs: 0.25, Rsh: 400,
-};
+const PNL = { Pmax:340, Vmp:38.4, Imp:8.85, Voc:46.4, Isc:9.35, Ns:60, n:1.3, Rs:0.25, Rsh:400 };
 PNL.nNsVt = PNL.n * PNL.Ns * VT_25;
 PNL.I0 = (PNL.Isc - PNL.Voc / PNL.Rsh) / (Math.exp(PNL.Voc / PNL.nNsVt) - 1);
 
-// Column groups for Options C (0-indexed, inclusive)
-const CT_GROUPS = [[0, 2], [3, 6], [7, 9]];
+// ── Colour palettes ────────────────────────────────────────────────────────
+// 3-MPPT configs (A, B)
+const COL3 = ['#38bdf8', '#4ade80', '#fb923c'];
+// 8-MPPT config (C)
+const COL8 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171'];
+// 9-MPPT configs (D, E) — same colours so same block = same colour across D vs E
+const COL9 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171','#60a5fa'];
 
-// ─────────────────────────────────────────────
-//  CONFIGURATION DEFINITIONS
-// ─────────────────────────────────────────────
+// ── Block structure helpers ────────────────────────────────────────────────
+// Row groups used by A, B (and D, E)
+const ROW_GROUPS = [[0,2],[3,5],[6,7]];   // 3+3+2 rows
+// Column groups used by D, E
+const COL_GROUPS = [[0,2],[3,5],[6,8]];   // 3+3+3 cols
+
+// 9 blocks for D/E: iterate row-groups × col-groups
+const DE_BLOCKS = ROW_GROUPS.flatMap(([r0,r1]) => COL_GROUPS.map(([c0,c1]) => ({ r0, r1, c0, c1 })));
+
+// ── Config definitions ─────────────────────────────────────────────────────
 const CONFIGS = [
   {
-    id: 'A',
-    label: 'Option A',
-    short: 'A — SP',
-    desc: '1 MPPT · 3 parallel strings of 10 panels (one series string per row) — SP topology',
-    color: '#38bdf8',
-    mpptColors: ['#38bdf8'],
-    nMppt: 1,
+    id: 'A', label: 'Option A', short: 'A \u2014 SP',
+    desc: '3 MPPTs \u00b7 Series-Parallel: rows 1\u20133 | 4\u20136 | 7\u20138, each group = parallel strings of 9 panels',
+    cfgColor: '#38bdf8', mpptColors: COL3,
+    blocks: ROW_GROUPS.map(([r0,r1], i) => ({ r0, r1, c0:0, c1:COLS-1, topo:'sp', label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})` })),
   },
   {
-    id: 'A_TCT',
-    label: 'Option A-TCT',
-    short: 'A-TCT',
-    desc: '1 MPPT · full 3×10 array in Total Cross-Tied: each column = 3 rows in parallel, 10 columns in series',
-    color: '#a78bfa',
-    mpptColors: ['#a78bfa'],
-    nMppt: 1,
+    id: 'B', label: 'Option B', short: 'B \u2014 TCT',
+    desc: '3 MPPTs \u00b7 V-TCT: same row groups as A, total cross-tied vertically (cols in series, rows in \u2225 per col)',
+    cfgColor: '#a78bfa', mpptColors: ['#a78bfa','#c4b5fd','#7c3aed'],
+    blocks: ROW_GROUPS.map(([r0,r1], i) => ({ r0, r1, c0:0, c1:COLS-1, topo:'v-tct', label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})` })),
   },
   {
-    id: 'B',
-    label: 'Option B',
-    short: 'B — SP',
-    desc: '3 MPPTs · each row is an independent string of 10 panels in series (SP per row)',
-    color: '#4ade80',
-    mpptColors: ['#4ade80', '#22c55e', '#86efac'],
-    nMppt: 3,
+    id: 'C', label: 'Option C', short: 'C \u2014 1\u00d79',
+    desc: '8 MPPTs \u00b7 1 series string per row (9 panels in series each)',
+    cfgColor: '#4ade80', mpptColors: COL8,
+    blocks: Array.from({ length:ROWS }, (_,r) => ({ r0:r, r1:r, c0:0, c1:COLS-1, topo:'series', label:`MPPT ${r+1} (row ${r+1})` })),
   },
   {
-    id: 'C_V',
-    label: 'Option C (V-TCT)',
-    short: 'C — V-TCT',
-    desc: '3 MPPTs · column groups (cols 1–3 | 4–7 | 8–10), vertical cross-ties: columns in series, rows tied in parallel per column',
-    color: '#fb923c',
-    mpptColors: ['#fb923c', '#f97316', '#fbbf24'],
-    nMppt: 3,
+    id: 'D', label: 'Option D', short: 'D \u2014 Blk SP',
+    desc: '9 MPPTs \u00b7 Block SP: 3\u00d73 col\u00d7row-groups (6\u00d73\u00d73 blocks + 3\u00d72\u00d73 bottom blocks), SP within each block',
+    cfgColor: '#fb923c', mpptColors: COL9,
+    blocks: DE_BLOCKS.map((b,i) => ({ ...b, topo:'sp', label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1}, c${b.c0+1}\u2013${b.c1+1})` })),
   },
   {
-    id: 'C_H',
-    label: 'Option C (H-TCT)',
-    short: 'C — H-TCT',
-    desc: '3 MPPTs · column groups (cols 1–3 | 4–7 | 8–10), horizontal cross-ties: rows in series, columns tied in parallel per row',
-    color: '#f472b6',
-    mpptColors: ['#f472b6', '#e879f9', '#be185d'],
-    nMppt: 3,
+    id: 'E', label: 'Option E', short: 'E \u2014 Blk TCT',
+    desc: '9 MPPTs \u00b7 Block V-TCT: same block structure as D, total cross-tied within each block',
+    cfgColor: '#f472b6', mpptColors: COL9,
+    blocks: DE_BLOCKS.map((b,i) => ({ ...b, topo:'v-tct', label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1}, c${b.c0+1}\u2013${b.c1+1})` })),
   },
 ];
 
-// ─────────────────────────────────────────────
-//  APPLICATION STATE
-// ─────────────────────────────────────────────
+// ── State ──────────────────────────────────────────────────────────────────
 let highlightedConfig = 'A';
-let shade = Array.from({ length: ROWS }, () => Array(COLS).fill(1.0));
+let shade = Array.from({ length:ROWS }, () => Array(COLS).fill(1.0));
 let shadeLevel = 0.05;
-let isPainting = false;
-let paintMode = 'shade';
+let isPainting = false, paintMode = 'shade';
 
-// ─────────────────────────────────────────────
-//  CANVAS SETUP
-// ─────────────────────────────────────────────
+// ── Canvas setup ───────────────────────────────────────────────────────────
 const canvas = document.getElementById('arrayCanvas');
 const ctx    = canvas.getContext('2d');
 
-const PAD = 14, GAP = 5, PW = 70, PH = 46;
+const PAD = 14, GAP = 5, PW = 68, PH = 44;
 
 canvas.width  = PAD * 2 + COLS * PW + (COLS - 1) * GAP;
 canvas.height = PAD * 2 + ROWS * PH + (ROWS - 1) * GAP;
 
 function panelRect(r, c) {
-  return { x: PAD + c * (PW + GAP), y: PAD + r * (PH + GAP), w: PW, h: PH };
+  return { x: PAD + c*(PW+GAP), y: PAD + r*(PH+GAP), w:PW, h:PH };
 }
-
 function panelAt(x, y) {
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++) {
-      const rct = panelRect(r, c);
-      if (x >= rct.x && x < rct.x + rct.w && y >= rct.y && y < rct.y + rct.h) return { r, c };
+      const rct = panelRect(r,c);
+      if (x>=rct.x && x<rct.x+rct.w && y>=rct.y && y<rct.y+rct.h) return {r,c};
     }
   return null;
 }
 
-/** MPPT index (0-based) for panel (r,c) under the highlighted config. */
-function getMpptForDisplay(r, c) {
-  const id = highlightedConfig;
-  if (id === 'A' || id === 'A_TCT') return 0;
-  if (id === 'B') return r;
-  if (id === 'C_V' || id === 'C_H') {
-    for (let m = 0; m < CT_GROUPS.length; m++)
-      if (c >= CT_GROUPS[m][0] && c <= CT_GROUPS[m][1]) return m;
+/** Return the MPPT index (0-based) for panel (r,c) in the current highlighted config. */
+function getMpptIdx(r, c) {
+  const blocks = CONFIGS.find(x => x.id === highlightedConfig).blocks;
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (r >= b.r0 && r <= b.r1 && c >= b.c0 && c <= b.c1) return i;
   }
   return 0;
 }
 
-function getHlColors() {
-  return CONFIGS.find(c => c.id === highlightedConfig).mpptColors;
-}
-
-// ─────────────────────────────────────────────
-//  DRAWING
-// ─────────────────────────────────────────────
+// ── Drawing ────────────────────────────────────────────────────────────────
 function drawArray() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#0d1117';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const colors = getHlColors();
+  const cfg = CONFIGS.find(x => x.id === highlightedConfig);
+  const colors = cfg.mpptColors;
 
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const G   = shade[r][c];
-      const m   = getMpptForDisplay(r, c);
-      const col = colors[m] || colors[0];
+      const mi  = getMpptIdx(r, c);
+      const col = colors[mi] || colors[0];
       const rct = panelRect(r, c);
 
       ctx.fillStyle = blendHex(col, '#2d3748', 1 - G);
-      drawRoundRect(ctx, rct.x, rct.y, rct.w, rct.h, 3);
-      ctx.fill();
+      drawRoundRect(ctx, rct.x, rct.y, rct.w, rct.h, 3); ctx.fill();
 
-      ctx.strokeStyle = G > 0.5 ? '#1e40af44' : '#55555544';
-      ctx.lineWidth = 1;
-      drawRoundRect(ctx, rct.x, rct.y, rct.w, rct.h, 3);
-      ctx.stroke();
+      ctx.strokeStyle = G > 0.5 ? '#1e40af44' : '#55555544'; ctx.lineWidth = 1;
+      drawRoundRect(ctx, rct.x, rct.y, rct.w, rct.h, 3); ctx.stroke();
 
-      // Cell grid lines (decorative)
+      // Cell grid lines
       if (G > 0.08) {
-        ctx.strokeStyle = `rgba(255,255,255,${0.08 + G * 0.12})`;
-        ctx.lineWidth = 0.5;
-        for (let i = 1; i < 5; i++) {
-          const lx = rct.x + i * rct.w / 5;
-          ctx.beginPath(); ctx.moveTo(lx, rct.y + 2); ctx.lineTo(lx, rct.y + rct.h - 2); ctx.stroke();
+        ctx.strokeStyle = `rgba(255,255,255,${0.07 + G*0.11})`; ctx.lineWidth = 0.5;
+        for (let i = 1; i < 4; i++) {
+          const lx = rct.x + i*rct.w/4;
+          ctx.beginPath(); ctx.moveTo(lx, rct.y+2); ctx.lineTo(lx, rct.y+rct.h-2); ctx.stroke();
         }
-        ctx.beginPath(); ctx.moveTo(rct.x + 2, rct.y + rct.h / 2); ctx.lineTo(rct.x + rct.w - 2, rct.y + rct.h / 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(rct.x+2, rct.y+rct.h/2); ctx.lineTo(rct.x+rct.w-2, rct.y+rct.h/2); ctx.stroke();
       }
 
       // Shade label
       if (G < 0.98 && G > 0.01) {
-        ctx.fillStyle = 'rgba(0,0,0,0.65)';
-        ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(Math.round(G * 100) + '%', rct.x + rct.w / 2, rct.y + rct.h / 2 + 3);
+        ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(Math.round(G*100)+'%', rct.x+rct.w/2, rct.y+rct.h/2+3);
       } else if (G <= 0.01) {
-        ctx.fillStyle = 'rgba(0,0,0,0.75)';
-        ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText('▓', rct.x + rct.w / 2, rct.y + rct.h / 2 + 4);
+        ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('\u2593', rct.x+rct.w/2, rct.y+rct.h/2+4);
       }
 
-      // MPPT label (for multi-MPPT configs)
-      const nMppt = CONFIGS.find(cfg => cfg.id === highlightedConfig).nMppt;
-      if (nMppt > 1) {
-        ctx.fillStyle = 'rgba(255,255,255,0.45)';
-        ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(`M${m + 1}`, rct.x + rct.w / 2, rct.y + rct.h - 3);
+      // MPPT index label for multi-MPPT configs
+      if (cfg.blocks.length > 1) {
+        ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(`M${mi+1}`, rct.x+rct.w/2, rct.y+rct.h-3);
       }
     }
   }
 
-  // Row labels
+  // Row labels (left)
   ctx.fillStyle = '#6b7280'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
   for (let r = 0; r < ROWS; r++) {
     const rct = panelRect(r, 0);
-    ctx.fillText(`R${r + 1}`, rct.x - 3, rct.y + rct.h / 2 + 3);
+    ctx.fillText(`R${r+1}`, rct.x-3, rct.y+rct.h/2+3);
   }
-  // Column labels
+  // Col labels (top)
   ctx.textAlign = 'center';
   for (let c = 0; c < COLS; c++) {
     const rct = panelRect(0, c);
-    ctx.fillText(c + 1, rct.x + rct.w / 2, rct.y - 2);
+    ctx.fillText(c+1, rct.x+rct.w/2, rct.y-2);
   }
 
-  // Column-group dividers for Option C variants
-  if (highlightedConfig === 'C_V' || highlightedConfig === 'C_H') {
-    ctx.strokeStyle = '#f59e0b88'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
-    for (let g = 0; g < CT_GROUPS.length - 1; g++) {
-      const rctL   = panelRect(0, CT_GROUPS[g][1]);
-      const rctBot = panelRect(ROWS - 1, CT_GROUPS[g][1]);
-      const xLine  = rctL.x + rctL.w + GAP / 2;
-      ctx.beginPath(); ctx.moveTo(xLine, PAD - 7); ctx.lineTo(xLine, rctBot.y + rctBot.h + 7); ctx.stroke();
-    }
-    ctx.setLineDash([]);
-  }
-
-  // TCT wiring indicators
-  drawWiringIndicators();
+  drawGroupDividers();
+  drawTCTIndicators();
 }
 
-/** Draw small connector lines showing cross-tie direction. */
-function drawWiringIndicators() {
+/** Draw dashed group-boundary lines appropriate for the selected config. */
+function drawGroupDividers() {
   const id = highlightedConfig;
-  const colors = getHlColors();
+  ctx.strokeStyle = '#f59e0b99'; ctx.lineWidth = 1.5; ctx.setLineDash([4,3]);
 
-  if (id === 'A_TCT') {
-    // Vertical ties: each column has all 3 rows connected in parallel
-    for (let c = 0; c < COLS; c++) {
-      drawVerticalTies(c, colors[0]);
+  // Row-group dividers for A, B, D, E (between rows 2-3 and 5-6)
+  if (id !== 'C') {
+    for (const sepRow of [2, 5]) {
+      const rctA = panelRect(sepRow, 0);
+      const rctB = panelRect(0, COLS-1);
+      const y = rctA.y + rctA.h + GAP/2;
+      ctx.beginPath(); ctx.moveTo(PAD-6, y); ctx.lineTo(PAD + COLS*(PW+GAP) - GAP + 6, y); ctx.stroke();
     }
-  } else if (id === 'C_V') {
-    // Vertical ties within each column group
-    CT_GROUPS.forEach(([cs, ce], m) => {
-      for (let c = cs; c <= ce; c++) {
-        drawVerticalTies(c, colors[m]);
-      }
-    });
-  } else if (id === 'C_H') {
-    // Horizontal ties within each column group
-    CT_GROUPS.forEach(([cs, ce], m) => {
-      for (let r = 0; r < ROWS; r++) {
-        drawHorizontalTies(cs, ce, r, colors[m]);
-      }
-    });
   }
+  // Col-group dividers for D, E (between cols 2-3 and 5-6)
+  if (id === 'D' || id === 'E') {
+    for (const sepCol of [2, 5]) {
+      const rctA = panelRect(0, sepCol);
+      const rctB = panelRect(ROWS-1, sepCol);
+      const x = rctA.x + rctA.w + GAP/2;
+      ctx.beginPath(); ctx.moveTo(x, PAD-6); ctx.lineTo(x, PAD + ROWS*(PH+GAP) - GAP + 6); ctx.stroke();
+    }
+  }
+  ctx.setLineDash([]);
 }
 
-/** Draw vertical connector lines between rows in the same column (cross-tie wires). */
-function drawVerticalTies(col, color) {
-  for (let r = 0; r < ROWS - 1; r++) {
-    const r1 = panelRect(r, col);
-    const r2 = panelRect(r + 1, col);
-    const x  = r1.x + r1.w / 2;
-    ctx.strokeStyle = color + 'bb';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x, r1.y + r1.h + 1);
-    ctx.lineTo(x, r2.y - 1);
-    ctx.stroke();
-    // Tie node
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(x, (r1.y + r1.h + r2.y) / 2, 2.5, 0, 2 * Math.PI);
-    ctx.fill();
-  }
-}
-
-/** Draw horizontal connector lines between adjacent columns in the same row (cross-tie wires). */
-function drawHorizontalTies(colStart, colEnd, row, color) {
-  for (let c = colStart; c < colEnd; c++) {
-    const c1 = panelRect(row, c);
-    const c2 = panelRect(row, c + 1);
-    const y  = c1.y + c1.h / 2;
-    ctx.strokeStyle = color + 'bb';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(c1.x + c1.w + 1, y);
-    ctx.lineTo(c2.x - 1, y);
-    ctx.stroke();
-    // Tie node
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc((c1.x + c1.w + c2.x) / 2, y, 2.5, 0, 2 * Math.PI);
-    ctx.fill();
-  }
+/** Draw V-TCT tie-line indicators for TCT configs. */
+function drawTCTIndicators() {
+  const cfg = CONFIGS.find(x => x.id === highlightedConfig);
+  cfg.blocks.forEach((block, mi) => {
+    if (block.topo !== 'v-tct') return;
+    const col = cfg.mpptColors[mi] || cfg.mpptColors[0];
+    for (let c = block.c0; c <= block.c1; c++) {
+      for (let r = block.r0; r < block.r1; r++) {
+        const r1rct = panelRect(r, c);
+        const r2rct = panelRect(r+1, c);
+        const x = r1rct.x + r1rct.w/2;
+        ctx.strokeStyle = col + 'bb'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(x, r1rct.y+r1rct.h+1); ctx.lineTo(x, r2rct.y-1); ctx.stroke();
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.arc(x, (r1rct.y+r1rct.h + r2rct.y)/2, 2.2, 0, 2*Math.PI); ctx.fill();
+      }
+    }
+  });
 }
 
 function drawRoundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);  ctx.quadraticCurveTo(x + w, y,     x + w, y + r);
-  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);     ctx.quadraticCurveTo(x, y + h,     x, y + h - r);
-  ctx.lineTo(x, y + r);         ctx.quadraticCurveTo(x, y,         x + r, y);
+  ctx.moveTo(x+r, y); ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y);
   ctx.closePath();
 }
 
 function blendHex(hex1, hex2, t) {
   t = Math.max(0, Math.min(1, t));
   const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
-  const [r1,g1,b1] = p(hex1), [r2,g2,b2] = p(hex2);
+  const [r1,g1,b1]=p(hex1), [r2,g2,b2]=p(hex2);
   return `rgb(${Math.round(r1+(r2-r1)*t)},${Math.round(g1+(g2-g1)*t)},${Math.round(b1+(b2-b1)*t)})`;
 }
 
-// ─────────────────────────────────────────────
-//  MOUSE / TOUCH INTERACTION
-// ─────────────────────────────────────────────
+// ── Mouse / touch ─────────────────────────────────────────────────────────
 function canvasPos(e) {
   const bb = canvas.getBoundingClientRect();
-  const sx = canvas.width / bb.width, sy = canvas.height / bb.height;
+  const sx = canvas.width/bb.width, sy = canvas.height/bb.height;
   const src = e.touches ? e.touches[0] : e;
-  return { x: (src.clientX - bb.left) * sx, y: (src.clientY - bb.top) * sy };
+  return { x:(src.clientX-bb.left)*sx, y:(src.clientY-bb.top)*sy };
 }
-
 canvas.addEventListener('contextmenu', e => e.preventDefault());
-canvas.addEventListener('mousedown', e => {
-  e.preventDefault(); isPainting = true;
-  paintMode = (e.button === 2 || e.shiftKey) ? 'clear' : 'shade';
-  applyPaint(canvasPos(e));
-});
-canvas.addEventListener('mousemove', e => { if (isPainting) applyPaint(canvasPos(e)); });
-canvas.addEventListener('mouseup',    () => { isPainting = false; });
-canvas.addEventListener('mouseleave', () => { isPainting = false; });
-canvas.addEventListener('touchstart', e => {
-  e.preventDefault(); isPainting = true; paintMode = 'shade'; applyPaint(canvasPos(e));
-}, { passive: false });
-canvas.addEventListener('touchmove', e => {
-  e.preventDefault(); if (isPainting) applyPaint(canvasPos(e));
-}, { passive: false });
-canvas.addEventListener('touchend', () => { isPainting = false; });
+canvas.addEventListener('mousedown', e => { e.preventDefault(); isPainting=true; paintMode=(e.button===2||e.shiftKey)?'clear':'shade'; applyPaint(canvasPos(e)); });
+canvas.addEventListener('mousemove', e => { if(isPainting) applyPaint(canvasPos(e)); });
+canvas.addEventListener('mouseup',    () => { isPainting=false; });
+canvas.addEventListener('mouseleave', () => { isPainting=false; });
+canvas.addEventListener('touchstart', e => { e.preventDefault(); isPainting=true; paintMode='shade'; applyPaint(canvasPos(e)); }, {passive:false});
+canvas.addEventListener('touchmove',  e => { e.preventDefault(); if(isPainting) applyPaint(canvasPos(e)); }, {passive:false});
+canvas.addEventListener('touchend',   () => { isPainting=false; });
 
 function applyPaint(pos) {
   const p = panelAt(pos.x, pos.y);
   if (!p) return;
-  shade[p.r][p.c] = (paintMode === 'shade') ? shadeLevel : 1.0;
+  shade[p.r][p.c] = paintMode==='shade' ? shadeLevel : 1.0;
   scheduleUpdate();
 }
 
-// ─────────────────────────────────────────────
-//  IV CURVE PHYSICS
-// ─────────────────────────────────────────────
+// ── Physics ───────────────────────────────────────────────────────────────
 
-/**
- * Single-panel IV curve at irradiance fraction G (0–1).
- * 5-parameter single-diode model, Newton iteration.
- */
-function panelIV(G, nPts = 80) {
-  if (G < 0.001) return [{ V: 0, I: 0 }];
-  const Iph   = PNL.Isc * G;
-  const Voc_G = PNL.Voc + PNL.nNsVt * Math.log(G);
-  const curve = [];
-  for (let k = 0; k <= nPts; k++) {
-    const V = (k / nPts) * Voc_G;
-    let I = Iph;
-    for (let it = 0; it < 15; it++) {
-      const x  = Math.min((V + I * PNL.Rs) / PNL.nNsVt, 80);
-      const ex = Math.exp(x);
-      const f  = I - Iph + PNL.I0 * (ex - 1) + (V + I * PNL.Rs) / PNL.Rsh;
-      const df = 1 + PNL.I0 * ex * PNL.Rs / PNL.nNsVt + PNL.Rs / PNL.Rsh;
-      const dI = f / df; I -= dI;
-      if (Math.abs(dI) < 1e-9) break;
+function panelIV(G, nPts=80) {
+  if (G < 0.001) return [{V:0, I:0}];
+  const Iph=PNL.Isc*G, Voc_G=PNL.Voc+PNL.nNsVt*Math.log(G), curve=[];
+  for (let k=0; k<=nPts; k++) {
+    const V=(k/nPts)*Voc_G; let I=Iph;
+    for (let it=0; it<15; it++) {
+      const x=Math.min((V+I*PNL.Rs)/PNL.nNsVt,80), ex=Math.exp(x);
+      const f=I-Iph+PNL.I0*(ex-1)+(V+I*PNL.Rs)/PNL.Rsh;
+      const df=1+PNL.I0*ex*PNL.Rs/PNL.nNsVt+PNL.Rs/PNL.Rsh;
+      const dI=f/df; I-=dI; if(Math.abs(dI)<1e-9) break;
     }
-    curve.push({ V, I: Math.max(0, I) });
+    curve.push({V, I:Math.max(0,I)});
   }
   return curve;
 }
 
-/** V(I) interpolator with optional bypass diode clamp. */
-function makeVofI(curve, bypass = true) {
-  const pts = curve.slice().sort((a, b) => b.I - a.I);
-  const Vbypass = bypass ? -BYPASS_VD : -Infinity;
-  return I_t => {
-    if (I_t >= pts[0].I) return Math.max(0, Vbypass);
-    if (I_t <= pts[pts.length - 1].I) return pts[pts.length - 1].V;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1];
-      if (I_t <= a.I && I_t >= b.I) {
-        const t = (a.I - I_t) / (a.I - b.I);
-        return Math.max(a.V + t * (b.V - a.V), Vbypass);
-      }
+function makeVofI(curve, bypass=true) {
+  const pts=curve.slice().sort((a,b)=>b.I-a.I);
+  const Vb=bypass ? -BYPASS_VD : -Infinity;
+  return t => {
+    if (t>=pts[0].I) return Math.max(0,Vb);
+    if (t<=pts[pts.length-1].I) return pts[pts.length-1].V;
+    for (let i=0; i<pts.length-1; i++) {
+      const a=pts[i],b=pts[i+1];
+      if (t<=a.I && t>=b.I) return Math.max(a.V+(a.I-t)/(a.I-b.I)*(b.V-a.V), Vb);
     }
-    return pts[pts.length - 1].V;
+    return pts[pts.length-1].V;
   };
 }
 
-/** I(V) interpolator. */
 function makeIofV(curve) {
-  const pts = curve.slice().sort((a, b) => a.V - b.V);
-  return V_t => {
-    if (V_t <= pts[0].V) return pts[0].I;
-    if (V_t >= pts[pts.length - 1].V) return 0;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1];
-      if (V_t >= a.V && V_t <= b.V)
-        return a.I + (V_t - a.V) / (b.V - a.V) * (b.I - a.I);
+  const pts=curve.slice().sort((a,b)=>a.V-b.V);
+  return t => {
+    if (t<=pts[0].V) return pts[0].I;
+    if (t>=pts[pts.length-1].V) return 0;
+    for (let i=0; i<pts.length-1; i++) {
+      const a=pts[i],b=pts[i+1];
+      if (t>=a.V && t<=b.V) return a.I+(t-a.V)/(b.V-a.V)*(b.I-a.I);
     }
     return 0;
   };
 }
 
-/**
- * Series-parallel (SP) string IV — N panels in series with bypass diodes.
- * panelGs: array of irradiance fractions (one per panel in string).
- */
-function stringIV(panelGs, nPts = 200) {
-  const VofI_fns = panelGs.map(G => makeVofI(panelIV(G, 80), true));
-  const maxIsc   = Math.max(...panelGs.map(G => PNL.Isc * Math.max(G, 0.001)));
-  const result   = [];
-  for (let k = nPts; k >= 0; k--) {
-    const I = (k / nPts) * maxIsc;
-    let V = 0;
-    for (const fn of VofI_fns) V += fn(I);
-    result.push({ V, I });
+function stringIV(panelGs, nPts=200) {
+  const fns=panelGs.map(G=>makeVofI(panelIV(G,80),true));
+  const maxIsc=Math.max(...panelGs.map(G=>PNL.Isc*Math.max(G,0.001)));
+  const result=[];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of fns) V+=fn(I);
+    result.push({V,I});
   }
-  result.sort((a, b) => a.V - b.V);
-  return result;
+  result.sort((a,b)=>a.V-b.V); return result;
 }
 
-/** Parallel combination of multiple IV curves. */
-function parallelIV(curves, nPts = 200) {
-  const IofV_fns = curves.map(c => makeIofV(c));
-  const maxV     = Math.min(...curves.map(c => c[c.length - 1].V));
-  const result   = [];
-  for (let k = 0; k <= nPts; k++) {
-    const V = (k / nPts) * Math.max(maxV, 0);
-    result.push({ V, I: IofV_fns.reduce((s, fn) => s + fn(V), 0) });
+function parallelIV(curves, nPts=200) {
+  const fns=curves.map(c=>makeIofV(c));
+  const maxV=Math.min(...curves.map(c=>c[c.length-1].V));
+  const result=[];
+  for (let k=0; k<=nPts; k++) {
+    const V=(k/nPts)*Math.max(maxV,0);
+    result.push({V, I:fns.reduce((s,fn)=>s+fn(V),0)});
   }
   return result;
 }
 
 /**
- * Vertical TCT IV for column range [colStart, colEnd].
- * Topology: each column position has ROWS panels in parallel (vertical cross-ties);
- * column sections are in series.
+ * Vertical TCT over an arbitrary block (r0..r1 rows, c0..c1 cols).
+ * Each column section = rows in parallel; column sections in series.
  */
-function crossTiedVertIV(colStart, colEnd, nPts = 200) {
-  const sectionCurves = [];
-  for (let c = colStart; c <= colEnd; c++) {
-    const panelCurves = [];
-    for (let r = 0; r < ROWS; r++) panelCurves.push(panelIV(shade[r][c], 80));
-    const IofV_fns = panelCurves.map(cv => makeIofV(cv));
-    const maxVsec  = Math.max(...Array.from({ length: ROWS }, (_, r) => {
-      const G = shade[r][c];
-      return G > 0.001 ? PNL.Voc + PNL.nNsVt * Math.log(G) : 0;
+function blockVTCT(r0, r1, c0, c1, nPts=200) {
+  const secCurves=[];
+  for (let c=c0; c<=c1; c++) {
+    const pcurves=[];
+    for (let r=r0; r<=r1; r++) pcurves.push(panelIV(shade[r][c],80));
+    const fns=pcurves.map(cv=>makeIofV(cv));
+    const maxVsec=Math.max(...Array.from({length:r1-r0+1},(_,i)=>{
+      const G=shade[r0+i][c]; return G>0.001 ? PNL.Voc+PNL.nNsVt*Math.log(G) : 0;
     }));
-    const secCurve = [];
-    for (let k = 0; k <= nPts; k++) {
-      const V = (k / nPts) * maxVsec;
-      secCurve.push({ V, I: IofV_fns.reduce((s, fn) => s + fn(V), 0) });
-    }
-    sectionCurves.push(secCurve);
+    const sec=[];
+    for (let k=0; k<=nPts; k++) { const V=(k/nPts)*maxVsec; sec.push({V,I:fns.reduce((s,fn)=>s+fn(V),0)}); }
+    secCurves.push(sec);
   }
-  const VofI_fns = sectionCurves.map(cv => makeVofI(cv, false));
-  const maxIsc   = Math.max(...sectionCurves.map(cv => cv[0].I));
-  const result   = [];
-  for (let k = nPts; k >= 0; k--) {
-    const I = (k / nPts) * maxIsc;
-    let V = 0;
-    for (const fn of VofI_fns) V += fn(I);
-    result.push({ V, I });
+  const VofI=secCurves.map(cv=>makeVofI(cv,false));
+  const maxIsc=Math.max(...secCurves.map(cv=>cv[0].I));
+  const result=[];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of VofI) V+=fn(I);
+    result.push({V,I});
   }
-  result.sort((a, b) => a.V - b.V);
-  return result;
+  result.sort((a,b)=>a.V-b.V); return result;
 }
 
-/**
- * Horizontal TCT IV for column range [colStart, colEnd].
- * Topology: each row position has (colEnd-colStart+1) panels in parallel (horizontal cross-ties);
- * row sections are in series.
- */
-function crossTiedHorizIV(colStart, colEnd, nPts = 200) {
-  const rowCurves = [];
-  for (let r = 0; r < ROWS; r++) {
-    const panelCurves = [];
-    for (let c = colStart; c <= colEnd; c++) panelCurves.push(panelIV(shade[r][c], 80));
-    const IofV_fns = panelCurves.map(cv => makeIofV(cv));
-    const maxVrow  = Math.max(...panelCurves.map(cv => cv[cv.length - 1].V));
-    const rowCurve = [];
-    for (let k = 0; k <= nPts; k++) {
-      const V = (k / nPts) * maxVrow;
-      rowCurve.push({ V, I: IofV_fns.reduce((s, fn) => s + fn(V), 0) });
-    }
-    rowCurves.push(rowCurve);
+/** Compute IV curve for one MPPT block. */
+function computeBlockIV(block) {
+  const {r0, r1, c0, c1, topo} = block;
+  if (topo === 'series' || (topo === 'sp' && r0 === r1)) {
+    return stringIV(Array.from({length:c1-c0+1}, (_,i) => shade[r0][c0+i]));
   }
-  // Row sections in series; bypass=false because a parallel-panel row section cannot
-  // be reverse-biased — unshaded panels hold the terminal voltage positive (H-TCT property).
-  const VofI_fns = rowCurves.map(cv => makeVofI(cv, false));
-  const maxIsc   = Math.max(...rowCurves.map(cv => cv[0].I));
-  const result   = [];
-  for (let k = nPts; k >= 0; k--) {
-    const I = (k / nPts) * maxIsc;
-    let V = 0;
-    for (const fn of VofI_fns) V += fn(I);
-    result.push({ V, I });
+  if (topo === 'sp') {
+    return parallelIV(Array.from({length:r1-r0+1}, (_,i) =>
+      stringIV(Array.from({length:c1-c0+1}, (_,j) => shade[r0+i][c0+j]))
+    ));
   }
-  result.sort((a, b) => a.V - b.V);
-  return result;
+  if (topo === 'v-tct') return blockVTCT(r0, r1, c0, c1);
+  return [{V:0,I:0}];
 }
 
-/** Find MPP on an IV curve. Returns { P, V, I }. */
 function findMPP(curve) {
-  let best = { P: 0, V: 0, I: 0 };
-  for (const { V, I } of curve) {
-    const pv = V * I;
-    if (pv > best.P) best = { P: pv, V, I };
-  }
+  let best={P:0,V:0,I:0};
+  for (const {V,I} of curve) { const p=V*I; if(p>best.P) best={P:p,V,I}; }
   return best;
 }
 
-// ─────────────────────────────────────────────
-//  COMPUTE — all 5 configs every update
-// ─────────────────────────────────────────────
-
-/** Compute MPPT results for a single config. Returns [{label, curve, mpp, color}, …]. */
+// ── Compute all configs ────────────────────────────────────────────────────
 function computeConfig(id) {
-  const cfg = CONFIGS.find(c => c.id === id);
-  const mc  = cfg.mpptColors;
-  const res = [];
-
-  if (id === 'A') {
-    const strCurves = Array.from({ length: ROWS }, (_, r) =>
-      stringIV(Array.from({ length: COLS }, (_, c) => shade[r][c]))
-    );
-    const arrIV = parallelIV(strCurves);
-    res.push({ label: 'MPPT 1 (all rows)', curve: arrIV, mpp: findMPP(arrIV), color: mc[0] });
-
-  } else if (id === 'A_TCT') {
-    const arrIV = crossTiedVertIV(0, COLS - 1);
-    res.push({ label: 'MPPT 1 (full TCT)', curve: arrIV, mpp: findMPP(arrIV), color: mc[0] });
-
-  } else if (id === 'B') {
-    for (let r = 0; r < ROWS; r++) {
-      const Gs = Array.from({ length: COLS }, (_, c) => shade[r][c]);
-      const cv = stringIV(Gs);
-      res.push({ label: `MPPT ${r + 1} (row ${r + 1})`, curve: cv, mpp: findMPP(cv), color: mc[r] });
-    }
-
-  } else if (id === 'C_V') {
-    CT_GROUPS.forEach(([cs, ce], m) => {
-      const cv = crossTiedVertIV(cs, ce);
-      res.push({ label: `MPPT ${m + 1} (c${cs + 1}–${ce + 1})`, curve: cv, mpp: findMPP(cv), color: mc[m] });
-    });
-
-  } else if (id === 'C_H') {
-    CT_GROUPS.forEach(([cs, ce], m) => {
-      const cv = crossTiedHorizIV(cs, ce);
-      res.push({ label: `MPPT ${m + 1} (c${cs + 1}–${ce + 1})`, curve: cv, mpp: findMPP(cv), color: mc[m] });
-    });
-  }
-
-  return res;
+  const cfg = CONFIGS.find(c=>c.id===id);
+  return cfg.blocks.map((block,i) => {
+    const curve = computeBlockIV(block);
+    return { label:block.label, curve, mpp:findMPP(curve), color:cfg.mpptColors[i%cfg.mpptColors.length] };
+  });
 }
 
-/** Compute all 5 configs. Returns array of { ...cfg, mpptResults, totalP }. */
 function computeAll() {
   return CONFIGS.map(cfg => {
     const mpptResults = computeConfig(cfg.id);
-    const totalP      = mpptResults.reduce((s, r) => s + r.mpp.P, 0);
+    const totalP = mpptResults.reduce((s,r)=>s+r.mpp.P, 0);
     return { ...cfg, mpptResults, totalP };
   });
 }
 
-// ─────────────────────────────────────────────
-//  COMPARISON TABLE
-// ─────────────────────────────────────────────
+// ── Comparison table ───────────────────────────────────────────────────────
 function updateComparisonTable(allResults) {
-  const stcMax  = PNL.Pmax * ROWS * COLS;   // 10200 W
-  const maxP    = Math.max(...allResults.map(r => r.totalP));
+  const stcMax = PNL.Pmax * ROWS * COLS;
+  const maxP   = Math.max(...allResults.map(r=>r.totalP));
+  const maxMpptP = Math.max(...allResults.flatMap(r=>r.mpptResults.map(m=>m.mpp.P)));
 
   let html = '';
   allResults.forEach(res => {
-    const isBest  = Math.abs(res.totalP - maxP) < 0.5;
-    const sel     = res.id === highlightedConfig ? ' selected' : '';
-    const pct     = ((res.totalP / stcMax) * 100).toFixed(1);
-    const totalFmt = (res.totalP / 1000).toFixed(3);
+    const isBest = Math.abs(res.totalP - maxP) < 1;
+    const sel    = res.id === highlightedConfig ? ' class="selected"' : '';
+    const pct    = ((res.totalP/stcMax)*100).toFixed(1);
 
-    let mpptCells = '';
-    res.mpptResults.forEach(m => {
-      mpptCells += `
-        <td style="color:${m.color}">
-          <span class="mppt-val">${m.mpp.P.toFixed(0)} W</span>
-          <span class="sub-detail">${m.mpp.V.toFixed(1)} V · ${m.mpp.I.toFixed(2)} A</span>
-        </td>`;
-    });
-    for (let i = res.mpptResults.length; i < 3; i++)
-      mpptCells += '<td class="empty-cell">—</td>';
+    // Mini bars (one per MPPT, height proportional to power)
+    const bars = res.mpptResults.map((m,i) => {
+      const h = Math.max(3, Math.round((m.mpp.P/maxMpptP)*20));
+      const col = m.color;
+      const tip = `${m.label}: ${m.mpp.P.toFixed(0)} W @ ${m.mpp.V.toFixed(1)} V / ${m.mpp.I.toFixed(2)} A`;
+      return `<div class="mini-bar" style="height:${h}px;background:${col}" title="${tip}"></div>`;
+    }).join('');
 
-    html += `
-      <tr class="comp-row${sel}" data-cfgid="${res.id}" style="--cfg-color:${res.color}">
-        <td class="cfg-name">
-          <span class="cfg-dot" style="background:${res.color}"></span>${res.short}
-        </td>
-        <td class="${isBest ? 'best-val' : ''}">${totalFmt} kW ${isBest ? '★' : ''}</td>
-        <td>${pct}%</td>
-        ${mpptCells}
-      </tr>`;
+    html += `<tr${sel} data-cfgid="${res.id}" style="--cfg-color:${res.cfgColor}">
+      <td class="cfg-name"><span class="cfg-dot" style="background:${res.cfgColor}"></span>${res.short}</td>
+      <td class="${isBest?'best-val':''}">${(res.totalP/1000).toFixed(3)} kW ${isBest?'\u2605':''}</td>
+      <td>${pct}%</td>
+      <td><div class="mini-bars">${bars}</div></td>
+    </tr>`;
   });
-
   document.getElementById('compTableBody').innerHTML = html;
 
-  // Attach row click handlers
-  document.querySelectorAll('.comp-row').forEach(row => {
+  document.querySelectorAll('#compTableBody tr').forEach(row => {
     row.addEventListener('click', () => {
       highlightedConfig = row.dataset.cfgid;
-      document.querySelectorAll('.comp-row').forEach(r => r.classList.remove('selected'));
+      document.querySelectorAll('#compTableBody tr').forEach(r=>r.classList.remove('selected'));
       row.classList.add('selected');
-      updateArrayAnnotation();
+      updateAnnotation();
       drawArray();
-      updateChart(computeConfig(highlightedConfig));
+      const res = computeConfig(highlightedConfig);
+      updatePowerDetail(res);
+      updateChart(res);
     });
   });
 }
 
-// ─────────────────────────────────────────────
-//  ARRAY ANNOTATION LEGEND
-// ─────────────────────────────────────────────
-function updateArrayAnnotation() {
-  const cfg = CONFIGS.find(c => c.id === highlightedConfig);
+// ── MPPT power detail ──────────────────────────────────────────────────────
+function updatePowerDetail(results) {
+  const stcMax = PNL.Pmax * ROWS * COLS;
+  const totalP = results.reduce((s,r)=>s+r.mpp.P, 0);
+  let html = `<div class="power-card" style="border-top:3px solid #e94560">
+    <div class="p-label">Total</div>
+    <div class="p-value" style="color:#e5e7eb">${(totalP/1000).toFixed(3)}</div>
+    <div class="p-unit">kW</div>
+    <div class="p-sub">${((totalP/(PNL.Pmax*ROWS*COLS))*100).toFixed(1)}% STC</div>
+  </div>`;
+  results.forEach(res => {
+    html += `<div class="power-card" style="border-top:3px solid ${res.color}">
+      <div class="p-label">${res.label}</div>
+      <div class="p-value" style="color:${res.color}">${res.mpp.P.toFixed(0)}</div>
+      <div class="p-unit">W</div>
+      <div class="p-sub">${res.mpp.V.toFixed(1)} V &middot; ${res.mpp.I.toFixed(2)} A</div>
+    </div>`;
+  });
+  document.getElementById('powerGrid').innerHTML = html;
+}
 
-  // Chart label
+// ── Array annotation legend ────────────────────────────────────────────────
+function updateAnnotation() {
+  const cfg = CONFIGS.find(c=>c.id===highlightedConfig);
   document.getElementById('chartCfgLabel').textContent = cfg.label;
-  document.getElementById('chartCfgLabel').style.color = cfg.color;
-
-  // Config description
+  document.getElementById('chartCfgLabel').style.color = cfg.cfgColor;
+  document.getElementById('detailCfgLabel').textContent = cfg.label;
+  document.getElementById('detailCfgLabel').style.color = cfg.cfgColor;
   document.getElementById('cfgDescText').textContent = cfg.desc;
 
-  // MPPT legend
   let html = '';
-  cfg.mpptColors.forEach((col, i) => {
-    let lbl;
-    if (cfg.nMppt === 1) {
-      lbl = cfg.id === 'A_TCT' ? 'MPPT 1 — full array (TCT)' : 'MPPT 1 — all 3 rows';
-    } else if (cfg.id === 'B') {
-      lbl = `MPPT ${i + 1} — row ${i + 1}`;
-    } else {
-      const [cs, ce] = CT_GROUPS[i];
-      const tct = cfg.id === 'C_V' ? '↕V' : '↔H';
-      lbl = `MPPT ${i + 1} — cols ${cs + 1}–${ce + 1} (${tct})`;
-    }
-    html += `<div class="legend-item"><div class="legend-dot" style="background:${col}"></div><span>${lbl}</span></div>`;
+  cfg.blocks.forEach((block, i) => {
+    const col = cfg.mpptColors[i % cfg.mpptColors.length];
+    html += `<div class="legend-item"><div class="legend-dot" style="background:${col}"></div><span>${block.label}</span></div>`;
   });
   document.getElementById('arrayLegend').innerHTML = html;
 }
 
-// ─────────────────────────────────────────────
-//  IV / PV CHART  (self-contained canvas renderer)
-// ─────────────────────────────────────────────
+// ── IV / PV Chart ──────────────────────────────────────────────────────────
 const chartCanvas = document.getElementById('ivChart');
 
 function updateChart(results) {
-  const W = chartCanvas.clientWidth  || 600;
+  const W = chartCanvas.clientWidth || 600;
   const H = chartCanvas.clientHeight || 300;
-  chartCanvas.width  = W;
-  chartCanvas.height = H;
-
+  chartCanvas.width = W; chartCanvas.height = H;
   const cc = chartCanvas.getContext('2d');
   cc.clearRect(0, 0, W, H);
 
-  const ML = 58, MR = 64, MT = 36, MB = 40;
-  const pw = W - ML - MR;
-  const ph = H - MT - MB;
+  const ML=58, MR=64, MT=38, MB=40;
+  const pw=W-ML-MR, ph=H-MT-MB;
 
-  const allV = results.flatMap(r => r.curve.map(p => p.V));
-  const allI = results.flatMap(r => r.curve.map(p => p.I));
-  const allP = results.flatMap(r => r.curve.map(p => p.V * p.I));
-  const xMax = niceMax(Math.max(...allV, 10),  50);
-  const iMax = niceMax(Math.max(...allI,  1),   5);
-  const pMax = niceMax(Math.max(...allP, 100), 1000);
+  const allV=results.flatMap(r=>r.curve.map(p=>p.V));
+  const allI=results.flatMap(r=>r.curve.map(p=>p.I));
+  const allP=results.flatMap(r=>r.curve.map(p=>p.V*p.I));
+  const xMax=niceMax(Math.max(...allV,10),50);
+  const iMax=niceMax(Math.max(...allI,1),5);
+  const pMax=niceMax(Math.max(...allP,100),500);
 
-  const cx  = v => ML + (v / xMax) * pw;
-  const cyI = i => MT + ph - (i / iMax) * ph;
-  const cyP = p => MT + ph - (p / pMax) * ph;
+  const cx  = v => ML+(v/xMax)*pw;
+  const cyI = i => MT+ph-(i/iMax)*ph;
+  const cyP = p => MT+ph-(p/pMax)*ph;
 
-  // Background
-  cc.fillStyle = '#111827';
-  cc.fillRect(0, 0, W, H);
+  cc.fillStyle='#111827'; cc.fillRect(0,0,W,H);
+  cc.strokeStyle='#1f2937'; cc.lineWidth=1;
+  for (let i=0;i<=6;i++) { const x=ML+(i/6)*pw; cc.beginPath(); cc.moveTo(x,MT); cc.lineTo(x,MT+ph); cc.stroke(); }
+  for (let i=0;i<=5;i++) { const y=MT+(i/5)*ph; cc.beginPath(); cc.moveTo(ML,y); cc.lineTo(ML+pw,y); cc.stroke(); }
 
-  // Grid
-  cc.strokeStyle = '#1f2937'; cc.lineWidth = 1;
-  const nGridX = 6, nGridY = 5;
-  for (let i = 0; i <= nGridX; i++) {
-    const x = ML + (i / nGridX) * pw;
-    cc.beginPath(); cc.moveTo(x, MT); cc.lineTo(x, MT + ph); cc.stroke();
-  }
-  for (let i = 0; i <= nGridY; i++) {
-    const y = MT + (i / nGridY) * ph;
-    cc.beginPath(); cc.moveTo(ML, y); cc.lineTo(ML + pw, y); cc.stroke();
-  }
-
-  // Axes
-  cc.strokeStyle = '#374151'; cc.lineWidth = 1.5;
+  cc.strokeStyle='#374151'; cc.lineWidth=1.5;
   cc.beginPath();
-  cc.moveTo(ML, MT); cc.lineTo(ML, MT + ph);
-  cc.moveTo(ML, MT + ph); cc.lineTo(ML + pw, MT + ph);
-  cc.moveTo(ML + pw, MT); cc.lineTo(ML + pw, MT + ph);
+  cc.moveTo(ML,MT); cc.lineTo(ML,MT+ph);
+  cc.moveTo(ML,MT+ph); cc.lineTo(ML+pw,MT+ph);
+  cc.moveTo(ML+pw,MT); cc.lineTo(ML+pw,MT+ph);
   cc.stroke();
 
-  // X-axis labels
-  cc.fillStyle = '#6b7280'; cc.font = '10px sans-serif'; cc.textAlign = 'center';
-  for (let i = 0; i <= nGridX; i++) {
-    const val = (i / nGridX) * xMax;
-    cc.fillText(val.toFixed(0), cx(val), MT + ph + 14);
-  }
-  cc.fillStyle = '#9ca3af'; cc.font = '11px sans-serif';
-  cc.fillText('Voltage  (V)', ML + pw / 2, H - 4);
+  cc.fillStyle='#6b7280'; cc.font='10px sans-serif'; cc.textAlign='center';
+  for (let i=0;i<=6;i++) { const v=(i/6)*xMax; cc.fillText(v.toFixed(0), cx(v), MT+ph+14); }
+  cc.fillStyle='#9ca3af'; cc.font='11px sans-serif';
+  cc.fillText('Voltage  (V)', ML+pw/2, H-4);
 
-  // Left Y-axis (current)
-  cc.fillStyle = '#38bdf8'; cc.font = '10px sans-serif'; cc.textAlign = 'right';
-  for (let i = 0; i <= nGridY; i++) {
-    const val = (1 - i / nGridY) * iMax;
-    cc.fillText(val.toFixed(1), ML - 5, MT + (i / nGridY) * ph + 3);
-  }
-  cc.save(); cc.translate(12, MT + ph / 2); cc.rotate(-Math.PI / 2);
-  cc.textAlign = 'center'; cc.font = '11px sans-serif'; cc.fillText('Current  (A)', 0, 0); cc.restore();
+  cc.fillStyle='#38bdf8'; cc.font='10px sans-serif'; cc.textAlign='right';
+  for (let i=0;i<=5;i++) { const v=(1-i/5)*iMax; cc.fillText(v.toFixed(1), ML-5, MT+(i/5)*ph+3); }
+  cc.save(); cc.translate(12,MT+ph/2); cc.rotate(-Math.PI/2); cc.textAlign='center'; cc.font='11px sans-serif'; cc.fillText('Current  (A)',0,0); cc.restore();
 
-  // Right Y-axis (power)
-  cc.fillStyle = '#fb923c'; cc.font = '10px sans-serif'; cc.textAlign = 'left';
-  for (let i = 0; i <= nGridY; i++) {
-    const val = (1 - i / nGridY) * pMax;
-    cc.fillText(val >= 1000 ? (val / 1000).toFixed(1) + 'k' : val.toFixed(0), ML + pw + 5, MT + (i / nGridY) * ph + 3);
-  }
-  cc.save(); cc.translate(W - 8, MT + ph / 2); cc.rotate(Math.PI / 2);
-  cc.textAlign = 'center'; cc.font = '11px sans-serif'; cc.fillText('Power  (W)', 0, 0); cc.restore();
+  cc.fillStyle='#fb923c'; cc.font='10px sans-serif'; cc.textAlign='left';
+  for (let i=0;i<=5;i++) { const v=(1-i/5)*pMax; cc.fillText(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0), ML+pw+5, MT+(i/5)*ph+3); }
+  cc.save(); cc.translate(W-8,MT+ph/2); cc.rotate(Math.PI/2); cc.textAlign='center'; cc.font='11px sans-serif'; cc.fillText('Power  (W)',0,0); cc.restore();
 
-  // Plot curves
   results.forEach(res => {
-    const col = res.color;
-    const pts = res.curve;
+    const col=res.color, pts=res.curve;
+    const lw = results.length > 5 ? 1.5 : 2;
 
-    // IV (solid)
-    cc.strokeStyle = col; cc.lineWidth = 2; cc.setLineDash([]);
-    cc.beginPath();
-    pts.forEach((p, i) => { const x = cx(p.V), y = cyI(p.I); i ? cc.lineTo(x, y) : cc.moveTo(x, y); });
-    cc.stroke();
+    cc.strokeStyle=col; cc.lineWidth=lw; cc.setLineDash([]);
+    cc.beginPath(); pts.forEach((p,i)=>{ const x=cx(p.V),y=cyI(p.I); i?cc.lineTo(x,y):cc.moveTo(x,y); }); cc.stroke();
 
-    // PV (dashed)
-    cc.strokeStyle = col; cc.lineWidth = 2; cc.setLineDash([6, 4]); cc.globalAlpha = 0.85;
-    cc.beginPath();
-    pts.forEach((p, i) => { const x = cx(p.V), y = cyP(p.V * p.I); i ? cc.lineTo(x, y) : cc.moveTo(x, y); });
-    cc.stroke();
-    cc.setLineDash([]); cc.globalAlpha = 1;
+    cc.strokeStyle=col; cc.lineWidth=lw; cc.setLineDash([5,4]); cc.globalAlpha=0.85;
+    cc.beginPath(); pts.forEach((p,i)=>{ const x=cx(p.V),y=cyP(p.V*p.I); i?cc.lineTo(x,y):cc.moveTo(x,y); }); cc.stroke();
+    cc.setLineDash([]); cc.globalAlpha=1;
 
-    // MPP star
-    drawStar(cc, cx(res.mpp.V), cyP(res.mpp.P), 7, col);
+    drawStar(cc, cx(res.mpp.V), cyP(res.mpp.P), 6, col);
   });
 
-  // Legend
-  let lx = ML;
-  const ly = 14;
-  cc.font = '10px sans-serif';
+  // Legend (wrap if needed)
+  let lx=ML, ly=15;
+  cc.font='9px sans-serif';
   results.forEach(res => {
-    cc.strokeStyle = res.color; cc.lineWidth = 2; cc.setLineDash([]);
-    cc.beginPath(); cc.moveTo(lx, ly); cc.lineTo(lx + 16, ly); cc.stroke();
-    cc.fillStyle = '#d1d5db'; cc.textAlign = 'left';
-    cc.fillText(res.label + ' I', lx + 19, ly + 3);
-    lx += cc.measureText(res.label + ' I').width + 26;
+    const label=res.label;
+    const sw=cc.measureText(label+' IP').width+32;
+    if (lx+sw > ML+pw-10) { lx=ML; ly+=13; }
 
-    cc.strokeStyle = res.color; cc.lineWidth = 2; cc.setLineDash([4, 3]);
-    cc.beginPath(); cc.moveTo(lx, ly); cc.lineTo(lx + 16, ly); cc.stroke();
-    cc.setLineDash([]);
-    cc.fillStyle = '#d1d5db';
-    cc.fillText(res.label + ' P', lx + 19, ly + 3);
-    lx += cc.measureText(res.label + ' P').width + 26;
+    cc.strokeStyle=res.color; cc.lineWidth=2; cc.setLineDash([]);
+    cc.beginPath(); cc.moveTo(lx,ly); cc.lineTo(lx+14,ly); cc.stroke();
+    cc.fillStyle='#d1d5db'; cc.textAlign='left';
+    cc.fillText(label, lx+17, ly+3);
+    lx += sw;
   });
 }
 
 function drawStar(cc, cx, cy, r, color) {
-  cc.save();
-  cc.fillStyle = color; cc.strokeStyle = '#111827'; cc.lineWidth = 1;
+  cc.save(); cc.fillStyle=color; cc.strokeStyle='#111827'; cc.lineWidth=1;
   cc.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const angle  = (i * Math.PI) / 5 - Math.PI / 2;
-    const radius = i % 2 === 0 ? r : r * 0.42;
-    const x = cx + radius * Math.cos(angle), y = cy + radius * Math.sin(angle);
-    i ? cc.lineTo(x, y) : cc.moveTo(x, y);
+  for (let i=0;i<10;i++) {
+    const a=(i*Math.PI)/5-Math.PI/2, rad=i%2===0?r:r*0.42;
+    const x=cx+rad*Math.cos(a), y=cy+rad*Math.sin(a);
+    i?cc.lineTo(x,y):cc.moveTo(x,y);
   }
   cc.closePath(); cc.fill(); cc.stroke(); cc.restore();
 }
 
-function niceMax(val, step) {
-  return Math.ceil(val / step) * step;
-}
+function niceMax(val, step) { return Math.ceil(val/step)*step; }
 
-// ─────────────────────────────────────────────
-//  FULL UPDATE CYCLE
-// ─────────────────────────────────────────────
+// ── Update cycle ───────────────────────────────────────────────────────────
 let updateTimer = null;
 
 function scheduleUpdate() {
@@ -1046,47 +720,40 @@ function scheduleUpdate() {
 function heavyUpdate() {
   const allResults = computeAll();
   updateComparisonTable(allResults);
-  updateChart(computeConfig(highlightedConfig));
+  const hlRes = allResults.find(r=>r.id===highlightedConfig);
+  updatePowerDetail(hlRes.mpptResults);
+  updateChart(hlRes.mpptResults);
 }
 
-function fullUpdate() {
-  drawArray();
-  heavyUpdate();
-}
+function fullUpdate() { drawArray(); heavyUpdate(); }
 
-// ─────────────────────────────────────────────
-//  UI CONTROLS
-// ─────────────────────────────────────────────
+// ── UI controls ────────────────────────────────────────────────────────────
 document.getElementById('clearBtn').addEventListener('click', () => {
-  shade = Array.from({ length: ROWS }, () => Array(COLS).fill(1.0));
-  fullUpdate();
+  shade = Array.from({length:ROWS}, ()=>Array(COLS).fill(1.0)); fullUpdate();
 });
 
 const slider = document.getElementById('shadeSlider');
-const shadeValEl = document.getElementById('shadeVal');
 slider.addEventListener('input', () => {
-  shadeLevel = 1 - slider.value / 100;
-  shadeValEl.textContent = `${slider.value}%`;
+  shadeLevel = 1 - slider.value/100;
+  document.getElementById('shadeVal').textContent = `${slider.value}%`;
 });
 
 document.querySelectorAll('.preset-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    const preset = btn.dataset.preset;
-    shade = Array.from({ length: ROWS }, () => Array(COLS).fill(1.0));
-    if      (preset === 'row0')    { for (let c = 0; c < COLS; c++) shade[0][c] = shadeLevel; }
-    else if (preset === 'row1')    { for (let c = 0; c < COLS; c++) shade[1][c] = shadeLevel; }
-    else if (preset === 'row2')    { for (let c = 0; c < COLS; c++) shade[2][c] = shadeLevel; }
-    else if (preset === 'col')     { for (let r = 0; r < ROWS; r++) shade[r][2] = shadeLevel; }
-    else if (preset === 'corner')  { for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) shade[r][c] = shadeLevel; }
-    else if (preset === 'checker') { for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if ((r + c) % 2 === 0) shade[r][c] = shadeLevel; }
+    const p=btn.dataset.preset;
+    shade = Array.from({length:ROWS}, ()=>Array(COLS).fill(1.0));
+    if      (p==='row0')    for(let c=0;c<COLS;c++) shade[0][c]=shadeLevel;
+    else if (p==='row3')    for(let c=0;c<COLS;c++) shade[3][c]=shadeLevel;
+    else if (p==='row6')    for(let c=0;c<COLS;c++) shade[6][c]=shadeLevel;
+    else if (p==='col4')    for(let r=0;r<ROWS;r++) shade[r][4]=shadeLevel;
+    else if (p==='corner')  for(let r=0;r<3;r++) for(let c=0;c<3;c++) shade[r][c]=shadeLevel;
+    else if (p==='checker') for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if((r+c)%2===0) shade[r][c]=shadeLevel;
     fullUpdate();
   });
 });
 
-// ─────────────────────────────────────────────
-//  INITIALISE
-// ─────────────────────────────────────────────
-updateArrayAnnotation();
+// ── Init ───────────────────────────────────────────────────────────────────
+updateAnnotation();
 fullUpdate();
 </script>
 </body>
