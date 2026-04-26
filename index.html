@@ -298,7 +298,7 @@ const CONFIGS = [
   {
     id: 'A_TCT',
     label: 'Option A-TCT',
-    short: 'A — TCT',
+    short: 'A-TCT',
     desc: '1 MPPT · full 3×10 array in Total Cross-Tied: each column = 3 rows in parallel, 10 columns in series',
     color: '#a78bfa',
     mpptColors: ['#a78bfa'],
@@ -733,7 +733,8 @@ function crossTiedHorizIV(colStart, colEnd, nPts = 200) {
     }
     rowCurves.push(rowCurve);
   }
-  // Row sections in series (no per-section bypass — parallel sections don't reverse-bias)
+  // Row sections in series; bypass=false because a parallel-panel row section cannot
+  // be reverse-biased — unshaded panels hold the terminal voltage positive (H-TCT property).
   const VofI_fns = rowCurves.map(cv => makeVofI(cv, false));
   const maxIsc   = Math.max(...rowCurves.map(cv => cv[0].I));
   const result   = [];
