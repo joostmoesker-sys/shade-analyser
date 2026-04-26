@@ -174,7 +174,7 @@ const COL9 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d3
 // Row groups used by A, B (and D, E)
 const ROW_GROUPS = [[0,2],[3,5],[6,7]];   // 3+3+2 rows
 // Column groups used by D, E
-const COL_GROUPS = [[0,2],[3,5],[6,8]];   // 3+3+3 cols
+const COL_GROUPS = [[0,2],[3,5],[6,8]];   // cols 0–2, 3–5, 6–8 (3+3+3)
 
 // 9 blocks for D/E: iterate row-groups × col-groups
 const DE_BLOCKS = ROW_GROUPS.flatMap(([r0,r1]) => COL_GROUPS.map(([c0,c1]) => ({ r0, r1, c0, c1 })));
