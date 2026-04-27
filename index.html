@@ -1741,6 +1741,8 @@ async function runYearlySimulation() {
       // Tree shadow — altitude already confirmed > 0.5° so tan_alt is safe
       const az_rad  = sp.azimuth  * Math.PI / 180;
       const tan_alt = Math.tan(sp.altitude * Math.PI / 180);
+      // Apply tree shadow only (not manual paint) so the yearly estimate reflects
+      // the permanent scene geometry rather than a one-off painted test condition.
       for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
           const pos = panelScenePos(r, c);
@@ -1893,10 +1895,11 @@ function displaySimResults(monthlyEnergy, weatherMode) {
       const bh  = kv * 26;
       const bx  = ML + m * kcBarW + kcBarW * 0.1;
       const by  = 36 - bh;
-      // Colour: green (summer) → blue (winter) based on Kc value
-      const r = Math.round(56 + (1 - kv) * 30);
-      const g = Math.round(180 - (1 - kv) * 80);
-      const b = Math.round(248 - kv * 80);
+      // Colour: transitions from cyan-blue (Kc≈0.35, winter) to teal-green (Kc≈0.62, summer).
+      // RGB components shift linearly with Kc: low Kc → more blue, high Kc → more green.
+      const r = Math.round(56 + (1 - kv) * 30);   // red: 56–86, modest variation
+      const g = Math.round(180 - (1 - kv) * 80);  // green: 100 (winter) → 180 (summer)
+      const b = Math.round(248 - kv * 80);         // blue: 198 (summer) → 248 (winter)
       kx.fillStyle = `rgb(${r},${g},${b})`;
       kx.fillRect(bx, by, kcBarW * 0.8, bh);
       kx.fillStyle = '#9ca3af'; kx.font = '7px sans-serif'; kx.textAlign = 'center';
