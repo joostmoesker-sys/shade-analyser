@@ -1103,6 +1103,8 @@ function niceMax(val,step){return Math.ceil(val/step)*step;}
 
 const COL_SPACING = 1.8;  // meters between panel column centres
 const ROW_SPACING = 1.1;  // meters between panel row centres
+const MAX_SHADOW_LEN  = 500; // cap shadow length (m) — avoids near-horizon infinities
+const MAX_SHADOW_AXIS = 400; // cap elongated shadow semi-axis (m)
 
 /** Scene (ENU) coordinates (m) of panel centre for row r, col c. Origin = array centre. */
 function panelScenePos(r, c) {
@@ -1151,7 +1153,7 @@ function updateTreeCountLabel() {
 /** Returns true if point (px, py) lies within the shadow ellipse cast by tree. */
 function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
   if (tan_alt < 0.01) return false;
-  const shadow_len = Math.min(tree.height / tan_alt, 500);
+  const shadow_len = Math.min(tree.height / tan_alt, MAX_SHADOW_LEN);
   // Shadow centre = ground position of tree-tip shadow
   const scx = tree.x - shadow_len * Math.sin(az_rad);
   const scy = tree.y - shadow_len * Math.cos(az_rad);
@@ -1160,8 +1162,8 @@ function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
   const ux = -Math.sin(az_rad), uy = -Math.cos(az_rad);
   const along = dx * ux + dy * uy;               // component along shadow axis
   const perp  = Math.abs(dx * uy - dy * ux);     // perpendicular component
-  const ra    = Math.min(tree.crownRadius / tan_alt, 400); // elongated semi-axis
-  const rp    = tree.crownRadius;                          // lateral semi-axis
+  const ra    = Math.min(tree.crownRadius / tan_alt, MAX_SHADOW_AXIS); // elongated semi-axis
+  const rp    = tree.crownRadius;                                       // lateral semi-axis
   return (along * along) / (ra * ra) + (perp * perp) / (rp * rp) <= 1.0;
 }
 
@@ -1169,8 +1171,8 @@ function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
 function recomputeTreeShadow() {
   const treeShade = Array.from({length:ROWS}, () => Array(COLS).fill(1.0));
   if (sceneTrees.length > 0 && lastSunPos.altitude > 0.5) {
-    const az_rad = lastSunPos.azimuth * Math.PI / 180;
-    const tan_alt = Math.tan(Math.max(1, lastSunPos.altitude) * Math.PI / 180);
+    const az_rad  = lastSunPos.azimuth  * Math.PI / 180;
+    const tan_alt = Math.tan(lastSunPos.altitude * Math.PI / 180); // altitude already > 0.5°
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const pos = panelScenePos(r, c);
@@ -1282,18 +1284,18 @@ function drawMapArray() {
 
 function drawMapTreeShadows() {
   const az_rad  = lastSunPos.azimuth  * Math.PI / 180;
-  const tan_alt = Math.tan(Math.max(1, lastSunPos.altitude) * Math.PI / 180);
+  const tan_alt = Math.tan(lastSunPos.altitude * Math.PI / 180); // altitude already > 0.5°
 
   mapCtx.save(); mapCtx.globalAlpha = 0.35;
   sceneTrees.forEach(tree => {
-    const shadow_len = Math.min(tree.height / tan_alt, 200);
+    const shadow_len = Math.min(tree.height / tan_alt, MAX_SHADOW_LEN);
     const scx = tree.x - shadow_len * Math.sin(az_rad);
     const scy = tree.y - shadow_len * Math.cos(az_rad);
     const {mx: ex, my: ey} = sceneToMap(scx, scy);
     const {mx: tx, my: ty} = sceneToMap(tree.x, tree.y);
 
     const rp = tree.crownRadius * MAP_SCALE;
-    const ra = Math.min(tree.crownRadius / tan_alt, 150) * MAP_SCALE;
+    const ra = Math.min(tree.crownRadius / tan_alt, MAX_SHADOW_AXIS) * MAP_SCALE;
     const screenAngle = Math.atan2(ey - ty, ex - tx);
 
     mapCtx.save();
@@ -1648,8 +1650,8 @@ async function runYearlySimulation() {
   document.getElementById('simProgressFill').style.width = '0%';
   document.getElementById('simStatusLabel').textContent = 'Simulating…';
 
-  // 36 sample days spread across the year
-  const SAMPLE_DAYS = Array.from({length: 36}, (_, i) => Math.round(1 + i * 365 / 36));
+  // 36 sample days spread uniformly across the year
+  const SAMPLE_DAYS = Array.from({length: 36}, (_, i) => Math.floor(i * 365 / 36) + 1);
   const STEP_MIN    = 30;     // time step in minutes
   const DAY_WEIGHT  = 365 / SAMPLE_DAYS.length;  // days each sample represents
 
@@ -1657,18 +1659,20 @@ async function runYearlySimulation() {
   const monthlyEnergy = {};
   CONFIGS.forEach(cfg => { monthlyEnergy[cfg.id] = Array(12).fill(0); });
 
-  // Save current global state so we can restore after simulation
-  const savedIrr      = irr.map(row => row.slice());
-  const savedShade    = shade.map(row => row.slice());
+  // Save current global state so we can restore after simulation.
+  // We only modify irr and shade during the sim (manualShade/currentTreeShade are untouched).
+  const savedIrr   = irr.map(row => row.slice());
+  const savedShade = shade.map(row => row.slice());
 
-  const REF_YEAR = new Date().getFullYear();
+  // Use a fixed reference year for reproducible day-of-year / DST calculations
+  const REF_YEAR = 2024;
 
   for (let di = 0; di < SAMPLE_DAYS.length; di++) {
     const doy  = SAMPLE_DAYS[di];
     const refDate = new Date(REF_YEAR, 0, doy);
     const month   = refDate.getMonth();       // 0–11
 
-    for (let mins = 0; mins <= 1440; mins += STEP_MIN) {
+    for (let mins = 0; mins < 1440; mins += STEP_MIN) {
       const d  = new Date(REF_YEAR, 0, doy, Math.floor(mins/60), mins % 60, 0);
       const sp = solarPosition(d);
       if (sp.altitude < 0.5) continue;       // skip night
@@ -1687,8 +1691,9 @@ async function runYearlySimulation() {
       }
 
       // Tree shadow (no manual shade during sim — only trees)
+      // altitude already checked > 0.5° so tan_alt is safe
       const az_rad  = sp.azimuth  * Math.PI / 180;
-      const tan_alt = Math.tan(Math.max(1, sp.altitude) * Math.PI / 180);
+      const tan_alt = Math.tan(sp.altitude * Math.PI / 180);
       for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
           const pos = panelScenePos(r, c);
@@ -1715,8 +1720,11 @@ async function runYearlySimulation() {
     await new Promise(resolve => setTimeout(resolve, 0));
   }
 
-  // Restore global state
-  for (let r = 0; r < ROWS; r++) { irr[r] = savedIrr[r]; shade[r] = savedShade[r]; }
+  // Restore global state (deep copy so saved arrays remain intact)
+  for (let r = 0; r < ROWS; r++) {
+    irr[r]   = savedIrr[r].slice();
+    shade[r] = savedShade[r].slice();
+  }
 
   // Present results
   document.getElementById('simProgressWrap').style.display = 'none';
@@ -1740,7 +1748,7 @@ function displaySimResults(monthlyEnergy) {
     const tot = yearlyTotals[cfg.id];
     const pct = ((tot / maxYearly) * 100).toFixed(1);
     const daily = (tot / 365).toFixed(2);
-    const best = Math.abs(tot - maxYearly) < 0.1;
+    const best = tot / maxYearly >= 0.9999;
     html += `<tr>
       <td class="cfg-name"><span class="cfg-dot" style="background:${cfg.cfgColor}"></span>${cfg.short}</td>
       <td class="${best ? 'best-val' : ''}">${tot.toFixed(0)} ${best ? '★' : ''}</td>
