@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PV Array Shade Analyser</title>
+  <title>PV Array Shade Analyser — Neer, NL</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', system-ui, sans-serif; background: #111827; color: #e5e7eb; min-height: 100vh; }
@@ -32,6 +32,7 @@
     .shade-row { display: flex; align-items: center; gap: 6px; font-size: 0.77rem; color: #9ca3af; }
     input[type="range"] { -webkit-appearance: none; width: 90px; height: 4px; background: #374151; border-radius: 2px; outline: none; }
     input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: #e94560; cursor: pointer; }
+    input[type="date"] { background: #111827; color: #e5e7eb; border: 1px solid #374151; border-radius: 6px; padding: 4px 8px; font-size: 0.78rem; }
 
     .array-legend { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 0.73rem; }
     .legend-item  { display: flex; align-items: center; gap: 4px; }
@@ -41,6 +42,24 @@
     .preset-btn { padding: 4px 9px; font-size: 0.72rem; border: 1px solid #374151; border-radius: 5px; background: #111827; color: #9ca3af; cursor: pointer; transition: all 0.15s; }
     .preset-btn:hover { border-color: #6366f1; color: #e5e7eb; background: #1e1b4b; }
     .instructions { font-size: 0.73rem; color: #6b7280; margin-top: 7px; line-height: 1.5; }
+
+    /* Solar card */
+    .solar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .solar-stat { background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 7px 10px; }
+    .solar-stat .sl { font-size: 0.66rem; color: #6b7280; }
+    .solar-stat .sv { font-size: 1.05rem; font-weight: 700; color: #fbbf24; }
+    .solar-stat .su { font-size: 0.62rem; color: #6b7280; }
+    .solar-stat.sec-top  { border-top: 3px solid #60a5fa; }
+    .solar-stat.sec-bot  { border-top: 3px solid #f97316; }
+    .time-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; font-size: 0.77rem; color: #9ca3af; }
+    .time-row input[type="range"] { width: 130px; }
+    .sun-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; font-size: 0.74rem; color: #6b7280; }
+    .sun-badge { background: #111827; border: 1px solid #374151; border-radius: 5px; padding: 3px 8px; white-space: nowrap; }
+    .sun-badge b { color: #fbbf24; }
+
+    /* Section badge labels that appear between panels */
+    .section-label-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 2px; font-size: 0.7rem; }
+    .sec-badge { border-radius: 4px; padding: 2px 7px; font-weight: 700; font-size: 0.67rem; }
 
     /* Comparison table */
     .comp-wrap { overflow-x: auto; }
@@ -56,13 +75,13 @@
     .mini-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 20px; vertical-align: middle; }
     .mini-bar  { width: 5px; border-radius: 1px 1px 0 0; min-height: 3px; }
 
-    /* Power detail grid */
-    .power-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px,1fr)); gap: 8px; margin-top: 4px; }
+    /* Power detail */
+    .power-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px,1fr)); gap: 8px; margin-top: 4px; }
     .power-card { background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 9px 10px; text-align: center; }
-    .power-card .p-label { font-size: 0.68rem; color: #6b7280; }
-    .power-card .p-value { font-size: 1.3rem; font-weight: 700; color: #38bdf8; margin-top: 2px; }
-    .power-card .p-unit  { font-size: 0.65rem; color: #6b7280; }
-    .power-card .p-sub   { font-size: 0.68rem; color: #4ade80; margin-top: 2px; }
+    .power-card .p-label { font-size: 0.66rem; color: #6b7280; }
+    .power-card .p-value { font-size: 1.25rem; font-weight: 700; color: #38bdf8; margin-top: 2px; }
+    .power-card .p-unit  { font-size: 0.63rem; color: #6b7280; }
+    .power-card .p-sub   { font-size: 0.67rem; color: #4ade80; margin-top: 2px; }
 
     .chart-wrap { position: relative; height: 300px; }
     .specs-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); gap: 6px; font-size:.78rem; color:#9ca3af; }
@@ -72,20 +91,27 @@
 
 <header>
   <h1>&#9728;&#65039; PV Array Shade Analyser</h1>
-  <p>Lucksolar LS-MD120-340W &nbsp;&middot;&nbsp; 8 &times; 9 Array (72 panels) &nbsp;&middot;&nbsp; Landscape Mode &nbsp;&middot;&nbsp; 5 Wiring Configurations</p>
+  <p>Lucksolar LS-MD120-340W &nbsp;&middot;&nbsp; 8&times;9 (72 panels) &nbsp;&middot;&nbsp; Neer, Netherlands &nbsp;&middot;&nbsp; Clear-sky irradiance model &nbsp;&middot;&nbsp; 6 Wiring Configs</p>
 </header>
 
 <div class="app-body">
 
   <!-- LEFT PANEL -->
   <div class="left-panel">
+
+    <!-- Array canvas -->
     <div class="card">
       <h3>PV Array &nbsp;<span style="font-size:.72rem;color:#6b7280;text-transform:none">left-drag = shade &nbsp;|&nbsp; right-drag / Shift = clear</span></h3>
       <div class="array-wrap"><canvas id="arrayCanvas"></canvas></div>
+      <!-- Section legend -->
+      <div style="display:flex;gap:12px;margin-top:6px;font-size:0.72rem;">
+        <span><span style="display:inline-block;width:12px;height:12px;background:#60a5fa;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Top (R1–5) tilt&minus;30°&nbsp;az&nbsp;220°</span>
+        <span><span style="display:inline-block;width:12px;height:12px;background:#f97316;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Bottom (R6–8) tilt&nbsp;30°&nbsp;az&nbsp;255°</span>
+      </div>
       <div class="array-ctrls">
-        <button class="btn" id="clearBtn">Clear All Shade</button>
+        <button class="btn" id="clearBtn">Clear Shade</button>
         <div class="shade-row">
-          <span>Shade level:</span>
+          <span>Shade:</span>
           <input type="range" id="shadeSlider" min="0" max="99" value="95" />
           <span id="shadeVal">95%</span>
         </div>
@@ -103,6 +129,42 @@
       <div id="cfgDescText" style="font-size:.71rem;color:#6b7280;margin-top:5px;line-height:1.5;"></div>
       <p class="instructions">Click a table row (right) to switch config annotation.</p>
     </div>
+
+    <!-- Solar irradiance -->
+    <div class="card">
+      <h3>&#9728; Solar Irradiance &mdash; Neer, Netherlands &nbsp;<span style="font-size:.68rem;color:#4b5563;text-transform:none">lat 51.27°N, lon 5.99°E &nbsp;·&nbsp; clear-sky</span></h3>
+      <div class="time-row">
+        <span>Date:</span>
+        <input type="date" id="dateInput" />
+        <span>Time:</span>
+        <input type="range" id="timeSlider" min="0" max="1425" step="15" value="720" />
+        <span id="timeDisplay" style="font-weight:600;color:#fbbf24;min-width:40px">12:00</span>
+      </div>
+      <div class="sun-row" id="sunRow">
+        <span class="sun-badge">Alt: <b id="sunAlt">—</b>°</span>
+        <span class="sun-badge">Az: <b id="sunAz">—</b>°</span>
+        <span class="sun-badge">GHI: <b id="ghiVal">—</b> W/m²</span>
+        <span class="sun-badge">Sunrise: <b id="srTime">—</b></span>
+        <span class="sun-badge">Sunset: <b id="ssTime">—</b></span>
+      </div>
+      <div class="solar-grid" style="margin-top:8px;">
+        <div class="solar-stat sec-top">
+          <div class="sl">&#9650; Top section (tilt &minus;30°, az 220°)</div>
+          <div class="sv" id="poaTop">—</div>
+          <div class="su">W/m² POA &nbsp;(<span id="poaTopPct" style="color:#4ade80">—</span>% of STC)</div>
+        </div>
+        <div class="solar-stat sec-bot">
+          <div class="sl">&#9660; Bottom section (tilt 30°, az 255°)</div>
+          <div class="sv" id="poaBot">—</div>
+          <div class="su">W/m² POA &nbsp;(<span id="poaBotPct" style="color:#4ade80">—</span>% of STC)</div>
+        </div>
+      </div>
+      <div style="font-size:0.67rem;color:#4b5563;margin-top:6px;">
+        Irradiance automatically applied to all panels. Paint shade to simulate obstructions on top.
+      </div>
+    </div>
+
+    <!-- Panel specs -->
     <div class="card">
       <h3>Panel &mdash; Lucksolar LS-MD120-340W</h3>
       <div class="specs-grid">
@@ -111,7 +173,7 @@
         <span>Imp: <b style="color:#e5e7eb">8.85 A</b></span>
         <span>Voc: <b style="color:#e5e7eb">46.4 V</b></span>
         <span>Isc: <b style="color:#e5e7eb">9.35 A</b></span>
-        <span>Bypass: <b style="color:#e5e7eb">3 &times; 0.5 V</b></span>
+        <span>Bypass: <b style="color:#e5e7eb">3&times;0.5 V</b></span>
       </div>
     </div>
   </div>
@@ -124,15 +186,15 @@
       <div class="comp-wrap">
         <table class="comp-table">
           <thead><tr>
-            <th>Config</th><th>Total Power</th><th>% STC</th><th>MPPT powers (hover for detail)</th>
+            <th>Config</th><th>Total Power</th><th>% STC</th><th>MPPT powers (hover)</th>
           </tr></thead>
           <tbody id="compTableBody"></tbody>
         </table>
       </div>
       <div style="font-size:0.69rem;color:#4b5563;margin-top:7px;">
-        STC ref: 72 panels &times; 340 W = 24.48 kW &nbsp;&middot;&nbsp;
-        <span style="color:#4ade80">&#9733; green = best total</span> &nbsp;&middot;&nbsp;
-        SP = series-parallel &nbsp;|&nbsp; TCT = total cross-tied (V = vertical ties)
+        STC ref: 72&times;340W = 24.48 kW &nbsp;&middot;&nbsp;
+        <span style="color:#4ade80">&#9733; best total</span> &nbsp;&middot;&nbsp;
+        SP = series-parallel &nbsp;|&nbsp; TCT = vertical cross-tied
       </div>
     </div>
 
@@ -143,7 +205,7 @@
 
     <div class="card">
       <h3>I&ndash;V &amp; P&ndash;V Curves &nbsp;&middot;&nbsp; <span id="chartCfgLabel" style="color:#38bdf8">Option A</span>
-        <span style="font-size:.7rem;color:#4b5563;text-transform:none;font-weight:400">&mdash; solid = I(A) &nbsp;&middot;&nbsp; dashed = P(W) &nbsp;&middot;&nbsp; &#9733; = MPP</span>
+        <span style="font-size:.7rem;color:#4b5563;text-transform:none;font-weight:400">&mdash; solid=I(A) &nbsp;&middot;&nbsp; dashed=P(W) &nbsp;&middot;&nbsp; &#9733;=MPP</span>
       </h3>
       <div class="chart-wrap"><canvas id="ivChart"></canvas></div>
     </div>
@@ -154,83 +216,116 @@
 <script>
 'use strict';
 
-// ── Constants ──────────────────────────────────────────────────────────────
+// ── Panel & array constants ─────────────────────────────────────────────────
 const ROWS = 8, COLS = 9;
 const BYPASS_VD = 0.5, VT_25 = 0.025693;
+const STC_IRRAD = 1000; // W/m²
 
 const PNL = { Pmax:340, Vmp:38.4, Imp:8.85, Voc:46.4, Isc:9.35, Ns:60, n:1.3, Rs:0.25, Rsh:400 };
 PNL.nNsVt = PNL.n * PNL.Ns * VT_25;
 PNL.I0 = (PNL.Isc - PNL.Voc / PNL.Rsh) / (Math.exp(PNL.Voc / PNL.nNsVt) - 1);
 
+// ── Location (Neer, Netherlands) ───────────────────────────────────────────
+const NEER = { lat: 51.27, lon: 5.99 };   // degrees
+const NEER_LAT = NEER.lat * Math.PI / 180; // radians
+
+// ── Physical sections ──────────────────────────────────────────────────────
+// rowMin/rowMax are inclusive (0-indexed).
+// tilt: degrees from horizontal. Positive = panel face toward azimuth direction.
+//       Negative = panel normal tilts to the OPPOSITE side of azimuth
+//       (e.g. tilt −30°, az 220° is mathematically equivalent to tilt +30°, az 40° NNE-facing).
+// azimuth: degrees clockwise from North (180° = South, 255° ≈ WSW, 220° ≈ SSW).
+const SECTIONS = [
+  { name: 'Top',    rowMin: 0, rowMax: 4, tilt: -30, azimuth: 220, color: '#60a5fa' },
+  { name: 'Bottom', rowMin: 5, rowMax: 7, tilt:  30, azimuth: 255, color: '#f97316' },
+];
+const SECTION_DIV = 4; // divider between rows 4 and 5 (0-indexed)
+
+function sectionOf(r) { return r <= SECTION_DIV ? 0 : 1; }
+
 // ── Colour palettes ────────────────────────────────────────────────────────
-// 3-MPPT configs (A, B)
 const COL3 = ['#38bdf8', '#4ade80', '#fb923c'];
-// 8-MPPT config (C)
+const COL4 = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490'];
 const COL8 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171'];
-// 9-MPPT configs (D, E) — same colours so same block = same colour across D vs E
 const COL9 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171','#60a5fa'];
 
 // ── Block structure helpers ────────────────────────────────────────────────
-// Row groups used by A, B (and D, E)
-const ROW_GROUPS = [[0,2],[3,5],[6,7]];   // 3+3+2 rows
-// Column groups used by D, E
-const COL_GROUPS = [[0,2],[3,5],[6,8]];   // cols 0–2, 3–5, 6–8 (3+3+3)
+const ROW_GROUPS = [[0,2],[3,5],[6,7]];     // 3+3+2 rows (configs A/B)
+const ROW_GROUPS4 = [[0,1],[2,3],[4,5],[6,7]]; // 2+2+2+2 rows (config F)
+const COL_GROUPS = [[0,2],[3,5],[6,8]];     // 3+3+3 cols  (configs D/E)
+const DE_BLOCKS = ROW_GROUPS.flatMap(([r0,r1]) => COL_GROUPS.map(([c0,c1]) => ({r0,r1,c0,c1})));
 
-// 9 blocks for D/E: iterate row-groups × col-groups
-const DE_BLOCKS = ROW_GROUPS.flatMap(([r0,r1]) => COL_GROUPS.map(([c0,c1]) => ({ r0, r1, c0, c1 })));
-
-// ── Config definitions ─────────────────────────────────────────────────────
+// ── Config definitions (A–F) ───────────────────────────────────────────────
 const CONFIGS = [
   {
-    id: 'A', label: 'Option A', short: 'A \u2014 SP',
-    desc: '3 MPPTs \u00b7 Series-Parallel: rows 1\u20133 | 4\u20136 | 7\u20138, each group = parallel strings of 9 panels',
-    cfgColor: '#38bdf8', mpptColors: COL3,
-    blocks: ROW_GROUPS.map(([r0,r1], i) => ({ r0, r1, c0:0, c1:COLS-1, topo:'sp', label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})` })),
+    id:'A', label:'Option A', short:'A \u2014 SP',
+    desc:'3 MPPTs \u00b7 SP: row groups 1\u20133 | 4\u20136 | 7\u20138, each = parallel strings of 9',
+    cfgColor:'#38bdf8', mpptColors:COL3,
+    blocks: ROW_GROUPS.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
   {
-    id: 'B', label: 'Option B', short: 'B \u2014 TCT',
-    desc: '3 MPPTs \u00b7 V-TCT: same row groups as A, total cross-tied vertically (cols in series, rows in \u2225 per col)',
-    cfgColor: '#a78bfa', mpptColors: ['#a78bfa','#c4b5fd','#7c3aed'],
-    blocks: ROW_GROUPS.map(([r0,r1], i) => ({ r0, r1, c0:0, c1:COLS-1, topo:'v-tct', label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})` })),
+    id:'B', label:'Option B', short:'B \u2014 TCT',
+    desc:'3 MPPTs \u00b7 V-TCT: same row groups as A, cross-tied (cols in series, rows in \u2225 per col)',
+    cfgColor:'#a78bfa', mpptColors:['#a78bfa','#c4b5fd','#7c3aed'],
+    blocks: ROW_GROUPS.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'v-tct',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
   {
-    id: 'C', label: 'Option C', short: 'C \u2014 1\u00d79',
-    desc: '8 MPPTs \u00b7 1 series string per row (9 panels in series each)',
-    cfgColor: '#4ade80', mpptColors: COL8,
-    blocks: Array.from({ length:ROWS }, (_,r) => ({ r0:r, r1:r, c0:0, c1:COLS-1, topo:'series', label:`MPPT ${r+1} (row ${r+1})` })),
+    id:'C', label:'Option C', short:'C \u2014 1\u00d79',
+    desc:'8 MPPTs \u00b7 1 series string per row (9 panels each)',
+    cfgColor:'#4ade80', mpptColors:COL8,
+    blocks: Array.from({length:ROWS},(_,r)=>({r0:r,r1:r,c0:0,c1:COLS-1,topo:'series',label:`MPPT ${r+1} (row ${r+1})`})),
   },
   {
-    id: 'D', label: 'Option D', short: 'D \u2014 Blk SP',
-    desc: '9 MPPTs \u00b7 Block SP: 3\u00d73 col\u00d7row-groups (6\u00d73\u00d73 blocks + 3\u00d72\u00d73 bottom blocks), SP within each block',
-    cfgColor: '#fb923c', mpptColors: COL9,
-    blocks: DE_BLOCKS.map((b,i) => ({ ...b, topo:'sp', label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1}, c${b.c0+1}\u2013${b.c1+1})` })),
+    id:'D', label:'Option D', short:'D \u2014 Blk SP',
+    desc:'9 MPPTs \u00b7 Block SP: 3\u00d73 macro grid (6\u00d73\u00d73 + 3\u00d72\u00d73 blocks), SP within each block',
+    cfgColor:'#fb923c', mpptColors:COL9,
+    blocks: DE_BLOCKS.map((b,i)=>({...b,topo:'sp',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
-    id: 'E', label: 'Option E', short: 'E \u2014 Blk TCT',
-    desc: '9 MPPTs \u00b7 Block V-TCT: same block structure as D, total cross-tied within each block',
-    cfgColor: '#f472b6', mpptColors: COL9,
-    blocks: DE_BLOCKS.map((b,i) => ({ ...b, topo:'v-tct', label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1}, c${b.c0+1}\u2013${b.c1+1})` })),
+    id:'E', label:'Option E', short:'E \u2014 Blk TCT',
+    desc:'9 MPPTs \u00b7 Block V-TCT: same block structure as D, cross-tied within each block',
+    cfgColor:'#f472b6', mpptColors:COL9,
+    blocks: DE_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
+  },
+  {
+    id:'F', label:'Option F', short:'F \u2014 4\u00d718',
+    desc:'4 MPPTs \u00b7 2 rows \u00d7 9 cols = 18 panels per MPPT in SP, row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138',
+    cfgColor:'#22d3ee', mpptColors:COL4,
+    blocks: ROW_GROUPS4.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
 ];
 
 // ── State ──────────────────────────────────────────────────────────────────
 let highlightedConfig = 'A';
-let shade = Array.from({ length:ROWS }, () => Array(COLS).fill(1.0));
+// shade[r][c]: user-painted shade factor (1 = no obstruction, 0 = fully blocked)
+let shade = Array.from({length:ROWS}, () => Array(COLS).fill(1.0));
+// irr[r][c]: POA irradiance / 1000 W/m² for that panel's section (computed from solar model)
+let irr = Array.from({length:ROWS}, () => Array(COLS).fill(1.0));
 let shadeLevel = 0.05;
 let isPainting = false, paintMode = 'shade';
+
+/** Combined effective irradiance fraction for physics calculations */
+function effectiveG(r, c) { return Math.max(0, irr[r][c] * shade[r][c]); }
 
 // ── Canvas setup ───────────────────────────────────────────────────────────
 const canvas = document.getElementById('arrayCanvas');
 const ctx    = canvas.getContext('2d');
 
-const PAD = 14, GAP = 5, PW = 68, PH = 44;
+const PAD_T = 18, PAD_B = 14, PAD_R = 14;
+const PAD_L = 56; // wider left margin for section labels
+const GAP = 5, PW = 68, PH = 44;
 
-canvas.width  = PAD * 2 + COLS * PW + (COLS - 1) * GAP;
-canvas.height = PAD * 2 + ROWS * PH + (ROWS - 1) * GAP;
+canvas.width  = PAD_L + PAD_R + COLS * PW + (COLS - 1) * GAP;
+canvas.height = PAD_T + PAD_B + ROWS * PH + (ROWS - 1) * GAP + 10; // +10 for divider space
 
 function panelRect(r, c) {
-  return { x: PAD + c*(PW+GAP), y: PAD + r*(PH+GAP), w:PW, h:PH };
+  return {
+    x: PAD_L + c*(PW+GAP),
+    y: PAD_T + r*(PH+GAP) + (r > SECTION_DIV ? 10 : 0), // extra 10px gap at divider
+    w: PW, h: PH
+  };
 }
+
 function panelAt(x, y) {
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++) {
@@ -240,12 +335,11 @@ function panelAt(x, y) {
   return null;
 }
 
-/** Return the MPPT index (0-based) for panel (r,c) in the current highlighted config. */
 function getMpptIdx(r, c) {
   const blocks = CONFIGS.find(x => x.id === highlightedConfig).blocks;
-  for (let i = 0; i < blocks.length; i++) {
+  for (let i=0; i<blocks.length; i++) {
     const b = blocks[i];
-    if (r >= b.r0 && r <= b.r1 && c >= b.c0 && c <= b.c1) return i;
+    if (r>=b.r0 && r<=b.r1 && c>=b.c0 && c<=b.c1) return i;
   }
   return 0;
 }
@@ -259,9 +353,18 @@ function drawArray() {
   const cfg = CONFIGS.find(x => x.id === highlightedConfig);
   const colors = cfg.mpptColors;
 
+  // Draw section background tint
+  const secColors = ['#60a5fa0a', '#f973160a'];
+  SECTIONS.forEach((sec, si) => {
+    const r0rct = panelRect(sec.rowMin, 0);
+    const r1rct = panelRect(sec.rowMax, COLS-1);
+    ctx.fillStyle = secColors[si];
+    ctx.fillRect(PAD_L-4, r0rct.y-4, COLS*(PW+GAP)-GAP+8, r1rct.y+r1rct.h - r0rct.y + 8);
+  });
+
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
-      const G   = shade[r][c];
+      const G   = effectiveG(r, c);
       const mi  = getMpptIdx(r, c);
       const col = colors[mi] || colors[0];
       const rct = panelRect(r, c);
@@ -282,7 +385,7 @@ function drawArray() {
         ctx.beginPath(); ctx.moveTo(rct.x+2, rct.y+rct.h/2); ctx.lineTo(rct.x+rct.w-2, rct.y+rct.h/2); ctx.stroke();
       }
 
-      // Shade label
+      // Label: combined irradiance%
       if (G < 0.98 && G > 0.01) {
         ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText(Math.round(G*100)+'%', rct.x+rct.w/2, rct.y+rct.h/2+3);
@@ -291,58 +394,104 @@ function drawArray() {
         ctx.fillText('\u2593', rct.x+rct.w/2, rct.y+rct.h/2+4);
       }
 
-      // MPPT index label for multi-MPPT configs
+      // MPPT label
       if (cfg.blocks.length > 1) {
-        ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(255,255,255,0.38)'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText(`M${mi+1}`, rct.x+rct.w/2, rct.y+rct.h-3);
       }
     }
   }
 
-  // Row labels (left)
+  // ── Section divider ────────────────────────────────────────────────────
+  const divRctAbove = panelRect(SECTION_DIV, 0);
+  const divRctBelow = panelRect(SECTION_DIV + 1, 0);
+  const divY = (divRctAbove.y + divRctAbove.h + divRctBelow.y) / 2;
+  const divX1 = PAD_L - 4, divX2 = PAD_L + COLS*(PW+GAP) - GAP + 4;
+
+  // Gradient divider line
+  const grad = ctx.createLinearGradient(divX1, 0, divX2, 0);
+  grad.addColorStop(0,   '#60a5fa');
+  grad.addColorStop(0.5, '#e94560');
+  grad.addColorStop(1,   '#f97316');
+  ctx.strokeStyle = grad; ctx.lineWidth = 3; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(divX1, divY); ctx.lineTo(divX2, divY); ctx.stroke();
+
+  // Divider label
+  ctx.fillStyle = '#e94560'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('SECTION BOUNDARY', PAD_L + (COLS*(PW+GAP)-GAP)/2, divY - 3);
+
+  // ── Section labels (left margin) ──────────────────────────────────────
+  const drawSectionLabel = (si) => {
+    const sec = SECTIONS[si];
+    const rctTop = panelRect(sec.rowMin, 0);
+    const rctBot = panelRect(sec.rowMax, 0);
+    const midY   = (rctTop.y + rctBot.y + rctBot.h) / 2;
+    const labelH = rctBot.y + rctBot.h - rctTop.y;
+
+    // Background strip
+    ctx.fillStyle = sec.color + '22';
+    ctx.fillRect(2, rctTop.y - 3, PAD_L - 10, labelH + 6);
+    ctx.strokeStyle = sec.color + '88'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(2, rctTop.y - 3, PAD_L - 10, labelH + 6);
+
+    // Rotated text
+    ctx.save();
+    ctx.fillStyle = sec.color; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center';
+    ctx.translate(PAD_L/2 - 2, midY);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillText(sec.name.toUpperCase(), 0, 4);
+    ctx.restore();
+  };
+  SECTIONS.forEach((_, si) => drawSectionLabel(si));
+
+  // Row labels
   ctx.fillStyle = '#6b7280'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
   for (let r = 0; r < ROWS; r++) {
     const rct = panelRect(r, 0);
-    ctx.fillText(`R${r+1}`, rct.x-3, rct.y+rct.h/2+3);
+    const secCol = SECTIONS[sectionOf(r)].color;
+    ctx.fillStyle = secCol + 'cc';
+    ctx.fillText(`R${r+1}`, rct.x - 4, rct.y + rct.h/2 + 3);
   }
-  // Col labels (top)
-  ctx.textAlign = 'center';
+
+  // Col labels
+  ctx.fillStyle = '#6b7280'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
   for (let c = 0; c < COLS; c++) {
     const rct = panelRect(0, c);
-    ctx.fillText(c+1, rct.x+rct.w/2, rct.y-2);
+    ctx.fillText(c+1, rct.x + rct.w/2, rct.y - 4);
   }
 
   drawGroupDividers();
   drawTCTIndicators();
 }
 
-/** Draw dashed group-boundary lines appropriate for the selected config. */
 function drawGroupDividers() {
   const id = highlightedConfig;
-  ctx.strokeStyle = '#f59e0b99'; ctx.lineWidth = 1.5; ctx.setLineDash([4,3]);
+  ctx.strokeStyle = '#f59e0b88'; ctx.lineWidth = 1.5; ctx.setLineDash([4,3]);
 
-  // Row-group dividers for A, B, D, E (between rows 2-3 and 5-6)
-  if (id !== 'C') {
+  if (id !== 'C' && id !== 'F') {
     for (const sepRow of [2, 5]) {
       const rctA = panelRect(sepRow, 0);
-      const rctB = panelRect(0, COLS-1);
       const y = rctA.y + rctA.h + GAP/2;
-      ctx.beginPath(); ctx.moveTo(PAD-6, y); ctx.lineTo(PAD + COLS*(PW+GAP) - GAP + 6, y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(PAD_L-4, y); ctx.lineTo(PAD_L + COLS*(PW+GAP)-GAP+4, y); ctx.stroke();
     }
   }
-  // Col-group dividers for D, E (between cols 2-3 and 5-6)
+  if (id === 'F') {
+    for (const sepRow of [1, 3, 5]) {
+      const rctA = panelRect(sepRow, 0);
+      const y = rctA.y + rctA.h + GAP/2;
+      ctx.beginPath(); ctx.moveTo(PAD_L-4, y); ctx.lineTo(PAD_L + COLS*(PW+GAP)-GAP+4, y); ctx.stroke();
+    }
+  }
   if (id === 'D' || id === 'E') {
     for (const sepCol of [2, 5]) {
       const rctA = panelRect(0, sepCol);
-      const rctB = panelRect(ROWS-1, sepCol);
       const x = rctA.x + rctA.w + GAP/2;
-      ctx.beginPath(); ctx.moveTo(x, PAD-6); ctx.lineTo(x, PAD + ROWS*(PH+GAP) - GAP + 6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
     }
   }
   ctx.setLineDash([]);
 }
 
-/** Draw V-TCT tie-line indicators for TCT configs. */
 function drawTCTIndicators() {
   const cfg = CONFIGS.find(x => x.id === highlightedConfig);
   cfg.blocks.forEach((block, mi) => {
@@ -364,10 +513,10 @@ function drawTCTIndicators() {
 
 function drawRoundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
-  ctx.moveTo(x+r, y); ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
-  ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
-  ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
-  ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
   ctx.closePath();
 }
 
@@ -378,7 +527,7 @@ function blendHex(hex1, hex2, t) {
   return `rgb(${Math.round(r1+(r2-r1)*t)},${Math.round(g1+(g2-g1)*t)},${Math.round(b1+(b2-b1)*t)})`;
 }
 
-// ── Mouse / touch ─────────────────────────────────────────────────────────
+// ── Mouse / touch ──────────────────────────────────────────────────────────
 function canvasPos(e) {
   const bb = canvas.getBoundingClientRect();
   const sx = canvas.width/bb.width, sy = canvas.height/bb.height;
@@ -388,8 +537,8 @@ function canvasPos(e) {
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('mousedown', e => { e.preventDefault(); isPainting=true; paintMode=(e.button===2||e.shiftKey)?'clear':'shade'; applyPaint(canvasPos(e)); });
 canvas.addEventListener('mousemove', e => { if(isPainting) applyPaint(canvasPos(e)); });
-canvas.addEventListener('mouseup',    () => { isPainting=false; });
-canvas.addEventListener('mouseleave', () => { isPainting=false; });
+canvas.addEventListener('mouseup',   () => { isPainting=false; });
+canvas.addEventListener('mouseleave',() => { isPainting=false; });
 canvas.addEventListener('touchstart', e => { e.preventDefault(); isPainting=true; paintMode='shade'; applyPaint(canvasPos(e)); }, {passive:false});
 canvas.addEventListener('touchmove',  e => { e.preventDefault(); if(isPainting) applyPaint(canvasPos(e)); }, {passive:false});
 canvas.addEventListener('touchend',   () => { isPainting=false; });
@@ -401,13 +550,184 @@ function applyPaint(pos) {
   scheduleUpdate();
 }
 
-// ── Physics ───────────────────────────────────────────────────────────────
+// ── Solar position & irradiance — Neer, Netherlands ────────────────────────
+
+function dayOfYear(date) {
+  return Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
+}
+
+/** Netherlands DST: last Sunday of March → last Sunday of October */
+function isDST(date) {
+  const y = date.getFullYear();
+  const lastSunMar = new Date(y, 2, 31); lastSunMar.setDate(31 - lastSunMar.getDay()); lastSunMar.setHours(2,0,0,0);
+  const lastSunOct = new Date(y, 9, 31); lastSunOct.setDate(31 - lastSunOct.getDay()); lastSunOct.setHours(3,0,0,0);
+  return date >= lastSunMar && date < lastSunOct;
+}
+
+/**
+ * Returns { altitude_deg, azimuth_deg (from North CW) }
+ * for Neer, Netherlands at the given Date (wall-clock = Netherlands local time).
+ */
+function solarPosition(date) {
+  const n = dayOfYear(date);
+  const B = 2 * Math.PI * (n - 1) / 365;
+
+  // Spencer equation-of-time (minutes)
+  const ET = 229.18 * (0.000075 + 0.001868*Math.cos(B) - 0.032077*Math.sin(B)
+             - 0.014615*Math.cos(2*B) - 0.04089*Math.sin(2*B));
+
+  // Declination (radians)
+  const dec = 0.006918 - 0.399912*Math.cos(B) + 0.070257*Math.sin(B)
+              - 0.006758*Math.cos(2*B) + 0.000907*Math.sin(2*B)
+              - 0.002697*Math.cos(3*B) + 0.001480*Math.sin(3*B);
+
+  const utcOff = isDST(date) ? 2 : 1;
+  const clock  = date.getHours() + date.getMinutes()/60;
+  const solarH = clock + ET/60 + (NEER.lon - 15*utcOff) / 15;
+  const omega  = (solarH - 12) * 15 * Math.PI / 180; // hour angle (rad)
+
+  const sinAlt = Math.sin(dec)*Math.sin(NEER_LAT) + Math.cos(dec)*Math.cos(NEER_LAT)*Math.cos(omega);
+  const alt    = Math.asin(Math.max(-1, Math.min(1, sinAlt)));
+
+  // ENU sun vector: east = −cos(dec)·sin(ω),  north = sin(dec)·cos(φ) − cos(dec)·sin(φ)·cos(ω)
+  // atan2(east, north) gives azimuth from North (clockwise) directly, avoiding sign-ambiguity.
+  const sun_e = -Math.cos(dec) * Math.sin(omega);
+  const sun_n =  Math.sin(dec) * Math.cos(NEER_LAT) - Math.cos(dec) * Math.sin(NEER_LAT) * Math.cos(omega);
+  const azNorth = ((Math.atan2(sun_e, sun_n) * 180 / Math.PI) + 360) % 360;
+
+  return { altitude: alt * 180/Math.PI, azimuth: azNorth };
+}
+
+/**
+ * Simple clear-sky irradiance model (Meinel transmittance, Neer turbidity TL≈3).
+ * Returns { ghi, dni, dhi } in W/m².
+ */
+function clearSkyIrr(sinAlt, n) {
+  if (sinAlt <= 0.01) return { ghi:0, dni:0, dhi:0 };
+  const altDeg = Math.asin(Math.min(1, sinAlt)) * 180 / Math.PI;
+  const I0 = 1361 * (1 + 0.033 * Math.cos(2*Math.PI*(n-1)/365));
+  // Kasten-Young air mass
+  const AM = 1 / (sinAlt + 0.50572 * Math.pow(altDeg + 6.07995, -1.6364));
+  const AMc = Math.min(AM, 38);
+  // Meinel transmittance (turbidity correction 0.88 for typical NL)
+  const tau  = 0.88;
+  const DNI  = I0 * Math.pow(tau, Math.pow(AMc, 0.678));
+  const GHI  = DNI * sinAlt;
+  const DHI  = Math.max(0, 0.0698 * I0 * sinAlt); // isotropic diffuse estimate (~10% of I0)
+  return { ghi: Math.max(0,GHI), dni: Math.max(0,DNI), dhi: DHI };
+}
+
+/**
+ * Plane-of-array irradiance for a tilted surface.
+ * tilt_deg: degrees from horizontal (negative OK — panel normal uses vector math)
+ * az_deg: panel azimuth in degrees from North (clockwise)
+ * sun_alt_deg / sun_az_deg: solar position
+ */
+function poaIrradiance(dni, dhi, ghi, sun_alt_deg, sun_az_deg, tilt_deg, az_deg) {
+  const sAlt = sun_alt_deg * Math.PI / 180;
+  const sAz  = sun_az_deg  * Math.PI / 180;
+  const tilt = tilt_deg * Math.PI / 180;
+  const az   = az_deg   * Math.PI / 180;
+
+  // Sun direction vector (East, North, Up)
+  const se = Math.cos(sAlt) * Math.sin(sAz);
+  const sn = Math.cos(sAlt) * Math.cos(sAz);
+  const su = Math.sin(sAlt);
+
+  // Panel normal vector (East, North, Up)
+  // For tilt<0: sin(tilt)<0, so the normal tilts to the opposite horizontal direction
+  const ne = Math.sin(tilt) * Math.sin(az);
+  const nn = Math.sin(tilt) * Math.cos(az);
+  const nu = Math.cos(tilt); // cos(-30°) = cos(30°) = 0.866 (still upward-facing)
+
+  // Beam: max(0, n·s)
+  const cosTheta = Math.max(0, ne*se + nn*sn + nu*su);
+  const Ibeam = dni * cosTheta;
+
+  // Diffuse (isotropic): (1 + cos(|tilt|)) / 2 = (1 + nu) / 2  [nu=cos(tilt)=cos(-tilt)]
+  const Idiff = dhi * (1 + nu) / 2;
+
+  // Ground reflected (albedo 0.2): (1 - nu) / 2
+  const Irefl = ghi * 0.2 * (1 - nu) / 2;
+
+  return Math.max(0, Ibeam + Idiff + Irefl);
+}
+
+/** Compute sunrise / sunset hour (local wall clock, decimal) for Neer on day n */
+function sunriseSunset(n) {
+  const B = 2*Math.PI*(n-1)/365;
+  const dec = 0.006918 - 0.399912*Math.cos(B) + 0.070257*Math.sin(B)
+              - 0.006758*Math.cos(2*B) + 0.000907*Math.sin(2*B)
+              - 0.002697*Math.cos(3*B) + 0.001480*Math.sin(3*B);
+  const cosOmega0 = -Math.tan(NEER_LAT)*Math.tan(dec);
+  if (cosOmega0 > 1)  return null; // polar night
+  if (cosOmega0 < -1) return null; // midnight sun (approximation)
+  const omega0 = Math.acos(Math.max(-1, Math.min(1, cosOmega0))) * 180/Math.PI; // degrees
+  const ET = 229.18*(0.000075 + 0.001868*Math.cos(B) - 0.032077*Math.sin(B)
+             - 0.014615*Math.cos(2*B) - 0.04089*Math.sin(2*B));
+  const date = new Date();
+  const utcOff = isDST(date) ? 2 : 1;
+  const correction = -ET/60 - (NEER.lon - 15*utcOff)/15;
+  return {
+    rise:  12 - omega0/15 + correction,
+    set:   12 + omega0/15 + correction,
+  };
+}
+
+function fmtHour(h) {
+  if (h == null || isNaN(h)) return '--:--';
+  h = ((h % 24) + 24) % 24;
+  const hh = Math.floor(h), mm = Math.round((h - hh)*60);
+  return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+}
+
+/**
+ * Recompute irr[][] from the selected date/time and update solar info display.
+ */
+function updateIrradiance(date) {
+  const n   = dayOfYear(date);
+  const sp  = solarPosition(date);
+  const sinA = Math.sin(sp.altitude * Math.PI/180);
+  const cs  = clearSkyIrr(sinA, n);
+
+  const poaPerSection = SECTIONS.map(sec =>
+    poaIrradiance(cs.dni, cs.dhi, cs.ghi, sp.altitude, sp.azimuth, sec.tilt, sec.azimuth)
+  );
+
+  // Update irr array
+  for (let r = 0; r < ROWS; r++) {
+    const si = sectionOf(r);
+    const frac = Math.min(1, poaPerSection[si] / STC_IRRAD);
+    for (let c = 0; c < COLS; c++) irr[r][c] = frac;
+  }
+
+  // ── Solar info UI ────────────────────────────────────────────────────────
+  const ss = sunriseSunset(n);
+  document.getElementById('sunAlt').textContent = sp.altitude.toFixed(1);
+  document.getElementById('sunAz').textContent  = sp.azimuth.toFixed(1);
+  document.getElementById('ghiVal').textContent = cs.ghi.toFixed(0);
+  document.getElementById('srTime').textContent = ss ? fmtHour(ss.rise) : 'n/a';
+  document.getElementById('ssTime').textContent = ss ? fmtHour(ss.set)  : 'n/a';
+
+  poaPerSection.forEach((poa, si) => {
+    const pct = Math.min(100, poa / STC_IRRAD * 100).toFixed(1);
+    if (si === 0) {
+      document.getElementById('poaTop').textContent    = poa.toFixed(0);
+      document.getElementById('poaTopPct').textContent = pct;
+    } else {
+      document.getElementById('poaBot').textContent    = poa.toFixed(0);
+      document.getElementById('poaBotPct').textContent = pct;
+    }
+  });
+}
+
+// ── Physics ────────────────────────────────────────────────────────────────
 
 function panelIV(G, nPts=80) {
   if (G < 0.001) return [{V:0, I:0}];
-  const Iph=PNL.Isc*G, Voc_G=PNL.Voc+PNL.nNsVt*Math.log(G), curve=[];
+  const Iph=PNL.Isc*G, VocG=PNL.Voc+PNL.nNsVt*Math.log(G), curve=[];
   for (let k=0; k<=nPts; k++) {
-    const V=(k/nPts)*Voc_G; let I=Iph;
+    const V=(k/nPts)*VocG; let I=Iph;
     for (let it=0; it<15; it++) {
       const x=Math.min((V+I*PNL.Rs)/PNL.nNsVt,80), ex=Math.exp(x);
       const f=I-Iph+PNL.I0*(ex-1)+(V+I*PNL.Rs)/PNL.Rsh;
@@ -425,7 +745,7 @@ function makeVofI(curve, bypass=true) {
   return t => {
     if (t>=pts[0].I) return Math.max(0,Vb);
     if (t<=pts[pts.length-1].I) return pts[pts.length-1].V;
-    for (let i=0; i<pts.length-1; i++) {
+    for (let i=0;i<pts.length-1;i++) {
       const a=pts[i],b=pts[i+1];
       if (t<=a.I && t>=b.I) return Math.max(a.V+(a.I-t)/(a.I-b.I)*(b.V-a.V), Vb);
     }
@@ -438,7 +758,7 @@ function makeIofV(curve) {
   return t => {
     if (t<=pts[0].V) return pts[0].I;
     if (t>=pts[pts.length-1].V) return 0;
-    for (let i=0; i<pts.length-1; i++) {
+    for (let i=0;i<pts.length-1;i++) {
       const a=pts[i],b=pts[i+1];
       if (t>=a.V && t<=b.V) return a.I+(t-a.V)/(b.V-a.V)*(b.I-a.I);
     }
@@ -446,9 +766,9 @@ function makeIofV(curve) {
   };
 }
 
-function stringIV(panelGs, nPts=200) {
-  const fns=panelGs.map(G=>makeVofI(panelIV(G,80),true));
-  const maxIsc=Math.max(...panelGs.map(G=>PNL.Isc*Math.max(G,0.001)));
+function stringIV(Gs, nPts=200) {
+  const fns=Gs.map(G=>makeVofI(panelIV(G,80),true));
+  const maxIsc=Math.max(...Gs.map(G=>PNL.Isc*Math.max(G,0.001)));
   const result=[];
   for (let k=nPts; k>=0; k--) {
     const I=(k/nPts)*maxIsc; let V=0;
@@ -462,28 +782,25 @@ function parallelIV(curves, nPts=200) {
   const fns=curves.map(c=>makeIofV(c));
   const maxV=Math.min(...curves.map(c=>c[c.length-1].V));
   const result=[];
-  for (let k=0; k<=nPts; k++) {
+  for (let k=0;k<=nPts;k++) {
     const V=(k/nPts)*Math.max(maxV,0);
     result.push({V, I:fns.reduce((s,fn)=>s+fn(V),0)});
   }
   return result;
 }
 
-/**
- * Vertical TCT over an arbitrary block (r0..r1 rows, c0..c1 cols).
- * Each column section = rows in parallel; column sections in series.
- */
+/** Vertical TCT for arbitrary block — uses effectiveG */
 function blockVTCT(r0, r1, c0, c1, nPts=200) {
   const secCurves=[];
   for (let c=c0; c<=c1; c++) {
     const pcurves=[];
-    for (let r=r0; r<=r1; r++) pcurves.push(panelIV(shade[r][c],80));
+    for (let r=r0; r<=r1; r++) pcurves.push(panelIV(effectiveG(r,c), 80));
     const fns=pcurves.map(cv=>makeIofV(cv));
     const maxVsec=Math.max(...Array.from({length:r1-r0+1},(_,i)=>{
-      const G=shade[r0+i][c]; return G>0.001 ? PNL.Voc+PNL.nNsVt*Math.log(G) : 0;
+      const G=effectiveG(r0+i,c); return G>0.001 ? PNL.Voc+PNL.nNsVt*Math.log(G) : 0;
     }));
     const sec=[];
-    for (let k=0; k<=nPts; k++) { const V=(k/nPts)*maxVsec; sec.push({V,I:fns.reduce((s,fn)=>s+fn(V),0)}); }
+    for (let k=0;k<=nPts;k++) { const V=(k/nPts)*maxVsec; sec.push({V,I:fns.reduce((s,fn)=>s+fn(V),0)}); }
     secCurves.push(sec);
   }
   const VofI=secCurves.map(cv=>makeVofI(cv,false));
@@ -497,18 +814,16 @@ function blockVTCT(r0, r1, c0, c1, nPts=200) {
   result.sort((a,b)=>a.V-b.V); return result;
 }
 
-/** Compute IV curve for one MPPT block. */
+/** Dispatch by topology — uses effectiveG */
 function computeBlockIV(block) {
-  const {r0, r1, c0, c1, topo} = block;
-  if (topo === 'series' || (topo === 'sp' && r0 === r1)) {
-    return stringIV(Array.from({length:c1-c0+1}, (_,i) => shade[r0][c0+i]));
-  }
-  if (topo === 'sp') {
-    return parallelIV(Array.from({length:r1-r0+1}, (_,i) =>
-      stringIV(Array.from({length:c1-c0+1}, (_,j) => shade[r0+i][c0+j]))
-    ));
-  }
-  if (topo === 'v-tct') return blockVTCT(r0, r1, c0, c1);
+  const {r0,r1,c0,c1,topo}=block;
+  const eG=(r,c)=>effectiveG(r,c);
+  if (topo==='series'||(topo==='sp'&&r0===r1))
+    return stringIV(Array.from({length:c1-c0+1},(_,i)=>eG(r0,c0+i)));
+  if (topo==='sp')
+    return parallelIV(Array.from({length:r1-r0+1},(_,i)=>
+      stringIV(Array.from({length:c1-c0+1},(_,j)=>eG(r0+i,c0+j)))));
+  if (topo==='v-tct') return blockVTCT(r0,r1,c0,c1);
   return [{V:0,I:0}];
 }
 
@@ -518,243 +833,232 @@ function findMPP(curve) {
   return best;
 }
 
-// ── Compute all configs ────────────────────────────────────────────────────
 function computeConfig(id) {
-  const cfg = CONFIGS.find(c=>c.id===id);
+  const cfg=CONFIGS.find(c=>c.id===id);
   return cfg.blocks.map((block,i) => {
-    const curve = computeBlockIV(block);
-    return { label:block.label, curve, mpp:findMPP(curve), color:cfg.mpptColors[i%cfg.mpptColors.length] };
+    const curve=computeBlockIV(block);
+    return {label:block.label, curve, mpp:findMPP(curve), color:cfg.mpptColors[i%cfg.mpptColors.length]};
   });
 }
 
 function computeAll() {
   return CONFIGS.map(cfg => {
-    const mpptResults = computeConfig(cfg.id);
-    const totalP = mpptResults.reduce((s,r)=>s+r.mpp.P, 0);
-    return { ...cfg, mpptResults, totalP };
+    const mpptResults=computeConfig(cfg.id);
+    const totalP=mpptResults.reduce((s,r)=>s+r.mpp.P, 0);
+    return {...cfg, mpptResults, totalP};
   });
 }
 
 // ── Comparison table ───────────────────────────────────────────────────────
 function updateComparisonTable(allResults) {
-  const stcMax = PNL.Pmax * ROWS * COLS;
-  const maxP   = Math.max(...allResults.map(r=>r.totalP));
-  const maxMpptP = Math.max(...allResults.flatMap(r=>r.mpptResults.map(m=>m.mpp.P)));
+  const stcMax=PNL.Pmax*ROWS*COLS;
+  const maxP=Math.max(...allResults.map(r=>r.totalP));
+  const maxMpptP=Math.max(...allResults.flatMap(r=>r.mpptResults.map(m=>m.mpp.P)));
 
-  let html = '';
+  let html='';
   allResults.forEach(res => {
-    const isBest = Math.abs(res.totalP - maxP) < 1;
-    const sel    = res.id === highlightedConfig ? ' class="selected"' : '';
-    const pct    = ((res.totalP/stcMax)*100).toFixed(1);
-
-    // Mini bars (one per MPPT, height proportional to power)
-    const bars = res.mpptResults.map((m,i) => {
-      const h = Math.max(3, Math.round((m.mpp.P/maxMpptP)*20));
-      const col = m.color;
-      const tip = `${m.label}: ${m.mpp.P.toFixed(0)} W @ ${m.mpp.V.toFixed(1)} V / ${m.mpp.I.toFixed(2)} A`;
-      return `<div class="mini-bar" style="height:${h}px;background:${col}" title="${tip}"></div>`;
+    const isBest=Math.abs(res.totalP-maxP)<1;
+    const sel=res.id===highlightedConfig?' class="selected"':'';
+    const pct=((res.totalP/stcMax)*100).toFixed(1);
+    const bars=res.mpptResults.map((m,i)=>{
+      const h=Math.max(3,Math.round((m.mpp.P/maxMpptP)*20));
+      const tip=`${m.label}: ${m.mpp.P.toFixed(0)} W @ ${m.mpp.V.toFixed(1)} V / ${m.mpp.I.toFixed(2)} A`;
+      return `<div class="mini-bar" style="height:${h}px;background:${m.color}" title="${tip}"></div>`;
     }).join('');
-
-    html += `<tr${sel} data-cfgid="${res.id}" style="--cfg-color:${res.cfgColor}">
+    html+=`<tr${sel} data-cfgid="${res.id}" style="--cfg-color:${res.cfgColor}">
       <td class="cfg-name"><span class="cfg-dot" style="background:${res.cfgColor}"></span>${res.short}</td>
       <td class="${isBest?'best-val':''}">${(res.totalP/1000).toFixed(3)} kW ${isBest?'\u2605':''}</td>
       <td>${pct}%</td>
       <td><div class="mini-bars">${bars}</div></td>
     </tr>`;
   });
-  document.getElementById('compTableBody').innerHTML = html;
-
-  document.querySelectorAll('#compTableBody tr').forEach(row => {
-    row.addEventListener('click', () => {
-      highlightedConfig = row.dataset.cfgid;
+  document.getElementById('compTableBody').innerHTML=html;
+  document.querySelectorAll('#compTableBody tr').forEach(row=>{
+    row.addEventListener('click',()=>{
+      highlightedConfig=row.dataset.cfgid;
       document.querySelectorAll('#compTableBody tr').forEach(r=>r.classList.remove('selected'));
       row.classList.add('selected');
-      updateAnnotation();
-      drawArray();
-      const res = computeConfig(highlightedConfig);
-      updatePowerDetail(res);
-      updateChart(res);
+      updateAnnotation(); drawArray();
+      const res=computeConfig(highlightedConfig);
+      updatePowerDetail(res); updateChart(res);
     });
   });
 }
 
 // ── MPPT power detail ──────────────────────────────────────────────────────
 function updatePowerDetail(results) {
-  const stcMax = PNL.Pmax * ROWS * COLS;
-  const totalP = results.reduce((s,r)=>s+r.mpp.P, 0);
-  let html = `<div class="power-card" style="border-top:3px solid #e94560">
+  const totalP=results.reduce((s,r)=>s+r.mpp.P,0);
+  let html=`<div class="power-card" style="border-top:3px solid #e94560">
     <div class="p-label">Total</div>
     <div class="p-value" style="color:#e5e7eb">${(totalP/1000).toFixed(3)}</div>
     <div class="p-unit">kW</div>
     <div class="p-sub">${((totalP/(PNL.Pmax*ROWS*COLS))*100).toFixed(1)}% STC</div>
   </div>`;
-  results.forEach(res => {
-    html += `<div class="power-card" style="border-top:3px solid ${res.color}">
+  results.forEach(res=>{
+    html+=`<div class="power-card" style="border-top:3px solid ${res.color}">
       <div class="p-label">${res.label}</div>
       <div class="p-value" style="color:${res.color}">${res.mpp.P.toFixed(0)}</div>
       <div class="p-unit">W</div>
       <div class="p-sub">${res.mpp.V.toFixed(1)} V &middot; ${res.mpp.I.toFixed(2)} A</div>
     </div>`;
   });
-  document.getElementById('powerGrid').innerHTML = html;
+  document.getElementById('powerGrid').innerHTML=html;
 }
 
-// ── Array annotation legend ────────────────────────────────────────────────
+// ── Array annotation ───────────────────────────────────────────────────────
 function updateAnnotation() {
-  const cfg = CONFIGS.find(c=>c.id===highlightedConfig);
-  document.getElementById('chartCfgLabel').textContent = cfg.label;
-  document.getElementById('chartCfgLabel').style.color = cfg.cfgColor;
-  document.getElementById('detailCfgLabel').textContent = cfg.label;
-  document.getElementById('detailCfgLabel').style.color = cfg.cfgColor;
-  document.getElementById('cfgDescText').textContent = cfg.desc;
-
-  let html = '';
-  cfg.blocks.forEach((block, i) => {
-    const col = cfg.mpptColors[i % cfg.mpptColors.length];
-    html += `<div class="legend-item"><div class="legend-dot" style="background:${col}"></div><span>${block.label}</span></div>`;
+  const cfg=CONFIGS.find(c=>c.id===highlightedConfig);
+  document.getElementById('chartCfgLabel').textContent=cfg.label;
+  document.getElementById('chartCfgLabel').style.color=cfg.cfgColor;
+  document.getElementById('detailCfgLabel').textContent=cfg.label;
+  document.getElementById('detailCfgLabel').style.color=cfg.cfgColor;
+  document.getElementById('cfgDescText').textContent=cfg.desc;
+  let html='';
+  cfg.blocks.forEach((block,i)=>{
+    const col=cfg.mpptColors[i%cfg.mpptColors.length];
+    html+=`<div class="legend-item"><div class="legend-dot" style="background:${col}"></div><span>${block.label}</span></div>`;
   });
-  document.getElementById('arrayLegend').innerHTML = html;
+  document.getElementById('arrayLegend').innerHTML=html;
 }
 
 // ── IV / PV Chart ──────────────────────────────────────────────────────────
-const chartCanvas = document.getElementById('ivChart');
+const chartCanvas=document.getElementById('ivChart');
 
 function updateChart(results) {
-  const W = chartCanvas.clientWidth || 600;
-  const H = chartCanvas.clientHeight || 300;
-  chartCanvas.width = W; chartCanvas.height = H;
-  const cc = chartCanvas.getContext('2d');
-  cc.clearRect(0, 0, W, H);
-
-  const ML=58, MR=64, MT=38, MB=40;
-  const pw=W-ML-MR, ph=H-MT-MB;
-
+  const W=chartCanvas.clientWidth||600, H=chartCanvas.clientHeight||300;
+  chartCanvas.width=W; chartCanvas.height=H;
+  const cc=chartCanvas.getContext('2d');
+  cc.clearRect(0,0,W,H);
+  const ML=58,MR=64,MT=38,MB=40,pw=W-ML-MR,ph=H-MT-MB;
   const allV=results.flatMap(r=>r.curve.map(p=>p.V));
   const allI=results.flatMap(r=>r.curve.map(p=>p.I));
   const allP=results.flatMap(r=>r.curve.map(p=>p.V*p.I));
   const xMax=niceMax(Math.max(...allV,10),50);
   const iMax=niceMax(Math.max(...allI,1),5);
   const pMax=niceMax(Math.max(...allP,100),500);
-
-  const cx  = v => ML+(v/xMax)*pw;
-  const cyI = i => MT+ph-(i/iMax)*ph;
-  const cyP = p => MT+ph-(p/pMax)*ph;
-
+  const cx=v=>ML+(v/xMax)*pw, cyI=i=>MT+ph-(i/iMax)*ph, cyP=p=>MT+ph-(p/pMax)*ph;
   cc.fillStyle='#111827'; cc.fillRect(0,0,W,H);
   cc.strokeStyle='#1f2937'; cc.lineWidth=1;
-  for (let i=0;i<=6;i++) { const x=ML+(i/6)*pw; cc.beginPath(); cc.moveTo(x,MT); cc.lineTo(x,MT+ph); cc.stroke(); }
-  for (let i=0;i<=5;i++) { const y=MT+(i/5)*ph; cc.beginPath(); cc.moveTo(ML,y); cc.lineTo(ML+pw,y); cc.stroke(); }
-
-  cc.strokeStyle='#374151'; cc.lineWidth=1.5;
-  cc.beginPath();
-  cc.moveTo(ML,MT); cc.lineTo(ML,MT+ph);
-  cc.moveTo(ML,MT+ph); cc.lineTo(ML+pw,MT+ph);
-  cc.moveTo(ML+pw,MT); cc.lineTo(ML+pw,MT+ph);
-  cc.stroke();
-
-  cc.fillStyle='#6b7280'; cc.font='10px sans-serif'; cc.textAlign='center';
-  for (let i=0;i<=6;i++) { const v=(i/6)*xMax; cc.fillText(v.toFixed(0), cx(v), MT+ph+14); }
-  cc.fillStyle='#9ca3af'; cc.font='11px sans-serif';
-  cc.fillText('Voltage  (V)', ML+pw/2, H-4);
-
-  cc.fillStyle='#38bdf8'; cc.font='10px sans-serif'; cc.textAlign='right';
-  for (let i=0;i<=5;i++) { const v=(1-i/5)*iMax; cc.fillText(v.toFixed(1), ML-5, MT+(i/5)*ph+3); }
-  cc.save(); cc.translate(12,MT+ph/2); cc.rotate(-Math.PI/2); cc.textAlign='center'; cc.font='11px sans-serif'; cc.fillText('Current  (A)',0,0); cc.restore();
-
-  cc.fillStyle='#fb923c'; cc.font='10px sans-serif'; cc.textAlign='left';
-  for (let i=0;i<=5;i++) { const v=(1-i/5)*pMax; cc.fillText(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0), ML+pw+5, MT+(i/5)*ph+3); }
-  cc.save(); cc.translate(W-8,MT+ph/2); cc.rotate(Math.PI/2); cc.textAlign='center'; cc.font='11px sans-serif'; cc.fillText('Power  (W)',0,0); cc.restore();
-
-  results.forEach(res => {
-    const col=res.color, pts=res.curve;
-    const lw = results.length > 5 ? 1.5 : 2;
-
-    cc.strokeStyle=col; cc.lineWidth=lw; cc.setLineDash([]);
-    cc.beginPath(); pts.forEach((p,i)=>{ const x=cx(p.V),y=cyI(p.I); i?cc.lineTo(x,y):cc.moveTo(x,y); }); cc.stroke();
-
-    cc.strokeStyle=col; cc.lineWidth=lw; cc.setLineDash([5,4]); cc.globalAlpha=0.85;
-    cc.beginPath(); pts.forEach((p,i)=>{ const x=cx(p.V),y=cyP(p.V*p.I); i?cc.lineTo(x,y):cc.moveTo(x,y); }); cc.stroke();
-    cc.setLineDash([]); cc.globalAlpha=1;
-
-    drawStar(cc, cx(res.mpp.V), cyP(res.mpp.P), 6, col);
+  for(let i=0;i<=6;i++){const x=ML+(i/6)*pw;cc.beginPath();cc.moveTo(x,MT);cc.lineTo(x,MT+ph);cc.stroke();}
+  for(let i=0;i<=5;i++){const y=MT+(i/5)*ph;cc.beginPath();cc.moveTo(ML,y);cc.lineTo(ML+pw,y);cc.stroke();}
+  cc.strokeStyle='#374151';cc.lineWidth=1.5;
+  cc.beginPath();cc.moveTo(ML,MT);cc.lineTo(ML,MT+ph);cc.moveTo(ML,MT+ph);cc.lineTo(ML+pw,MT+ph);cc.moveTo(ML+pw,MT);cc.lineTo(ML+pw,MT+ph);cc.stroke();
+  cc.fillStyle='#6b7280';cc.font='10px sans-serif';cc.textAlign='center';
+  for(let i=0;i<=6;i++){const v=(i/6)*xMax;cc.fillText(v.toFixed(0),cx(v),MT+ph+14);}
+  cc.fillStyle='#9ca3af';cc.font='11px sans-serif';cc.fillText('Voltage (V)',ML+pw/2,H-4);
+  cc.fillStyle='#38bdf8';cc.font='10px sans-serif';cc.textAlign='right';
+  for(let i=0;i<=5;i++){const v=(1-i/5)*iMax;cc.fillText(v.toFixed(1),ML-5,MT+(i/5)*ph+3);}
+  cc.save();cc.translate(12,MT+ph/2);cc.rotate(-Math.PI/2);cc.textAlign='center';cc.font='11px sans-serif';cc.fillText('Current (A)',0,0);cc.restore();
+  cc.fillStyle='#fb923c';cc.font='10px sans-serif';cc.textAlign='left';
+  for(let i=0;i<=5;i++){const v=(1-i/5)*pMax;cc.fillText(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0),ML+pw+5,MT+(i/5)*ph+3);}
+  cc.save();cc.translate(W-8,MT+ph/2);cc.rotate(Math.PI/2);cc.textAlign='center';cc.font='11px sans-serif';cc.fillText('Power (W)',0,0);cc.restore();
+  results.forEach(res=>{
+    const col=res.color,pts=res.curve,lw=results.length>5?1.5:2;
+    cc.strokeStyle=col;cc.lineWidth=lw;cc.setLineDash([]);
+    cc.beginPath();pts.forEach((p,i)=>{const x=cx(p.V),y=cyI(p.I);i?cc.lineTo(x,y):cc.moveTo(x,y);});cc.stroke();
+    cc.strokeStyle=col;cc.lineWidth=lw;cc.setLineDash([5,4]);cc.globalAlpha=0.85;
+    cc.beginPath();pts.forEach((p,i)=>{const x=cx(p.V),y=cyP(p.V*p.I);i?cc.lineTo(x,y):cc.moveTo(x,y);});cc.stroke();
+    cc.setLineDash([]);cc.globalAlpha=1;
+    drawStar(cc,cx(res.mpp.V),cyP(res.mpp.P),6,col);
   });
-
-  // Legend (wrap if needed)
-  let lx=ML, ly=15;
-  cc.font='9px sans-serif';
-  results.forEach(res => {
-    const label=res.label;
-    const sw=cc.measureText(label+' IP').width+32;
-    if (lx+sw > ML+pw-10) { lx=ML; ly+=13; }
-
-    cc.strokeStyle=res.color; cc.lineWidth=2; cc.setLineDash([]);
-    cc.beginPath(); cc.moveTo(lx,ly); cc.lineTo(lx+14,ly); cc.stroke();
-    cc.fillStyle='#d1d5db'; cc.textAlign='left';
-    cc.fillText(label, lx+17, ly+3);
-    lx += sw;
+  let lx=ML,ly=15;cc.font='9px sans-serif';
+  results.forEach(res=>{
+    const sw=cc.measureText(res.label+' IP').width+32;
+    if(lx+sw>ML+pw-10){lx=ML;ly+=13;}
+    cc.strokeStyle=res.color;cc.lineWidth=2;cc.setLineDash([]);
+    cc.beginPath();cc.moveTo(lx,ly);cc.lineTo(lx+14,ly);cc.stroke();
+    cc.fillStyle='#d1d5db';cc.textAlign='left';cc.fillText(res.label,lx+17,ly+3);
+    lx+=sw;
   });
 }
 
-function drawStar(cc, cx, cy, r, color) {
-  cc.save(); cc.fillStyle=color; cc.strokeStyle='#111827'; cc.lineWidth=1;
-  cc.beginPath();
-  for (let i=0;i<10;i++) {
-    const a=(i*Math.PI)/5-Math.PI/2, rad=i%2===0?r:r*0.42;
-    const x=cx+rad*Math.cos(a), y=cy+rad*Math.sin(a);
-    i?cc.lineTo(x,y):cc.moveTo(x,y);
-  }
-  cc.closePath(); cc.fill(); cc.stroke(); cc.restore();
+function drawStar(cc,cx,cy,r,color){
+  cc.save();cc.fillStyle=color;cc.strokeStyle='#111827';cc.lineWidth=1;cc.beginPath();
+  for(let i=0;i<10;i++){const a=(i*Math.PI)/5-Math.PI/2,rad=i%2===0?r:r*0.42,x=cx+rad*Math.cos(a),y=cy+rad*Math.sin(a);i?cc.lineTo(x,y):cc.moveTo(x,y);}
+  cc.closePath();cc.fill();cc.stroke();cc.restore();
 }
-
-function niceMax(val, step) { return Math.ceil(val/step)*step; }
+function niceMax(val,step){return Math.ceil(val/step)*step;}
 
 // ── Update cycle ───────────────────────────────────────────────────────────
-let updateTimer = null;
-
-function scheduleUpdate() {
+let updateTimer=null;
+function scheduleUpdate(){
   drawArray();
-  if (updateTimer) clearTimeout(updateTimer);
-  updateTimer = setTimeout(heavyUpdate, 80);
+  if(updateTimer) clearTimeout(updateTimer);
+  updateTimer=setTimeout(heavyUpdate,80);
 }
-
-function heavyUpdate() {
-  const allResults = computeAll();
+function heavyUpdate(){
+  const allResults=computeAll();
   updateComparisonTable(allResults);
-  const hlRes = allResults.find(r=>r.id===highlightedConfig);
+  const hlRes=allResults.find(r=>r.id===highlightedConfig);
   updatePowerDetail(hlRes.mpptResults);
   updateChart(hlRes.mpptResults);
 }
-
-function fullUpdate() { drawArray(); heavyUpdate(); }
+function fullUpdate(){drawArray();heavyUpdate();}
 
 // ── UI controls ────────────────────────────────────────────────────────────
-document.getElementById('clearBtn').addEventListener('click', () => {
-  shade = Array.from({length:ROWS}, ()=>Array(COLS).fill(1.0)); fullUpdate();
+document.getElementById('clearBtn').addEventListener('click',()=>{
+  shade=Array.from({length:ROWS},()=>Array(COLS).fill(1.0)); fullUpdate();
 });
 
-const slider = document.getElementById('shadeSlider');
-slider.addEventListener('input', () => {
-  shadeLevel = 1 - slider.value/100;
-  document.getElementById('shadeVal').textContent = `${slider.value}%`;
+const shadeSlider=document.getElementById('shadeSlider');
+shadeSlider.addEventListener('input',()=>{
+  shadeLevel=1-shadeSlider.value/100;
+  document.getElementById('shadeVal').textContent=`${shadeSlider.value}%`;
 });
 
-document.querySelectorAll('.preset-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
+document.querySelectorAll('.preset-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
     const p=btn.dataset.preset;
-    shade = Array.from({length:ROWS}, ()=>Array(COLS).fill(1.0));
-    if      (p==='row0')    for(let c=0;c<COLS;c++) shade[0][c]=shadeLevel;
-    else if (p==='row3')    for(let c=0;c<COLS;c++) shade[3][c]=shadeLevel;
-    else if (p==='row6')    for(let c=0;c<COLS;c++) shade[6][c]=shadeLevel;
-    else if (p==='col4')    for(let r=0;r<ROWS;r++) shade[r][4]=shadeLevel;
-    else if (p==='corner')  for(let r=0;r<3;r++) for(let c=0;c<3;c++) shade[r][c]=shadeLevel;
-    else if (p==='checker') for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if((r+c)%2===0) shade[r][c]=shadeLevel;
+    shade=Array.from({length:ROWS},()=>Array(COLS).fill(1.0));
+    if(p==='row0')   for(let c=0;c<COLS;c++) shade[0][c]=shadeLevel;
+    else if(p==='row3')   for(let c=0;c<COLS;c++) shade[3][c]=shadeLevel;
+    else if(p==='row6')   for(let c=0;c<COLS;c++) shade[6][c]=shadeLevel;
+    else if(p==='col4')   for(let r=0;r<ROWS;r++) shade[r][4]=shadeLevel;
+    else if(p==='corner') for(let r=0;r<3;r++) for(let c=0;c<3;c++) shade[r][c]=shadeLevel;
+    else if(p==='checker') for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if((r+c)%2===0) shade[r][c]=shadeLevel;
     fullUpdate();
   });
 });
 
+// Date / time controls
+function buildDateFromUI() {
+  const datePart = document.getElementById('dateInput').value;  // "YYYY-MM-DD"
+  const mins     = parseInt(document.getElementById('timeSlider').value);
+  const hh = Math.floor(mins/60), mm = mins%60;
+  if (!datePart) {
+    const d = new Date(); d.setHours(hh, mm, 0, 0); return d;
+  }
+  const [yr,mo,dy] = datePart.split('-').map(Number);
+  return new Date(yr, mo-1, dy, hh, mm, 0);
+}
+
+function onDateTimeChange() {
+  const mins=parseInt(document.getElementById('timeSlider').value);
+  document.getElementById('timeDisplay').textContent = fmtHour(mins/60);
+  const d = buildDateFromUI();
+  updateIrradiance(d);
+  fullUpdate();
+}
+
+document.getElementById('dateInput').addEventListener('input', onDateTimeChange);
+document.getElementById('timeSlider').addEventListener('input', onDateTimeChange);
+
 // ── Init ───────────────────────────────────────────────────────────────────
-updateAnnotation();
-fullUpdate();
+(function init() {
+  // Default date: today, 12:00 local time
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm   = String(today.getMonth()+1).padStart(2,'0');
+  const dd   = String(today.getDate()).padStart(2,'0');
+  document.getElementById('dateInput').value = `${yyyy}-${mm}-${dd}`;
+  document.getElementById('timeSlider').value = 720; // 12:00
+  document.getElementById('timeDisplay').textContent = '12:00';
+
+  const noon = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0);
+  updateIrradiance(noon);
+  updateAnnotation();
+  fullUpdate();
+})();
 </script>
 </body>
 </html>

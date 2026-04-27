@@ -12,7 +12,9 @@ No server, no build step — open `index.html` directly in any modern browser.
 | **Array** | 8 rows × 9 columns (72 panels) in landscape orientation |
 | **Panel model** | Lucksolar LS-MD120-340W — single-diode model (5 parameters) |
 | **Shade interaction** | Click or drag panels to shade/unshade; presets for common scenarios |
-| **Wiring configs** | Five options (A–E) always computed simultaneously for instant comparison |
+| **Wiring configs** | Six options (A–F) always computed simultaneously for instant comparison |
+| **Solar irradiance** | Clear-sky model for Neer, Netherlands (lat 51.27°N, lon 5.99°E) — date picker + time slider |
+| **Physical sections** | Top 5 rows (tilt −30°, az 220°) and bottom 3 rows (tilt 30°, az 255°) with independent POA irradiance |
 | **IV + PV curves** | Live canvas-based plot per selected config — no external charting library |
 | **MPP tracking** | Maximum power point (★) computed per MPPT; power detail cards shown |
 | **Mobile friendly** | Touch events supported |
@@ -21,7 +23,7 @@ No server, no build step — open `index.html` directly in any modern browser.
 
 ## Wiring Configurations
 
-All five configurations are computed in parallel on every shade change. Click a row in the comparison table to annotate the array canvas and see the IV/PV curves for that configuration.
+All six configurations are computed in parallel on every shade change. Click a row in the comparison table to annotate the array canvas and see the IV/PV curves for that configuration.
 
 ### Option A — 3 MPPTs, Series-Parallel (SP)
 
@@ -95,9 +97,56 @@ Identical block structure to D, but each block uses V-TCT wiring internally (col
 
 ---
 
-## Quick Comparison
+### Option F — 4 MPPTs, 2 Rows × 9 Cols (18 panels per MPPT, SP)
 
-The comparison table always shows all five configurations simultaneously:
+The array is split into four equal horizontal bands, each covering 2 rows × 9 columns = 18 panels wired in Series-Parallel (2 strings of 9 panels in parallel).
+
+Row groups: rows 1–2 | rows 3–4 | rows 5–6 | rows 7–8
+
+```
+Rows 1–2: P[1][1]──…──P[1][9] ─┐
+          P[2][1]──…──P[2][9] ─┘─► MPPT 1  (2 × 9 panels SP)
+
+Rows 3–4: ─► MPPT 2  (2 × 9 panels SP)
+Rows 5–6: ─► MPPT 3  (2 × 9 panels SP)
+Rows 7–8: ─► MPPT 4  (2 × 9 panels SP)
+```
+
+Each MPPT input voltage = 1 series string Vmpp ≈ 38 V; input current = 2 × Impp ≈ 17.7 A.
+
+---
+
+## Physical Sections & Solar Irradiance
+
+The 8-row array is physically divided into two sections with different mounting angles:
+
+| Section | Rows | Tilt | Azimuth |
+|---|---|---|---|
+| **Top** | 1–5 (rows 0–4) | −30° | 220° (SSW) |
+| **Bottom** | 6–8 (rows 5–7) | +30° | 255° (WSW) |
+
+> **Tilt convention**: positive tilt = panel faces the azimuth direction; negative tilt = panel normal tilts to the opposite side of the azimuth direction.  
+> Tilt −30°, az 220° is mathematically equivalent to tilt +30°, az 40° (NNE-facing), which would represent the rear slope of a dual-pitch roof.
+
+A coloured section-boundary line is drawn on the canvas between rows 5 and 6.
+
+### Clear-Sky Irradiance Model
+
+Location: **Neer, Netherlands** (lat 51.27°N, lon 5.99°E)
+
+Solar position is computed using the Spencer equations for declination and equation of time, with the correct ENU vector formula for azimuth. Clear-sky direct normal irradiance uses the Meinel transmittance with Netherlands turbidity (τ=0.88). Plane-of-array (POA) irradiance uses the isotropic sky diffuse model.
+
+The `irr[r][c]` array (POA / 1000 W/m²) is multiplied by the user-painted `shade[r][c]` to give the effective irradiance fraction used in all physics calculations:
+
+```
+effectiveG(r, c) = irr[r][c] × shade[r][c]
+```
+
+Netherlands DST is handled automatically (last Sunday March → last Sunday October).
+
+---
+
+The comparison table always shows all six configurations simultaneously:
 
 | Config | Total Power | % STC | MPPT mini-bars |
 |---|---|---|---|
@@ -106,6 +155,7 @@ The comparison table always shows all five configurations simultaneously:
 | C — 1×9 | x.xxx kW | xx% | ▐▐▐▐▐▐▐▐ |
 | D — Blk SP | x.xxx kW | xx% | ▐▐▐▐▐▐▐▐▐ |
 | E — Blk TCT | x.xxx kW | xx% | ▐▐▐▐▐▐▐▐▐ |
+| F — 4×18 | x.xxx kW | xx% | ▐▐▐▐ |
 
 Each coloured bar represents one MPPT's power (hover for W/V/A detail). The ★ marks the highest total output under the current shade pattern.
 
