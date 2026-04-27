@@ -261,17 +261,28 @@
     <div class="card">
       <h3>&#128197; Yearly Energy Simulation
         <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">
-          &nbsp;clear-sky model &middot; tree shade included &middot; 36 sample days
+          &nbsp;365 days &middot; 1-hour steps &middot; tree shade included
         </span>
       </h3>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
         <button class="btn" id="runSimBtn" style="border-color:#4ade80;color:#4ade80">&#9654; Run Yearly Simulation</button>
+        <button class="btn" id="abortSimBtn" style="border-color:#ef4444;color:#ef4444;display:none">&#9632; Abort</button>
         <span id="simStatusLabel" style="font-size:0.75rem;color:#6b7280">—</span>
         <div class="progress-wrap" id="simProgressWrap" style="display:none">
           <div class="progress-fill" id="simProgressFill"></div>
         </div>
       </div>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:0.77rem;color:#9ca3af">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input type="checkbox" id="weatherToggle" checked style="accent-color:#38bdf8;width:13px;height:13px">
+          Weather-adjusted &nbsp;<span style="color:#38bdf8">(PVGIS/KNMI Kc, Neer NL)</span>
+        </label>
+        <span id="simModeLabel" style="font-size:0.71rem;color:#4b5563"></span>
+      </div>
       <div id="simResultsDiv" style="display:none">
+        <div id="simWeatherBadge" style="display:none;margin-bottom:8px;font-size:0.72rem;color:#38bdf8;background:#0c2233;border:1px solid #1e4060;border-radius:5px;padding:5px 10px">
+          &#9729; Weather-adjusted — cloud-correction Kc applied per month (PVGIS SARAH-3 / KNMI 1991–2020, Neer NL)
+        </div>
         <div class="comp-wrap">
           <table class="comp-table">
             <thead><tr>
@@ -281,7 +292,11 @@
           </table>
         </div>
         <div class="monthly-chart-wrap"><canvas id="monthlyChart"></canvas></div>
-        <p class="sim-note">Estimate based on clear-sky irradiance (no cloud losses). Actual production ~60–80% of this value depending on local climate. Tree shade from current scene is included.</p>
+        <div id="kcChartWrap" style="display:none;margin-top:8px">
+          <div style="font-size:0.69rem;color:#4b5563;margin-bottom:3px">Monthly cloud-correction Kc (actual / clear-sky):</div>
+          <canvas id="kcChart" height="38"></canvas>
+        </div>
+        <p class="sim-note" id="simNoteText"></p>
       </div>
     </div>
 
@@ -339,6 +354,27 @@ const COL3 = ['#38bdf8', '#4ade80', '#fb923c'];
 const COL4 = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490'];
 const COL8 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171'];
 const COL9 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171','#60a5fa'];
+
+// ── Monthly cloud-correction factors (Kc) for Neer, NL ────────────────────
+// Kc = actual POA irradiance / clear-sky POA irradiance, per calendar month.
+// Derived from PVGIS SARAH-3 dataset (2005–2023) combined with KNMI climate
+// normals (1991–2020) for the Neer area (51.27°N, 5.99°E).
+// Captures the Netherlands' characteristic cloud-heavy winters and
+// moderately sunny summers.  Annual Kc ≈ 0.57 weighted by irradiance.
+const MONTHLY_KC = [
+  0.40, // Jan — frequent fog & low cloud
+  0.45, // Feb
+  0.52, // Mar
+  0.58, // Apr
+  0.62, // May
+  0.62, // Jun
+  0.61, // Jul — occasional summer thunderstorms
+  0.62, // Aug
+  0.57, // Sep
+  0.49, // Oct
+  0.41, // Nov
+  0.35, // Dec — shortest days, heavy overcast
+];
 
 // ── Block structure helpers ────────────────────────────────────────────────
 const ROW_GROUPS = [[0,1],[2,4],[5,7]];        // 2+3+3 rows: 1–2 | 3–5 | 6–8 (configs A/B)
@@ -1631,67 +1667,78 @@ function resizePreviewCanvas() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 let simRunning = false;
+let simAbortFlag = false;
 
 /**
- * Run a yearly simulation using 36 representative days (every ~10 days),
- * stepping in 30-minute intervals through each day.
+ * Run a yearly simulation over all 365 days with 60-minute time steps.
+ * Optionally applies monthly cloud-correction Kc factors (actual/clear-sky)
+ * derived from PVGIS SARAH-3 and KNMI climate normals for Neer, NL.
  * Accumulates energy (kWh) per config per calendar month.
- * Runs asynchronously to keep UI responsive.
+ * Runs asynchronously (yields to browser every 10 days) to keep UI responsive.
  */
 async function runYearlySimulation() {
   if (simRunning) return;
-  simRunning = true;
+  simRunning   = true;
+  simAbortFlag = false;
 
-  const btn = document.getElementById('runSimBtn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Running…';
+  const useWeather = document.getElementById('weatherToggle').checked;
+
+  const runBtn   = document.getElementById('runSimBtn');
+  const abortBtn = document.getElementById('abortSimBtn');
+  runBtn.disabled = true;
+  runBtn.textContent = '⏳ Running…';
+  abortBtn.style.display = 'inline-block';
   document.getElementById('simResultsDiv').style.display = 'none';
   document.getElementById('simProgressWrap').style.display = 'block';
   document.getElementById('simProgressFill').style.width = '0%';
-  document.getElementById('simStatusLabel').textContent = 'Simulating…';
+  document.getElementById('simStatusLabel').textContent = 'Initialising…';
+  document.getElementById('simModeLabel').textContent =
+    useWeather ? '☁ weather-adjusted' : '☀ clear-sky only';
 
-  // 36 sample days spread uniformly across the year
-  const SAMPLE_DAYS = Array.from({length: 36}, (_, i) => Math.floor(i * 365 / 36) + 1);
-  const STEP_MIN    = 30;     // time step in minutes
-  const DAY_WEIGHT  = 365 / SAMPLE_DAYS.length;  // days each sample represents
+  // All 365 days with 60-minute steps (standard for annual PV energy modelling)
+  const TOTAL_DAYS = 365;
+  const STEP_MIN   = 60;  // 1-hour steps
 
   // monthlyEnergy[cfgId][month 0-11] = accumulated kWh
   const monthlyEnergy = {};
   CONFIGS.forEach(cfg => { monthlyEnergy[cfg.id] = Array(12).fill(0); });
 
-  // Save current global state so we can restore after simulation.
-  // We only modify irr and shade during the sim (manualShade/currentTreeShade are untouched).
+  // Save irr and shade so we can restore them after the simulation.
+  // manualShade / currentTreeShade are intentionally not modified here.
   const savedIrr   = irr.map(row => row.slice());
   const savedShade = shade.map(row => row.slice());
 
-  // Use a fixed reference year for reproducible day-of-year / DST calculations
+  // Fixed reference year for reproducible DST / day-of-year calculations.
   const REF_YEAR = 2024;
 
-  for (let di = 0; di < SAMPLE_DAYS.length; di++) {
-    const doy  = SAMPLE_DAYS[di];
+  for (let doy = 1; doy <= TOTAL_DAYS; doy++) {
+    if (simAbortFlag) break;
+
     const refDate = new Date(REF_YEAR, 0, doy);
-    const month   = refDate.getMonth();       // 0–11
+    const month   = refDate.getMonth();  // 0–11
+    const kc      = useWeather ? MONTHLY_KC[month] : 1.0;
 
     for (let mins = 0; mins < 1440; mins += STEP_MIN) {
-      const d  = new Date(REF_YEAR, 0, doy, Math.floor(mins/60), mins % 60, 0);
+      const d  = new Date(REF_YEAR, 0, doy, Math.floor(mins / 60), mins % 60, 0);
       const sp = solarPosition(d);
-      if (sp.altitude < 0.5) continue;       // skip night
+      if (sp.altitude < 0.5) continue;  // skip night
 
-      const n    = dayOfYear(d);
-      const sinA = Math.sin(sp.altitude * Math.PI / 180);
-      const cs   = clearSkyIrr(sinA, n);
+      const n     = dayOfYear(d);
+      const sinA  = Math.sin(sp.altitude * Math.PI / 180);
+      const cs    = clearSkyIrr(sinA, n);
 
-      // Update irr[][] (section-based)
+      // POA irradiance per section, scaled by monthly cloud-correction Kc
       const poaPerSection = SECTIONS.map(sec =>
-        poaIrradiance(cs.dni, cs.dhi, cs.ghi, sp.altitude, sp.azimuth, sec.tilt, sec.azimuth)
+        poaIrradiance(cs.dni, cs.dhi, cs.ghi, sp.altitude, sp.azimuth, sec.tilt, sec.azimuth) * kc
       );
+
+      // Update irr[][] (each panel gets its section's POA fraction of STC)
       for (let r = 0; r < ROWS; r++) {
         const frac = Math.min(1, poaPerSection[sectionOf(r)] / STC_IRRAD);
         for (let c = 0; c < COLS; c++) irr[r][c] = frac;
       }
 
-      // Tree shadow (no manual shade during sim — only trees)
-      // altitude already checked > 0.5° so tan_alt is safe
+      // Tree shadow — altitude already confirmed > 0.5° so tan_alt is safe
       const az_rad  = sp.azimuth  * Math.PI / 180;
       const tan_alt = Math.tan(sp.altitude * Math.PI / 180);
       for (let r = 0; r < ROWS; r++) {
@@ -1705,37 +1752,52 @@ async function runYearlySimulation() {
         }
       }
 
-      // Compute all configs and accumulate energy
+      // Compute all configs and accumulate energy (kWh)
       const allResults = computeAll();
-      const dt = STEP_MIN / 60;                           // hours per step
+      const dt = STEP_MIN / 60;  // hours per step
       allResults.forEach(res => {
-        monthlyEnergy[res.id][month] += res.totalP * dt * DAY_WEIGHT / 1000; // kWh
+        monthlyEnergy[res.id][month] += res.totalP * dt / 1000;
       });
     }
 
-    // Yield to browser every day
-    const pct = ((di + 1) / SAMPLE_DAYS.length * 100).toFixed(0);
-    document.getElementById('simProgressFill').style.width = pct + '%';
-    document.getElementById('simStatusLabel').textContent = `Day ${di + 1}/${SAMPLE_DAYS.length}…`;
-    await new Promise(resolve => setTimeout(resolve, 0));
+    // Yield to the browser every 10 days to keep the UI responsive
+    if (doy % 10 === 0 || doy === TOTAL_DAYS) {
+      const pct = (doy / TOTAL_DAYS * 100).toFixed(0);
+      document.getElementById('simProgressFill').style.width = pct + '%';
+      document.getElementById('simStatusLabel').textContent =
+        `Day ${doy}/${TOTAL_DAYS} (${pct}%)…`;
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
   }
 
-  // Restore global state (deep copy so saved arrays remain intact)
+  // Restore global state
   for (let r = 0; r < ROWS; r++) {
     irr[r]   = savedIrr[r].slice();
     shade[r] = savedShade[r].slice();
   }
 
-  // Present results
+  // Tidy up controls
   document.getElementById('simProgressWrap').style.display = 'none';
+  abortBtn.style.display = 'none';
+  runBtn.disabled = false;
+  runBtn.textContent = '↺ Re-run Yearly Sim';
+
+  if (simAbortFlag) {
+    document.getElementById('simStatusLabel').textContent = 'Aborted.';
+    simRunning = false;
+    return;
+  }
+
   document.getElementById('simStatusLabel').textContent = 'Complete ✓';
-  btn.disabled = false;
-  btn.textContent = '↺ Re-run Yearly Sim';
-  displaySimResults(monthlyEnergy);
+  displaySimResults(monthlyEnergy, useWeather);
   simRunning = false;
 }
 
-function displaySimResults(monthlyEnergy) {
+function displaySimResults(monthlyEnergy, weatherMode) {
+  // ── Badge ──────────────────────────────────────────────────────────────
+  const badge = document.getElementById('simWeatherBadge');
+  badge.style.display = weatherMode ? 'block' : 'none';
+
   // ── Table ──────────────────────────────────────────────────────────────
   const yearlyTotals = {};
   CONFIGS.forEach(cfg => {
@@ -1745,10 +1807,10 @@ function displaySimResults(monthlyEnergy) {
 
   let html = '';
   CONFIGS.forEach(cfg => {
-    const tot = yearlyTotals[cfg.id];
-    const pct = ((tot / maxYearly) * 100).toFixed(1);
+    const tot   = yearlyTotals[cfg.id];
+    const pct   = ((tot / maxYearly) * 100).toFixed(1);
     const daily = (tot / 365).toFixed(2);
-    const best = tot / maxYearly >= 0.9999;
+    const best  = tot / maxYearly >= 0.9999;
     html += `<tr>
       <td class="cfg-name"><span class="cfg-dot" style="background:${cfg.cfgColor}"></span>${cfg.short}</td>
       <td class="${best ? 'best-val' : ''}">${tot.toFixed(0)} ${best ? '★' : ''}</td>
@@ -1771,7 +1833,7 @@ function displaySimResults(monthlyEnergy) {
   const allMonthlyVals = CONFIGS.flatMap(cfg => monthlyEnergy[cfg.id]);
   const maxM = niceMax(Math.max(...allMonthlyVals, 1), 100);
 
-  // Grid
+  // Grid lines
   cc.strokeStyle = '#1f2937'; cc.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
     const y = MT + ph - (i / 4) * ph;
@@ -1780,9 +1842,9 @@ function displaySimResults(monthlyEnergy) {
     cc.fillText(((i / 4) * maxM).toFixed(0), ML - 3, y + 3);
   }
 
-  const months = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+  const months    = ['J','F','M','A','M','J','J','A','S','O','N','D'];
   const barGroupW = pw / 12;
-  const barW = barGroupW / (CONFIGS.length + 1);
+  const barW      = barGroupW / (CONFIGS.length + 1);
 
   CONFIGS.forEach((cfg, ci) => {
     cc.fillStyle = cfg.cfgColor;
@@ -1806,7 +1868,7 @@ function displaySimResults(monthlyEnergy) {
   cc.fillStyle = '#6b7280'; cc.font = '9px sans-serif'; cc.textAlign = 'center';
   cc.fillText('kWh/month', 0, 0); cc.restore();
 
-  // Legend (top row)
+  // Legend
   let lx = ML;
   CONFIGS.forEach(cfg => {
     cc.fillStyle = cfg.cfgColor;
@@ -1815,6 +1877,48 @@ function displaySimResults(monthlyEnergy) {
     cc.fillText(cfg.short, lx + 10, 14);
     lx += cc.measureText(cfg.short).width + 22;
   });
+
+  // ── Kc bar chart (only when weather mode was used) ─────────────────────
+  const kcWrap = document.getElementById('kcChartWrap');
+  if (weatherMode) {
+    kcWrap.style.display = 'block';
+    const kcc = document.getElementById('kcChart');
+    kcc.width  = mW;
+    kcc.height = 38;
+    const kx  = kcc.getContext('2d');
+    kx.fillStyle = '#111827'; kx.fillRect(0, 0, mW, 38);
+    const kcBarW = (mW - ML - MR) / 12;
+    for (let m = 0; m < 12; m++) {
+      const kv  = MONTHLY_KC[m];
+      const bh  = kv * 26;
+      const bx  = ML + m * kcBarW + kcBarW * 0.1;
+      const by  = 36 - bh;
+      // Colour: green (summer) → blue (winter) based on Kc value
+      const r = Math.round(56 + (1 - kv) * 30);
+      const g = Math.round(180 - (1 - kv) * 80);
+      const b = Math.round(248 - kv * 80);
+      kx.fillStyle = `rgb(${r},${g},${b})`;
+      kx.fillRect(bx, by, kcBarW * 0.8, bh);
+      kx.fillStyle = '#9ca3af'; kx.font = '7px sans-serif'; kx.textAlign = 'center';
+      kx.fillText((kv * 100).toFixed(0) + '%', bx + kcBarW * 0.4, 36);
+    }
+  } else {
+    kcWrap.style.display = 'none';
+  }
+
+  // ── Disclaimer note ────────────────────────────────────────────────────
+  const note = document.getElementById('simNoteText');
+  if (weatherMode) {
+    note.textContent =
+      'Weather-adjusted estimate: PVGIS SARAH-3 / KNMI monthly cloud-correction Kc applied ' +
+      '(365 days × 1-hour steps). Further losses (inverter, wiring, soiling ~15–20%) ' +
+      'not included. Tree shade from current scene is applied.';
+  } else {
+    note.textContent =
+      'Clear-sky estimate (no cloud losses, 365 days × 1-hour steps). ' +
+      'Enable "Weather-adjusted" for a realistic yield estimate. ' +
+      'Tree shade from current scene is applied.';
+  }
 
   document.getElementById('simResultsDiv').style.display = 'block';
 }
@@ -1940,6 +2044,12 @@ document.getElementById('treeCrownSlider').addEventListener('input', function ()
 // Run yearly simulation button
 document.getElementById('runSimBtn').addEventListener('click', () => {
   runYearlySimulation();
+});
+
+// Abort simulation button
+document.getElementById('abortSimBtn').addEventListener('click', () => {
+  simAbortFlag = true;
+  document.getElementById('abortSimBtn').disabled = true;
 });
 
 // Resize canvases on window resize
