@@ -85,6 +85,24 @@
 
     .chart-wrap { position: relative; height: 300px; }
     .specs-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); gap: 6px; font-size:.78rem; color:#9ca3af; }
+
+    /* ── Site map ── */
+    #siteCanvas { display:block; cursor:default; touch-action:none; border-radius:6px; }
+    .site-ctrls { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+    .num-input { width:52px; background:#111827; color:#e5e7eb; border:1px solid #374151; border-radius:5px; padding:3px 6px; font-size:0.76rem; }
+    .num-input:focus { outline:none; border-color:#e94560; }
+
+    /* ── 3-D preview ── */
+    #preview3dCanvas { display:block; border-radius:6px; cursor:grab; touch-action:none; width:100%; }
+    #preview3dCanvas:active { cursor:grabbing; }
+
+    /* ── Yearly sim ── */
+    .yearly-tbl { width:100%; border-collapse:collapse; font-size:0.78rem; margin-top:6px; }
+    .yearly-tbl th { background:#111827; color:#6b7280; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.4px; padding:5px 8px; text-align:left; white-space:nowrap; }
+    .yearly-tbl td { padding:6px 8px; border-bottom:1px solid #1a2535; white-space:nowrap; }
+    .sim-prog { font-size:0.75rem; color:#60a5fa; }
+    #monthlyChart  { display:block; width:100%; }
+    #yearlyHeatmap { display:block; margin-top:4px; }
   </style>
 </head>
 <body>
@@ -176,6 +194,27 @@
         <span>Bypass: <b style="color:#e5e7eb">3&times;0.5 V</b></span>
       </div>
     </div>
+
+    <!-- Site map -->
+    <div class="card">
+      <h3>&#x1F5FA; Site Layout
+        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">&nbsp;&mdash; drag array &amp; trees &nbsp;|&nbsp; right-click tree to delete</span>
+      </h3>
+      <div class="site-ctrls">
+        <button class="btn" id="addTreeBtn">+ Add Tree</button>
+        <span style="font-size:.74rem;color:#9ca3af">H:</span>
+        <input type="number" id="treeHeight" class="num-input" value="8" min="1" max="40" step="0.5">
+        <span style="font-size:.74rem;color:#9ca3af">m &nbsp; Crown&nbsp;&#8960;:</span>
+        <input type="number" id="treeCrown" class="num-input" value="3" min="0.5" max="20" step="0.5">
+        <span style="font-size:.74rem;color:#9ca3af">m</span>
+        <button class="btn" id="clearTreesBtn">Clear Trees</button>
+      </div>
+      <canvas id="siteCanvas"></canvas>
+      <p style="font-size:.71rem;color:#4b5563;margin-top:5px;line-height:1.45">
+        &#9728; Shadow direction &amp; depth auto-computed from date/time above.
+        Drag the array or any tree to reposition. Tree shadows automatically update panel shade.
+      </p>
+    </div>
   </div>
 
   <!-- RIGHT PANEL -->
@@ -208,6 +247,37 @@
         <span style="font-size:.7rem;color:#4b5563;text-transform:none;font-weight:400">&mdash; solid=I(A) &nbsp;&middot;&nbsp; dashed=P(W) &nbsp;&middot;&nbsp; &#9733;=MPP</span>
       </h3>
       <div class="chart-wrap"><canvas id="ivChart"></canvas></div>
+    </div>
+
+    <!-- Annual yield simulation -->
+    <div class="card">
+      <h3>&#x1F4C5; Annual Yield Simulation &mdash; Neer, NL
+        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">&nbsp;&mdash; includes tree shade from site layout</span>
+      </h3>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+        <button class="btn" id="runSimBtn">&#9654; Run Annual Sim</button>
+        <span class="sim-prog" id="simProgress" style="display:none"></span>
+        <span style="font-size:.71rem;color:#4b5563">30-min steps &nbsp;&middot;&nbsp; simplified avg-G model &nbsp;&middot;&nbsp; clear-sky</span>
+      </div>
+      <div id="yearlyResults" style="display:none">
+        <div id="yearlyTable"></div>
+        <div style="margin-top:10px">
+          <div style="font-size:.72rem;color:#6b7280;margin-bottom:4px">Monthly energy per config (kWh)</div>
+          <canvas id="monthlyChart" height="160"></canvas>
+        </div>
+        <div style="margin-top:10px">
+          <div style="font-size:.72rem;color:#6b7280;margin-bottom:4px">Panel yearly irradiance (kWh/m²) &mdash; tree shade included</div>
+          <canvas id="yearlyHeatmap"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3-D preview -->
+    <div class="card">
+      <h3>&#x2B21; 3D Array Preview
+        <span style="font-size:.7rem;color:#4b5563;text-transform:none;font-weight:400">&mdash; drag to rotate &nbsp;&middot;&nbsp; scroll to zoom</span>
+      </h3>
+      <canvas id="preview3dCanvas" height="320"></canvas>
     </div>
 
   </div>
@@ -306,7 +376,7 @@ let shadeLevel = 0.05;
 let isPainting = false, paintMode = 'shade';
 
 /** Combined effective irradiance fraction for physics calculations */
-function effectiveG(r, c) { return Math.max(0, irr[r][c] * shade[r][c]); }
+function effectiveG(r, c) { return Math.max(0, irr[r][c] * shade[r][c] * treeShade[r][c]); }
 
 // ── Canvas setup ───────────────────────────────────────────────────────────
 const canvas = document.getElementById('arrayCanvas');
@@ -993,6 +1063,8 @@ function niceMax(val,step){return Math.ceil(val/step)*step;}
 let updateTimer=null;
 function scheduleUpdate(){
   drawArray();
+  drawSiteMap();
+  draw3dPreview();
   if(updateTimer) clearTimeout(updateTimer);
   updateTimer=setTimeout(heavyUpdate,80);
 }
@@ -1003,7 +1075,7 @@ function heavyUpdate(){
   updatePowerDetail(hlRes.mpptResults);
   updateChart(hlRes.mpptResults);
 }
-function fullUpdate(){drawArray();heavyUpdate();}
+function fullUpdate(){drawArray();drawSiteMap();draw3dPreview();heavyUpdate();}
 
 // ── UI controls ────────────────────────────────────────────────────────────
 document.getElementById('clearBtn').addEventListener('click',()=>{
@@ -1047,6 +1119,7 @@ function onDateTimeChange() {
   document.getElementById('timeDisplay').textContent = fmtHour(mins/60);
   const d = buildDateFromUI();
   updateIrradiance(d);
+  updateTreeShade();
   fullUpdate();
 }
 
@@ -1067,8 +1140,799 @@ document.getElementById('timeSlider').addEventListener('input', onDateTimeChange
   const noon = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0);
   updateIrradiance(noon);
   updateAnnotation();
+  initSiteMap();
+  init3dPreview();
   fullUpdate();
-})();
+})();// ═══════════════════════════════════════════════════════════════════════════
+// ── Real-world geometry ────────────────────────────────────────────────────
+const PANEL_W_M       = 0.992;   // panel width (m)
+const PANEL_H_M       = 1.650;   // panel height along slope (m)
+const COL_GAP_M       = 0.05;    // column gap (m)
+const ROW_GAP_M       = 0.50;    // row-to-row clearance (m)
+const MAP_COL_PITCH   = PANEL_W_M + COL_GAP_M;  // 1.042 m
+const MAP_ROW_PITCH   = 1.90;                    // m (panel ground depth + gap)
+const ARRAY_AZ_RAD    = 225 * Math.PI / 180;     // 225° in radians
+// Maximum shadow radius cap: limits computation at very low sun angles (< ~2°)
+const MAX_SHADOW_RADIUS_M = 55;
+
+// Column direction: SE (az 225° − 90° = 135°)
+const COL_VEC = { e: Math.sin(ARRAY_AZ_RAD - Math.PI / 2),
+                  n: Math.cos(ARRAY_AZ_RAD - Math.PI / 2) }; // (0.7071, −0.7071)
+// Row direction: SW (az 225°)
+const ROW_VEC = { e: Math.sin(ARRAY_AZ_RAD),
+                  n: Math.cos(ARRAY_AZ_RAD) };                // (−0.7071, −0.7071)
+
+/** Panel centre in world ENU metres relative to siteArrayCenter */
+function panelWorldPos(r, c) {
+  const colOff = (c - (COLS - 1) / 2) * MAP_COL_PITCH;
+  const rowOff = (r - (ROWS - 1) / 2) * MAP_ROW_PITCH;
+  return {
+    e: siteArrayCenter.e + colOff * COL_VEC.e + rowOff * ROW_VEC.e,
+    n: siteArrayCenter.n + colOff * COL_VEC.n + rowOff * ROW_VEC.n,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Tree-shade state ───────────────────────────────────────────────────────
+let treeShade = Array.from({length: ROWS}, () => Array(COLS).fill(1.0));
+let trees     = [];   // {id, e, n, h, crown}
+let nextTreeId = 1;
+
+/**
+ * Compute per-panel shade factors (0…1) caused by trees for a given sun position.
+ * Uses a simplified circular shadow model: crown casts a circle on the ground
+ * whose radius grows as the sun lowers.
+ */
+function computeTreeShade(altDeg, azDeg) {
+  const result = Array.from({length: ROWS}, () => Array(COLS).fill(1.0));
+  if (altDeg <= 1 || trees.length === 0) return result;
+  const altRad = altDeg * Math.PI / 180;
+  const azRad  = azDeg  * Math.PI / 180;
+  const tanAlt = Math.tan(altRad);
+  const sinAlt = Math.sin(altRad);
+  const panelR = Math.hypot(PANEL_W_M, PANEL_H_M) / 2; // panel half-diagonal ~1 m
+
+  for (const tree of trees) {
+    const L   = tree.h / tanAlt;                        // shadow length of trunk top
+    const shE = tree.e - Math.sin(azRad) * L;           // shadow circle centre
+    const shN = tree.n - Math.cos(azRad) * L;
+    const shR = Math.min(tree.crown / sinAlt, MAX_SHADOW_RADIUS_M);      // shadow radius on ground
+
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const pos  = panelWorldPos(r, c);
+        const dist = Math.hypot(pos.e - shE, pos.n - shN);
+        if (dist >= shR + panelR) continue;             // clearly outside
+        if (dist <= Math.max(0, shR - panelR)) {
+          result[r][c] = 0;                             // fully inside shadow
+        } else {
+          // partial overlap — linear ramp over the panel half-diagonal band
+          const frac = (dist - Math.max(0, shR - panelR)) / (2 * panelR);
+          result[r][c] = Math.min(result[r][c], Math.max(0, frac));
+        }
+      }
+    }
+  }
+  return result;
+}
+
+/** Refresh global treeShade[][] from the current UI date/time and tree list */
+function updateTreeShade() {
+  const sp = solarPosition(buildDateFromUI());
+  const ns = computeTreeShade(sp.altitude, sp.azimuth);
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      treeShade[r][c] = ns[r][c];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Site Map ───────────────────────────────────────────────────────────────
+const SITE_SCALE = 12;          // px per metre
+const SITE_W = 440, SITE_H = 390;
+const SITE_CX = SITE_W / 2, SITE_CY = SITE_H / 2;
+
+let siteArrayCenter = {e: 0, n: 0};  // world ENU metres
+let siteTool     = 'select';          // 'select' | 'addtree'
+let siteSelected = null;              // null | {type:'tree', id}
+let siteDrag     = null;              // null | {type, origE, origN, startX, startY, id?}
+
+function worldToScreen(e, n) {
+  return {x: SITE_CX + e * SITE_SCALE, y: SITE_CY - n * SITE_SCALE};
+}
+function screenToWorld(x, y) {
+  return {e: (x - SITE_CX) / SITE_SCALE, n: -(y - SITE_CY) / SITE_SCALE};
+}
+
+/** Four screen-space corners of a panel's top-down footprint */
+function panelScreenCorners(r, c) {
+  const sec  = SECTIONS[sectionOf(r)];
+  const gndH = PANEL_H_M * Math.abs(Math.cos(sec.tilt * Math.PI / 180));
+  const hw   = PANEL_W_M / 2, hh = gndH / 2;
+  const ctr  = panelWorldPos(r, c);
+  const cE   = COL_VEC.e, cN = COL_VEC.n;
+  const rE   = ROW_VEC.e, rN = ROW_VEC.n;
+  return [
+    worldToScreen(ctr.e - cE*hw - rE*hh, ctr.n - cN*hw - rN*hh),  // TL
+    worldToScreen(ctr.e + cE*hw - rE*hh, ctr.n + cN*hw - rN*hh),  // TR
+    worldToScreen(ctr.e + cE*hw + rE*hh, ctr.n + cN*hw + rN*hh),  // BR
+    worldToScreen(ctr.e - cE*hw + rE*hh, ctr.n - cN*hw + rN*hh),  // BL
+  ];
+}
+
+function drawSiteMap() {
+  const canvas = document.getElementById('siteCanvas');
+  if (!canvas || !canvas.width) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  // Background
+  ctx.fillStyle = '#0a1a0a';
+  ctx.fillRect(0, 0, W, H);
+
+  // 5m grid
+  ctx.strokeStyle = '#142014'; ctx.lineWidth = 0.8;
+  const visE = W / (2 * SITE_SCALE), visN = H / (2 * SITE_SCALE);
+  const gStep = 5;
+  for (let v = Math.floor(-visE / gStep) * gStep; v <= visE; v += gStep) {
+    const sx = worldToScreen(v, 0).x;
+    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.stroke();
+  }
+  for (let v = Math.floor(-visN / gStep) * gStep; v <= visN; v += gStep) {
+    const sy = worldToScreen(0, v).y;
+    ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke();
+  }
+
+  // Current sun position for shadows and arrow
+  const sp     = solarPosition(buildDateFromUI());
+  const hasSun = sp.altitude > 1;
+
+  // ── Tree shadows (behind array)
+  if (hasSun) {
+    const altRad = sp.altitude * Math.PI / 180;
+    const azRad  = sp.azimuth  * Math.PI / 180;
+    const tanAlt = Math.tan(altRad), sinAlt = Math.sin(altRad);
+
+    ctx.save();
+    ctx.globalAlpha = 0.40;
+    ctx.fillStyle = '#000';
+    for (const tree of trees) {
+      const L   = tree.h / tanAlt;
+      const shE = tree.e - Math.sin(azRad) * L;
+      const shN = tree.n - Math.cos(azRad) * L;
+      const shR = Math.min(tree.crown / sinAlt, MAX_SHADOW_RADIUS_M) * SITE_SCALE;
+      const {x, y} = worldToScreen(shE, shN);
+      ctx.beginPath(); ctx.arc(x, y, Math.max(shR, 2), 0, 2 * Math.PI); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ── Array panels (top-down, coloured by effectiveG)
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const G   = effectiveG(r, c);
+      const sec = SECTIONS[sectionOf(r)];
+      const pts = panelScreenCorners(r, c);
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+      ctx.fillStyle   = blendHex(sec.color, '#152015', 1 - G * 0.75);
+      ctx.strokeStyle = '#0a140a';
+      ctx.lineWidth   = 0.5;
+      ctx.fill(); ctx.stroke();
+    }
+  }
+
+  // ── Trees
+  for (const tree of trees) {
+    const {x, y} = worldToScreen(tree.e, tree.n);
+    const crownPx = Math.max(tree.crown * SITE_SCALE, 4);
+    const isSel   = siteSelected && siteSelected.type === 'tree' && siteSelected.id === tree.id;
+
+    ctx.save();
+    ctx.globalAlpha = 0.80;
+    ctx.fillStyle   = isSel ? '#4ade80' : '#16a34a';
+    ctx.strokeStyle = isSel ? '#86efac' : '#166534';
+    ctx.lineWidth   = isSel ? 2 : 1;
+    ctx.beginPath(); ctx.arc(x, y, crownPx, 0, 2 * Math.PI);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    // Trunk dot
+    ctx.fillStyle = '#052e16';
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI); ctx.fill();
+
+    // Height label
+    ctx.fillStyle = '#bbf7d0'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(`${tree.h}m`, x, y - crownPx - 4);
+  }
+
+  // ── Sun direction arrow (bottom-right area)
+  if (hasSun) {
+    const azRad = sp.azimuth * Math.PI / 180;
+    const ox = W - 52, oy = H - 52, rr = 22;
+    // Background circle
+    ctx.fillStyle = '#1a2a1a'; ctx.strokeStyle = '#374151'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(ox, oy, rr, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+    // Arrow toward sun
+    const aE = Math.sin(azRad) * (rr - 4), aN = -Math.cos(azRad) * (rr - 4);
+    ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + aE, oy + aN); ctx.stroke();
+    // Arrowhead
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath(); ctx.arc(ox + aE, oy + aN, 3, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = '#fbbf24'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('\u2600', ox + aE * 1.35, oy + aN * 1.35 + 3);
+    ctx.fillStyle = '#9ca3af'; ctx.font = '7px sans-serif';
+    ctx.fillText(`${sp.altitude.toFixed(0)}\u00b0`, ox, oy + rr + 11);
+  }
+
+  // ── Compass rose (top-right)
+  const rx = W - 20, ry = 20;
+  ctx.fillStyle = '#1f2937'; ctx.strokeStyle = '#4b5563'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(rx, ry, 13, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+  ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#e5e7eb'; ctx.fillText('N', rx, ry - 5);
+  ctx.fillStyle = '#6b7280';
+  ctx.fillText('S', rx, ry + 11); ctx.fillText('E', rx + 8, ry + 3); ctx.fillText('W', rx - 8, ry + 3);
+
+  // ── Scale bar (bottom-left)
+  const sbM  = 10, sbPx = sbM * SITE_SCALE;
+  const sbX  = 8,  sbY  = H - 12;
+  ctx.strokeStyle = '#9ca3af'; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(sbX, sbY); ctx.lineTo(sbX + sbPx, sbY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(sbX, sbY - 3); ctx.lineTo(sbX, sbY + 3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(sbX + sbPx, sbY - 3); ctx.lineTo(sbX + sbPx, sbY + 3); ctx.stroke();
+  ctx.fillStyle = '#6b7280'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(`${sbM} m`, sbX + sbPx / 2, sbY - 4);
+}
+
+function initSiteMap() {
+  const canvas = document.getElementById('siteCanvas');
+  canvas.width  = SITE_W;
+  canvas.height = SITE_H;
+
+  // Add-tree / clear-trees button wiring
+  const addBtn = document.getElementById('addTreeBtn');
+  addBtn.addEventListener('click', () => {
+    siteTool = siteTool === 'addtree' ? 'select' : 'addtree';
+    addBtn.textContent          = siteTool === 'addtree' ? '\u2715 Cancel' : '+ Add Tree';
+    canvas.style.cursor         = siteTool === 'addtree' ? 'crosshair' : 'default';
+  });
+  document.getElementById('clearTreesBtn').addEventListener('click', () => {
+    trees = []; siteSelected = null;
+    updateTreeShade(); drawSiteMap(); scheduleUpdate();
+  });
+
+  function getSitePos(ev) {
+    const bb  = canvas.getBoundingClientRect();
+    const scX = canvas.width  / bb.width;
+    const scY = canvas.height / bb.height;
+    const src = ev.touches ? ev.touches[0] : ev;
+    return {x: (src.clientX - bb.left) * scX, y: (src.clientY - bb.top) * scY};
+  }
+
+  function treeAtPos(sx, sy) {
+    for (const tree of trees) {
+      const {x, y}  = worldToScreen(tree.e, tree.n);
+      const crownPx = Math.max(tree.crown * SITE_SCALE, 8);
+      if (Math.hypot(sx - x, sy - y) < crownPx) return tree;
+    }
+    return null;
+  }
+
+  function isNearArray(sx, sy) {
+    // Hit-test the centre of the array footprint
+    const {x: ax, y: ay} = worldToScreen(siteArrayCenter.e, siteArrayCenter.n);
+    // Approximate bounding box: half-diagonal of array ≈ 11 m
+    const d = 11 * SITE_SCALE;
+    return sx >= ax - d && sx <= ax + d && sy >= ay - d && sy <= ay + d;
+  }
+
+  canvas.addEventListener('contextmenu', ev => ev.preventDefault());
+
+  canvas.addEventListener('mousedown', ev => {
+    ev.preventDefault();
+    const {x, y} = getSitePos(ev);
+
+    if (ev.button === 2) {  // right-click → delete tree
+      const t = treeAtPos(x, y);
+      if (t) {
+        trees = trees.filter(tr => tr.id !== t.id);
+        if (siteSelected && siteSelected.id === t.id) siteSelected = null;
+        updateTreeShade(); drawSiteMap(); scheduleUpdate();
+      }
+      return;
+    }
+
+    const t = treeAtPos(x, y);
+    if (t) {
+      siteSelected = {type: 'tree', id: t.id};
+      siteDrag = {type: 'tree', id: t.id, origE: t.e, origN: t.n, startX: x, startY: y};
+      canvas.style.cursor = 'grabbing';
+    } else if (siteTool === 'addtree') {
+      const w  = screenToWorld(x, y);
+      const h  = parseFloat(document.getElementById('treeHeight').value) || 8;
+      const cr = parseFloat(document.getElementById('treeCrown').value)  || 3;
+      trees.push({id: nextTreeId++, e: w.e, n: w.n, h, crown: cr});
+      updateTreeShade(); drawSiteMap(); scheduleUpdate();
+    } else if (isNearArray(x, y)) {
+      siteSelected = {type: 'array'};
+      siteDrag = {type: 'array', origE: siteArrayCenter.e, origN: siteArrayCenter.n, startX: x, startY: y};
+      canvas.style.cursor = 'grabbing';
+    } else {
+      siteSelected = null; drawSiteMap();
+    }
+  });
+
+  canvas.addEventListener('mousemove', ev => {
+    if (!siteDrag) return;
+    const {x, y} = getSitePos(ev);
+    const de = (x - siteDrag.startX) / SITE_SCALE;
+    const dn = -(y - siteDrag.startY) / SITE_SCALE;
+    if (siteDrag.type === 'tree') {
+      const t = trees.find(tr => tr.id === siteDrag.id);
+      if (t) { t.e = siteDrag.origE + de; t.n = siteDrag.origN + dn; }
+    } else {
+      siteArrayCenter.e = siteDrag.origE + de;
+      siteArrayCenter.n = siteDrag.origN + dn;
+    }
+    updateTreeShade(); drawSiteMap(); scheduleUpdate();
+  });
+
+  canvas.addEventListener('mouseup',    () => { siteDrag = null; canvas.style.cursor = siteTool === 'addtree' ? 'crosshair' : 'default'; });
+  canvas.addEventListener('mouseleave', () => { siteDrag = null; });
+
+  // Touch forwarding
+  canvas.addEventListener('touchstart', ev => {
+    ev.preventDefault();
+    const t = ev.touches[0];
+    canvas.dispatchEvent(new MouseEvent('mousedown', {clientX: t.clientX, clientY: t.clientY, button: 0}));
+  }, {passive: false});
+  canvas.addEventListener('touchmove', ev => {
+    ev.preventDefault();
+    const t = ev.touches[0];
+    canvas.dispatchEvent(new MouseEvent('mousemove', {clientX: t.clientX, clientY: t.clientY}));
+  }, {passive: false});
+  canvas.addEventListener('touchend', () => canvas.dispatchEvent(new MouseEvent('mouseup')));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Annual Yield Simulation ────────────────────────────────────────────────
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function runAnnualSim() {
+  const btn  = document.getElementById('runSimBtn');
+  const prog = document.getElementById('simProgress');
+  btn.disabled        = true;
+  prog.style.display  = 'inline';
+  prog.textContent    = 'Building time steps…';
+
+  const STEP_MINS = 30;
+  const YEAR      = new Date().getFullYear();
+  const steps     = [];
+
+  for (let mo = 0; mo < 12; mo++) {
+    const days = new Date(YEAR, mo + 1, 0).getDate();
+    for (let d = 1; d <= days; d++) {
+      for (let m = 0; m < 1440; m += STEP_MINS) {
+        steps.push({date: new Date(YEAR, mo, d, Math.floor(m / 60), m % 60, 0), mo});
+      }
+    }
+  }
+
+  const DT_H        = STEP_MINS / 60;
+  const nCfg        = CONFIGS.length;
+  const cfgEnergy   = new Array(nCfg).fill(0);                         // Wh
+  const moEnergy    = CONFIGS.map(() => new Array(12).fill(0));        // Wh per month
+  const panelGAcc   = Array.from({length: ROWS}, () => Array(COLS).fill(0)); // cumulative Wh/m²
+  let i = 0;
+
+  function chunk() {
+    const end = Math.min(i + SIM_CHUNK_SZ, steps.length);
+    while (i < end) {
+      const {date, mo} = steps[i++];
+      const n   = dayOfYear(date);
+      const sp  = solarPosition(date);
+      if (sp.altitude <= 0.5) continue;
+
+      const sinA = Math.sin(sp.altitude * Math.PI / 180);
+      const cs   = clearSkyIrr(sinA, n);
+      const ts   = computeTreeShade(sp.altitude, sp.azimuth);
+
+      // POA irradiance fraction per section
+      const secG = SECTIONS.map(sec => {
+        const poa = poaIrradiance(cs.dni, cs.dhi, cs.ghi, sp.altitude, sp.azimuth, sec.tilt, sec.azimuth);
+        return Math.min(1, poa / STC_IRRAD);
+      });
+
+      // Per-panel effective G (annual baseline: no manual shade, only tree shade)
+      const effG = Array.from({length: ROWS}, (_, r) => {
+        const sg = secG[sectionOf(r)];
+        return Array.from({length: COLS}, (_, c) => sg * ts[r][c]);
+      });
+
+      // Accumulate panel irradiance (Wh/m²)
+      for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+          panelGAcc[r][c] += effG[r][c] * STC_IRRAD * DT_H;
+
+      // Power per config — average G over each MPPT block (fast simplified model)
+      for (let ci = 0; ci < nCfg; ci++) {
+        let totalW = 0;
+        for (const block of CONFIGS[ci].blocks) {
+          let sumG = 0, cnt = 0;
+          for (let r = block.r0; r <= block.r1; r++)
+            for (let c = block.c0; c <= block.c1; c++) { sumG += effG[r][c]; cnt++; }
+          const nPanels = (block.r1 - block.r0 + 1) * (block.c1 - block.c0 + 1);
+          totalW += (sumG / cnt) * PNL.Pmax * nPanels;
+        }
+        cfgEnergy[ci]    += totalW * DT_H;
+        moEnergy[ci][mo] += totalW * DT_H;
+      }
+    }
+
+    prog.textContent = `Running… ${Math.round(i / steps.length * 100)}%`;
+
+    if (i < steps.length) {
+      setTimeout(chunk, 0);
+    } else {
+      btn.disabled       = false;
+      prog.style.display = 'none';
+      displayAnnualResults({
+        cfgKWh:  cfgEnergy.map(wh => wh / 1000),
+        moKWh:   moEnergy.map(arr => arr.map(wh => wh / 1000)),
+        heatmap: panelGAcc.map(row => row.map(wh => wh / 1000)),
+      });
+    }
+  }
+  chunk();
+}
+
+function displayAnnualResults({cfgKWh, moKWh, heatmap}) {
+  document.getElementById('yearlyResults').style.display = '';
+  const maxKWh = Math.max(...cfgKWh);
+  let html = '<table class="yearly-tbl"><thead><tr><th>Config</th><th>Yearly kWh</th><th>vs best</th><th>Avg daily kWh</th></tr></thead><tbody>';
+  CONFIGS.forEach((cfg, i) => {
+    const isBest = Math.abs(cfgKWh[i] - maxKWh) < 1;
+    html += `<tr>
+      <td><span class="cfg-dot" style="background:${cfg.cfgColor}"></span>${cfg.short}</td>
+      <td class="${isBest ? 'best-val' : ''}">${cfgKWh[i].toFixed(0)} kWh ${isBest ? '\u2605' : ''}</td>
+      <td>${(cfgKWh[i] / maxKWh * 100).toFixed(1)}%</td>
+      <td>${(cfgKWh[i] / 365).toFixed(2)}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('yearlyTable').innerHTML = html;
+  drawMonthlyChart(document.getElementById('monthlyChart'), moKWh);
+  drawYearlyHeatmap(document.getElementById('yearlyHeatmap'), heatmap);
+}
+
+function drawMonthlyChart(canvas, moKWh) {
+  const W = canvas.parentElement ? canvas.parentElement.clientWidth || 580 : 580;
+  const H = 160;
+  canvas.width = W; canvas.height = H;
+  const cc  = canvas.getContext('2d');
+  const ML  = 40, MR = 8, MT = 14, MB = 26;
+  const pw  = W - ML - MR, ph = H - MT - MB;
+
+  cc.fillStyle = '#111827'; cc.fillRect(0, 0, W, H);
+  const maxVal = Math.max(...moKWh.flatMap(a => a), 1);
+
+  // Grid
+  cc.strokeStyle = '#1f2937'; cc.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = MT + ph - (i / 4) * ph;
+    cc.beginPath(); cc.moveTo(ML, y); cc.lineTo(ML + pw, y); cc.stroke();
+    cc.fillStyle = '#4b5563'; cc.font = '9px sans-serif'; cc.textAlign = 'right';
+    cc.fillText(((i / 4) * maxVal).toFixed(0), ML - 3, y + 3);
+  }
+
+  // Bars
+  const barW    = pw / 12;
+  const nCfg    = CONFIGS.length;
+  const innerW  = barW * 0.85;
+  const singleW = innerW / nCfg;
+  for (let ci = 0; ci < nCfg; ci++) {
+    const cfg = CONFIGS[ci];
+    for (let m = 0; m < 12; m++) {
+      const bh = (moKWh[ci][m] / maxVal) * ph;
+      const bx = ML + m * barW + (barW - innerW) / 2 + ci * singleW;
+      cc.fillStyle = cfg.cfgColor + 'cc';
+      cc.fillRect(bx, MT + ph - bh, Math.max(singleW - 1, 1), bh);
+    }
+  }
+
+  // Month labels
+  cc.fillStyle = '#6b7280'; cc.font = '9px sans-serif'; cc.textAlign = 'center';
+  for (let m = 0; m < 12; m++)
+    cc.fillText(MONTH_NAMES[m], ML + (m + 0.5) * barW, H - 8);
+
+  // Y-axis label
+  cc.save(); cc.translate(10, MT + ph / 2); cc.rotate(-Math.PI / 2);
+  cc.fillStyle = '#9ca3af'; cc.font = '9px sans-serif'; cc.textAlign = 'center';
+  cc.fillText('kWh', 0, 0); cc.restore();
+}
+
+function drawYearlyHeatmap(canvas, heatmap) {
+  const PAD_T = 16, PAD_B = 20, PAD_L = 28, PAD_R = 10;
+  const G2 = 3, PW2 = 50, PH2 = 32;
+  const W = PAD_L + PAD_R + COLS * PW2 + (COLS - 1) * G2;
+  const H = PAD_T + PAD_B + ROWS * PH2 + (ROWS - 1) * G2 + 10;
+  canvas.width = W; canvas.height = H;
+  const cc = canvas.getContext('2d');
+  cc.fillStyle = '#0d1117'; cc.fillRect(0, 0, W, H);
+
+  const maxG = Math.max(...heatmap.flatMap(r => r), 1);
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const val  = heatmap[r][c];
+      const frac = val / maxG;
+      const x    = PAD_L + c * (PW2 + G2);
+      const y    = PAD_T + r * (PH2 + G2) + (r > SECTION_DIV ? 10 : 0);
+      cc.fillStyle = heatmapColor(frac);
+      drawRoundRect(cc, x, y, PW2, PH2, 2); cc.fill();
+      cc.fillStyle = frac > 0.55 ? '#000' : '#e5e7eb';
+      cc.font = '8px sans-serif'; cc.textAlign = 'center';
+      cc.fillText(val.toFixed(0), x + PW2 / 2, y + PH2 / 2 + 3);
+    }
+  }
+
+  // Row labels
+  cc.fillStyle = '#6b7280'; cc.font = '9px sans-serif'; cc.textAlign = 'right';
+  for (let r = 0; r < ROWS; r++) {
+    const y = PAD_T + r * (PH2 + G2) + (r > SECTION_DIV ? 10 : 0) + PH2 / 2 + 3;
+    cc.fillText(`R${r + 1}`, PAD_L - 3, y);
+  }
+
+  // Colour scale bar
+  const barX = PAD_L, barY = H - 14, barW = W - PAD_L - PAD_R;
+  const grad = cc.createLinearGradient(barX, 0, barX + barW, 0);
+  for (let i = 0; i <= 10; i++) grad.addColorStop(i / 10, heatmapColor(i / 10));
+  cc.fillStyle = grad; cc.fillRect(barX, barY, barW, 5);
+  cc.fillStyle = '#6b7280'; cc.font = '7px sans-serif';
+  cc.textAlign = 'left';  cc.fillText('0', barX, barY - 2);
+  cc.textAlign = 'right'; cc.fillText(`${maxG.toFixed(0)} kWh/m²`, barX + barW, barY - 2);
+}
+
+/** Blue → yellow → red heat colour */
+function heatmapColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  if (t < 0.5) {
+    const u = t * 2;
+    return `rgb(${Math.round(u * 255)},${Math.round(u * 200)},${Math.round(255 * (1 - u))})`;
+  }
+  const u = (t - 0.5) * 2;
+  return `rgb(255,${Math.round(200 * (1 - u))},0)`;
+}
+
+document.getElementById('runSimBtn').addEventListener('click', runAnnualSim);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── 3-D Preview ────────────────────────────────────────────────────────────
+const P3D_W = 560, P3D_H = 320;
+const CAM_FOV_DEG   = 30;    // perspective field-of-view half-angle (degrees)
+const CAM_NEAR      = 0.01;  // near-plane clip distance (metres)
+const SIM_CHUNK_SZ  = 400;   // time-steps processed per async chunk
+let cam3d     = {az: 45, el: 32, dist: 30};
+let cam3dDrag = null;
+
+/** Unit vectors for a panel: width (w), up-slope (h), normal (n) */
+function getPanelVecs(tiltDeg) {
+  const tr = tiltDeg * Math.PI / 180;
+  const ar = ARRAY_AZ_RAD;
+  // width direction (SE for az 225°)
+  const wE = Math.sin(ar - Math.PI / 2), wN = Math.cos(ar - Math.PI / 2);
+  // panel normal
+  const nE = Math.sin(tr) * Math.sin(ar);
+  const nN = Math.sin(tr) * Math.cos(ar);
+  const nZ = Math.cos(tr);
+  // height direction = normal × width  (bottom→top along panel surface)
+  const hE = nN * 0   - nZ * wN;   // nN·wZ − nZ·wN  (wZ=0)
+  const hN = nZ * wE  - nE * 0;    // nZ·wE − nE·wZ
+  const hZ = nE * wN  - nN * wE;
+  return {wE, wN, hE, hN, hZ};
+}
+
+/** Four 3-D ENU corner points of panel (r, c) */
+function panelCorners3D(r, c) {
+  const sec  = SECTIONS[sectionOf(r)];
+  const {wE, wN, hE, hN, hZ} = getPanelVecs(sec.tilt);
+  const MOUNT_H = 0.5;                             // bottom rail height (m)
+  const gpos    = panelWorldPos(r, c);
+  const cZ      = MOUNT_H + Math.abs(hZ) * PANEL_H_M / 2;  // panel centre height
+  const hw = PANEL_W_M / 2, hh = PANEL_H_M / 2;
+  const cE = gpos.e, cN = gpos.n;
+  return [
+    {E: cE - wE*hw - hE*hh, N: cN - wN*hw - hN*hh, Z: cZ - hZ*hh},  // BL
+    {E: cE + wE*hw - hE*hh, N: cN + wN*hw - hN*hh, Z: cZ - hZ*hh},  // BR
+    {E: cE + wE*hw + hE*hh, N: cN + wN*hw + hN*hh, Z: cZ + hZ*hh},  // TR
+    {E: cE - wE*hw + hE*hh, N: cN - wN*hw + hN*hh, Z: cZ + hZ*hh},  // TL
+  ];
+}
+
+/** Perspective-project a world ENU point onto the 3-D canvas */
+function project3D(E, N, Z) {
+  const azR = cam3d.az * Math.PI / 180;
+  const elR = cam3d.el * Math.PI / 180;
+  const cd  = cam3d.dist;
+  const camE = cd * Math.sin(azR) * Math.cos(elR);
+  const camN = cd * Math.cos(azR) * Math.cos(elR);
+  const camZ = cd * Math.sin(elR);
+
+  // Look direction (toward origin, unit vector)
+  const lE = -camE / cd, lN = -camN / cd, lZ = -camZ / cd;
+  // Camera right (perpendicular to look in horizontal plane)
+  const rLen = Math.hypot(lE, lN) || Number.EPSILON;
+  const rE = lN / rLen, rN = -lE / rLen;   // rZ = 0
+  // Camera up = right × look
+  const uE = -lZ * rN;   // rN·lZ − rZ·lN  (rZ=0)
+  const uN =  lZ * rE;   // rZ·lE − rE·lZ  (rZ=0)
+  const uZ = rE * lN - rN * lE;
+
+  const dE = E - camE, dN = N - camN, dZ = Z - camZ;
+  const cx = dE * rE + dN * rN;
+  const cy = dE * uE + dN * uN + dZ * uZ;
+  const cz = dE * lE + dN * lN + dZ * lZ;
+
+  if (cz >= -CAM_NEAR) return null;   // behind camera
+  const focal = (P3D_W * 0.5) / Math.tan(CAM_FOV_DEG * Math.PI / 180);
+  return {
+    x: (cx / (-cz)) * focal + P3D_W / 2,
+    y: -(cy / (-cz)) * focal + P3D_H / 2,
+    depth: -cz,
+  };
+}
+
+function draw3dPreview() {
+  const canvas = document.getElementById('preview3dCanvas');
+  if (!canvas || !canvas.width) return;
+  const cc = canvas.getContext('2d');
+  const W  = canvas.width, H = canvas.height;
+
+  cc.fillStyle = '#0d1b2a'; cc.fillRect(0, 0, W, H);
+
+  // Ground quad
+  const gc = [[-18,-18],[18,-18],[18,18],[-18,18]].map(([e,n]) => project3D(e, n, 0));
+  if (gc.every(p => p)) {
+    cc.fillStyle = '#0a1a0a';
+    cc.beginPath(); cc.moveTo(gc[0].x, gc[0].y);
+    gc.slice(1).forEach(p => cc.lineTo(p.x, p.y));
+    cc.closePath(); cc.fill();
+    cc.strokeStyle = '#1a3a1a'; cc.lineWidth = 0.5; cc.stroke();
+  }
+
+  // Collect panel quads, depth-sort (painter's algorithm)
+  const quads = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const corners = panelCorners3D(r, c);
+      const proj    = corners.map(p => project3D(p.E, p.N, p.Z));
+      if (proj.some(p => !p)) continue;
+      const avgD = proj.reduce((s, p) => s + p.depth, 0) / proj.length;
+      quads.push({proj, avgD, G: effectiveG(r, c), color: SECTIONS[sectionOf(r)].color});
+    }
+  }
+  quads.sort((a, b) => b.avgD - a.avgD);
+
+  for (const {proj, G, color} of quads) {
+    cc.beginPath(); cc.moveTo(proj[0].x, proj[0].y);
+    proj.slice(1).forEach(p => cc.lineTo(p.x, p.y));
+    cc.closePath();
+    cc.fillStyle   = blendHex(color, '#1a2535', 1 - G * 0.88);
+    cc.strokeStyle = '#0d192688'; cc.lineWidth = 0.7;
+    cc.fill(); cc.stroke();
+  }
+
+  // Trees in 3-D
+  for (const tree of trees) {
+    // Trunk (as a thick line)
+    const tBot = project3D(tree.e, tree.n, 0);
+    const tTop = project3D(tree.e, tree.n, tree.h * 0.65);
+    if (tBot && tTop) {
+      cc.strokeStyle = '#78350f'; cc.lineWidth = 3;
+      cc.beginPath(); cc.moveTo(tBot.x, tBot.y); cc.lineTo(tTop.x, tTop.y); cc.stroke();
+    }
+    // Crown (octagon approximation)
+    const crownPts = [];
+    const crownZ   = tree.h * 0.70;
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * 2 * Math.PI;
+      const p   = project3D(tree.e + tree.crown * Math.cos(ang), tree.n + tree.crown * Math.sin(ang), crownZ);
+      if (p) crownPts.push(p);
+    }
+    if (crownPts.length > 2) {
+      cc.save(); cc.globalAlpha = 0.82;
+      cc.fillStyle = '#14532d'; cc.strokeStyle = '#166534'; cc.lineWidth = 1;
+      cc.beginPath(); cc.moveTo(crownPts[0].x, crownPts[0].y);
+      crownPts.slice(1).forEach(p => cc.lineTo(p.x, p.y));
+      cc.closePath(); cc.fill(); cc.stroke();
+      cc.restore();
+    }
+  }
+
+  // Sun sphere
+  const sp = solarPosition(buildDateFromUI());
+  if (sp.altitude > 0) {
+    const sd  = 26;
+    const alR = sp.altitude * Math.PI / 180;
+    const azR = sp.azimuth  * Math.PI / 180;
+    const sunPt = project3D(
+      Math.sin(azR) * Math.cos(alR) * sd,
+      Math.cos(azR) * Math.cos(alR) * sd,
+      Math.sin(alR) * sd
+    );
+    if (sunPt) {
+      cc.fillStyle = '#fbbf24';
+      cc.beginPath(); cc.arc(sunPt.x, sunPt.y, 9, 0, 2 * Math.PI); cc.fill();
+      cc.strokeStyle = '#fde68a88'; cc.lineWidth = 1;
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * 2 * Math.PI;
+        cc.beginPath();
+        cc.moveTo(sunPt.x + Math.cos(ang) * 12, sunPt.y + Math.sin(ang) * 12);
+        cc.lineTo(sunPt.x + Math.cos(ang) * 17, sunPt.y + Math.sin(ang) * 17);
+        cc.stroke();
+      }
+    }
+  }
+
+  // ENU axis indicator (bottom-left)
+  const axLen = 18, axX = 26, axY = H - 26;
+  const axesDef = [{e:1,n:0,z:0,c:'#f87171',l:'E'},{e:0,n:1,z:0,c:'#4ade80',l:'N'},{e:0,n:0,z:1,c:'#60a5fa',l:'Z'}];
+  axesDef.forEach(({e: ae, n: an, z: az2, c: ac, l: al}) => {
+    const o = project3D(0, 0, 0), t2 = project3D(ae * 3, an * 3, az2 * 3);
+    if (!o || !t2) return;
+    const dx = t2.x - o.x, dy = t2.y - o.y;
+    const len = Math.hypot(dx, dy) || 1;
+    cc.strokeStyle = ac; cc.lineWidth = 1.8;
+    cc.beginPath(); cc.moveTo(axX, axY); cc.lineTo(axX + dx/len*axLen, axY + dy/len*axLen); cc.stroke();
+    cc.fillStyle = ac; cc.font = '8px sans-serif'; cc.textAlign = 'center';
+    cc.fillText(al, axX + dx/len*(axLen+8), axY + dy/len*(axLen+8) + 3);
+  });
+
+  // Drag-hint text
+  cc.fillStyle = '#4b5563'; cc.font = '9px sans-serif'; cc.textAlign = 'right';
+  cc.fillText('drag to rotate  |  scroll to zoom', W - 8, H - 8);
+}
+
+function init3dPreview() {
+  const canvas = document.getElementById('preview3dCanvas');
+  canvas.width  = P3D_W;
+  canvas.height = P3D_H;
+
+  function getPos(ev) {
+    const bb  = canvas.getBoundingClientRect();
+    const src = ev.touches ? ev.touches[0] : ev;
+    return {x: src.clientX - bb.left, y: src.clientY - bb.top};
+  }
+
+  canvas.addEventListener('mousedown',  ev => { cam3dDrag = getPos(ev); });
+  canvas.addEventListener('mousemove',  ev => {
+    if (!cam3dDrag) return;
+    const p = getPos(ev);
+    cam3d.az  = (cam3d.az + (p.x - cam3dDrag.x) * 0.45 + 360) % 360;
+    cam3d.el  = Math.max(5, Math.min(88, cam3d.el - (p.y - cam3dDrag.y) * 0.3));
+    cam3dDrag = p;
+    draw3dPreview();
+  });
+  canvas.addEventListener('mouseup',    () => { cam3dDrag = null; });
+  canvas.addEventListener('mouseleave', () => { cam3dDrag = null; });
+  canvas.addEventListener('wheel', ev => {
+    cam3d.dist = Math.max(8, Math.min(80, cam3d.dist + ev.deltaY * 0.06));
+    draw3dPreview(); ev.preventDefault();
+  }, {passive: false});
+  canvas.addEventListener('touchstart', ev => { cam3dDrag = getPos(ev); ev.preventDefault(); }, {passive: false});
+  canvas.addEventListener('touchmove',  ev => {
+    if (!cam3dDrag) return;
+    const p = getPos(ev);
+    cam3d.az  = (cam3d.az + (p.x - cam3dDrag.x) * 0.45 + 360) % 360;
+    cam3d.el  = Math.max(5, Math.min(88, cam3d.el - (p.y - cam3dDrag.y) * 0.3));
+    cam3dDrag = p;
+    draw3dPreview(); ev.preventDefault();
+  }, {passive: false});
+  canvas.addEventListener('touchend', () => { cam3dDrag = null; });
+}
 </script>
 </body>
 </html>
