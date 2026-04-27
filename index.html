@@ -105,8 +105,8 @@
       <div class="array-wrap"><canvas id="arrayCanvas"></canvas></div>
       <!-- Section legend -->
       <div style="display:flex;gap:12px;margin-top:6px;font-size:0.72rem;">
-        <span><span style="display:inline-block;width:12px;height:12px;background:#60a5fa;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Top (R1–5) tilt&minus;30°&nbsp;az&nbsp;220°</span>
-        <span><span style="display:inline-block;width:12px;height:12px;background:#f97316;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Bottom (R6–8) tilt&nbsp;30°&nbsp;az&nbsp;255°</span>
+        <span><span style="display:inline-block;width:12px;height:12px;background:#60a5fa;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Top (R1–5) tilt&nbsp;+30°&nbsp;az&nbsp;225°</span>
+        <span><span style="display:inline-block;width:12px;height:12px;background:#f97316;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Bottom (R6–8) tilt&nbsp;&minus;20°&nbsp;az&nbsp;225°</span>
       </div>
       <div class="array-ctrls">
         <button class="btn" id="clearBtn">Clear Shade</button>
@@ -149,12 +149,12 @@
       </div>
       <div class="solar-grid" style="margin-top:8px;">
         <div class="solar-stat sec-top">
-          <div class="sl">&#9650; Top section (tilt &minus;30°, az 220°)</div>
+          <div class="sl">&#9650; Top section (tilt +30°, az 225°)</div>
           <div class="sv" id="poaTop">—</div>
           <div class="su">W/m² POA &nbsp;(<span id="poaTopPct" style="color:#4ade80">—</span>% of STC)</div>
         </div>
         <div class="solar-stat sec-bot">
-          <div class="sl">&#9660; Bottom section (tilt 30°, az 255°)</div>
+          <div class="sl">&#9660; Bottom section (tilt &minus;20°, az 225°)</div>
           <div class="sv" id="poaBot">—</div>
           <div class="su">W/m² POA &nbsp;(<span id="poaBotPct" style="color:#4ade80">—</span>% of STC)</div>
         </div>
@@ -233,11 +233,11 @@ const NEER_LAT = NEER.lat * Math.PI / 180; // radians
 // rowMin/rowMax are inclusive (0-indexed).
 // tilt: degrees from horizontal. Positive = panel face toward azimuth direction.
 //       Negative = panel normal tilts to the OPPOSITE side of azimuth
-//       (e.g. tilt −30°, az 220° is mathematically equivalent to tilt +30°, az 40° NNE-facing).
-// azimuth: degrees clockwise from North (180° = South, 255° ≈ WSW, 220° ≈ SSW).
+//       (e.g. tilt −20°, az 225° is mathematically equivalent to tilt +20°, az 45° NE-facing).
+// azimuth: degrees clockwise from North (180° = South, 225° ≈ SW).
 const SECTIONS = [
-  { name: 'Top',    rowMin: 0, rowMax: 4, tilt: -30, azimuth: 220, color: '#60a5fa' },
-  { name: 'Bottom', rowMin: 5, rowMax: 7, tilt:  30, azimuth: 255, color: '#f97316' },
+  { name: 'Top',    rowMin: 0, rowMax: 4, tilt: +30, azimuth: 225, color: '#60a5fa' },
+  { name: 'Bottom', rowMin: 5, rowMax: 7, tilt: -20, azimuth: 225, color: '#f97316' },
 ];
 const SECTION_DIV = 4; // divider between rows 4 and 5 (0-indexed)
 
