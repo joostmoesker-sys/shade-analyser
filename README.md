@@ -122,11 +122,11 @@ The 8-row array is physically divided into two sections with different mounting 
 
 | Section | Rows | Tilt | Azimuth |
 |---|---|---|---|
-| **Top** | 1–5 (rows 0–4) | −30° | 220° (SSW) |
-| **Bottom** | 6–8 (rows 5–7) | +30° | 255° (WSW) |
+| **Top** | 1–5 (rows 0–4) | +30° | 225° (SW) |
+| **Bottom** | 6–8 (rows 5–7) | −20° | 225° (SW) |
 
 > **Tilt convention**: positive tilt = panel faces the azimuth direction; negative tilt = panel normal tilts to the opposite side of the azimuth direction.  
-> Tilt −30°, az 220° is mathematically equivalent to tilt +30°, az 40° (NNE-facing), which would represent the rear slope of a dual-pitch roof.
+> Tilt −20°, az 225° is mathematically equivalent to tilt +20°, az 45° (NE-facing), which would represent the rear slope of a dual-pitch roof.
 
 A coloured section-boundary line is drawn on the canvas between rows 5 and 6.
 
