@@ -85,6 +85,27 @@
 
     .chart-wrap { position: relative; height: 300px; }
     .specs-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); gap: 6px; font-size:.78rem; color:#9ca3af; }
+
+    /* ── Scene map ──────────────────────────────────────────────────────────── */
+    #mapCanvas { display:block; border-radius:6px; cursor:crosshair; touch-action:none; width:100%; max-width:700px; }
+    .map-ctrls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; font-size:0.77rem; }
+    .tree-props-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; font-size:0.77rem;
+      color:#9ca3af; background:#111827; border:1px solid #374151; border-radius:6px; padding:8px 10px; }
+    .tree-props-row label { color:#9ca3af; white-space:nowrap; }
+    .tree-props-row input[type="range"] { width:80px; }
+
+    /* ── Progress bar ────────────────────────────────────────────────────────── */
+    .progress-wrap { flex:1; min-width:100px; max-width:220px; height:7px; background:#374151; border-radius:4px; overflow:hidden; }
+    .progress-fill { height:100%; background:linear-gradient(90deg,#38bdf8,#4ade80); border-radius:4px; transition:width 0.25s; width:0%; }
+
+    /* ── Yearly results ──────────────────────────────────────────────────────── */
+    .monthly-chart-wrap { position:relative; height:170px; margin-top:10px; }
+    #monthlyChart { display:block; }
+    .sim-note { font-size:0.68rem; color:#4b5563; margin-top:6px; }
+
+    /* ── 3D preview ──────────────────────────────────────────────────────────── */
+    #previewCanvas { display:block; border-radius:6px; width:100%; }
+    .preview-legend { display:flex; gap:10px; flex-wrap:wrap; font-size:0.71rem; color:#6b7280; margin-top:6px; }
   </style>
 </head>
 <body>
@@ -160,8 +181,34 @@
         </div>
       </div>
       <div style="font-size:0.67rem;color:#4b5563;margin-top:6px;">
-        Irradiance automatically applied to all panels. Paint shade to simulate obstructions on top.
+        Irradiance automatically applied to all panels. Paint shade or place trees on the scene map to simulate obstructions.
       </div>
+    </div>
+
+    <!-- Scene Map -->
+    <div class="card">
+      <h3>&#127758; Scene Map
+        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">
+          &nbsp;top-down &middot; click empty area = add tree &middot; click tree = select &amp; drag
+        </span>
+      </h3>
+      <canvas id="mapCanvas" height="300"></canvas>
+      <div class="map-ctrls">
+        <button class="btn" id="clearTreesBtn">&#127795; Clear Trees</button>
+        <span id="treeCountLabel" style="color:#6b7280;font-size:0.75rem">No trees</span>
+        <span style="flex:1"></span>
+        <span style="font-size:0.71rem;color:#4b5563">&#9632; = 10 m</span>
+      </div>
+      <div class="tree-props-row" id="treePropsRow" style="display:none">
+        <label>H:</label>
+        <input type="range" id="treeHeightSlider" min="2" max="25" value="8">
+        <span id="treeHeightVal" style="color:#fbbf24;min-width:26px">8 m</span>
+        <label style="margin-left:6px">Crown&#8960;:</label>
+        <input type="range" id="treeCrownSlider" min="1" max="10" value="3">
+        <span id="treeCrownVal" style="color:#4ade80;min-width:26px">3 m</span>
+        <button class="btn" id="deleteTreeBtn" style="margin-left:6px;border-color:#ef4444;color:#ef4444">&#10005; Delete</button>
+      </div>
+      <p class="instructions">Shadows from trees are automatically applied to the array based on current date &amp; time.</p>
     </div>
 
     <!-- Panel specs -->
@@ -208,6 +255,50 @@
         <span style="font-size:.7rem;color:#4b5563;text-transform:none;font-weight:400">&mdash; solid=I(A) &nbsp;&middot;&nbsp; dashed=P(W) &nbsp;&middot;&nbsp; &#9733;=MPP</span>
       </h3>
       <div class="chart-wrap"><canvas id="ivChart"></canvas></div>
+    </div>
+
+    <!-- Yearly Energy Simulation -->
+    <div class="card">
+      <h3>&#128197; Yearly Energy Simulation
+        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">
+          &nbsp;clear-sky model &middot; tree shade included &middot; 36 sample days
+        </span>
+      </h3>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn" id="runSimBtn" style="border-color:#4ade80;color:#4ade80">&#9654; Run Yearly Simulation</button>
+        <span id="simStatusLabel" style="font-size:0.75rem;color:#6b7280">—</span>
+        <div class="progress-wrap" id="simProgressWrap" style="display:none">
+          <div class="progress-fill" id="simProgressFill"></div>
+        </div>
+      </div>
+      <div id="simResultsDiv" style="display:none">
+        <div class="comp-wrap">
+          <table class="comp-table">
+            <thead><tr>
+              <th>Config</th><th>Yearly kWh</th><th>% of best</th><th>Avg kWh/day</th>
+            </tr></thead>
+            <tbody id="yearlyTableBody"></tbody>
+          </table>
+        </div>
+        <div class="monthly-chart-wrap"><canvas id="monthlyChart"></canvas></div>
+        <p class="sim-note">Estimate based on clear-sky irradiance (no cloud losses). Actual production ~60–80% of this value depending on local climate. Tree shade from current scene is included.</p>
+      </div>
+    </div>
+
+    <!-- 3D Scene Preview -->
+    <div class="card">
+      <h3>&#128301; 3D Scene Preview
+        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">
+          &nbsp;isometric &middot; updates with time &amp; scene layout
+        </span>
+      </h3>
+      <canvas id="previewCanvas" height="260"></canvas>
+      <div class="preview-legend">
+        <span><span style="display:inline-block;width:10px;height:10px;background:#60a5fa;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Top section (R1–5)</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#f97316;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Bottom section (R6–8)</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#4ade80;border-radius:50%;vertical-align:middle;margin-right:3px"></span>Trees</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#fbbf24;border-radius:50%;vertical-align:middle;margin-right:3px"></span>Sun</span>
+      </div>
     </div>
 
   </div>
@@ -298,12 +389,24 @@ const CONFIGS = [
 
 // ── State ──────────────────────────────────────────────────────────────────
 let highlightedConfig = 'A';
-// shade[r][c]: user-painted shade factor (1 = no obstruction, 0 = fully blocked)
+// manualShade[r][c]: user-painted shade factor (1 = open, shadeLevel = blocked)
+let manualShade = Array.from({length:ROWS}, () => Array(COLS).fill(1.0));
+// currentTreeShade[r][c]: auto-computed from tree positions & sun angle
+let currentTreeShade = Array.from({length:ROWS}, () => Array(COLS).fill(1.0));
+// shade[r][c]: combined = min(manual, tree) — used by effectiveG
 let shade = Array.from({length:ROWS}, () => Array(COLS).fill(1.0));
 // irr[r][c]: POA irradiance / 1000 W/m² for that panel's section (computed from solar model)
 let irr = Array.from({length:ROWS}, () => Array(COLS).fill(1.0));
 let shadeLevel = 0.05;
 let isPainting = false, paintMode = 'shade';
+let lastSunPos = { altitude: 0, azimuth: 180 }; // updated by updateIrradiance
+
+/** Combine manual + tree shade into the shade[][] array used by physics */
+function combineShadeMaps() {
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      shade[r][c] = Math.min(manualShade[r][c], currentTreeShade[r][c]);
+}
 
 /** Combined effective irradiance fraction for physics calculations */
 function effectiveG(r, c) { return Math.max(0, irr[r][c] * shade[r][c]); }
@@ -554,7 +657,8 @@ canvas.addEventListener('touchend',   () => { isPainting=false; });
 function applyPaint(pos) {
   const p = panelAt(pos.x, pos.y);
   if (!p) return;
-  shade[p.r][p.c] = paintMode==='shade' ? shadeLevel : 1.0;
+  manualShade[p.r][p.c] = paintMode==='shade' ? shadeLevel : 1.0;
+  combineShadeMaps();
   scheduleUpdate();
 }
 
@@ -708,6 +812,10 @@ function updateIrradiance(date) {
     const frac = Math.min(1, poaPerSection[si] / STC_IRRAD);
     for (let c = 0; c < COLS; c++) irr[r][c] = frac;
   }
+
+  // Record sun position and recompute tree shadows
+  lastSunPos = { altitude: sp.altitude, azimuth: sp.azimuth };
+  recomputeTreeShadow();
 
   // ── Solar info UI ────────────────────────────────────────────────────────
   const ss = sunriseSunset(n);
@@ -989,6 +1097,720 @@ function drawStar(cc,cx,cy,r,color){
 }
 function niceMax(val,step){return Math.ceil(val/step)*step;}
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SCENE: panel positions, tree management, shadow geometry
+// ═══════════════════════════════════════════════════════════════════════════
+
+const COL_SPACING = 1.8;  // meters between panel column centres
+const ROW_SPACING = 1.1;  // meters between panel row centres
+
+/** Scene (ENU) coordinates (m) of panel centre for row r, col c. Origin = array centre. */
+function panelScenePos(r, c) {
+  return {
+    x: COL_SPACING * (c - (COLS - 1) / 2),
+    y: ROW_SPACING * ((ROWS - 1) / 2 - r)
+  };
+}
+
+let sceneTrees    = [];   // [{id, x, y, height, crownRadius}]
+let nextTreeId    = 0;
+let selectedTreeId = null;
+
+function addTree(x, y) {
+  const t = { id: nextTreeId++, x, y, height: 8, crownRadius: 3 };
+  sceneTrees.push(t);
+  selectTree(t.id);
+  recomputeTreeShadow();
+  drawSceneMap();
+  draw3DPreview();
+}
+
+function selectTree(id) {
+  selectedTreeId = id;
+  const t = sceneTrees.find(tr => tr.id === id);
+  if (!t) { deselectTree(); return; }
+  document.getElementById('treePropsRow').style.display = 'flex';
+  document.getElementById('treeHeightSlider').value = t.height;
+  document.getElementById('treeHeightVal').textContent = t.height + ' m';
+  document.getElementById('treeCrownSlider').value = t.crownRadius;
+  document.getElementById('treeCrownVal').textContent = t.crownRadius + ' m';
+  updateTreeCountLabel();
+}
+
+function deselectTree() {
+  selectedTreeId = null;
+  document.getElementById('treePropsRow').style.display = 'none';
+}
+
+function updateTreeCountLabel() {
+  const n = sceneTrees.length;
+  document.getElementById('treeCountLabel').textContent =
+    n === 0 ? 'No trees' : n + ' tree' + (n === 1 ? '' : 's');
+}
+
+/** Returns true if point (px, py) lies within the shadow ellipse cast by tree. */
+function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
+  if (tan_alt < 0.01) return false;
+  const shadow_len = Math.min(tree.height / tan_alt, 500);
+  // Shadow centre = ground position of tree-tip shadow
+  const scx = tree.x - shadow_len * Math.sin(az_rad);
+  const scy = tree.y - shadow_len * Math.cos(az_rad);
+  const dx = px - scx, dy = py - scy;
+  // Shadow direction unit vector (away from sun)
+  const ux = -Math.sin(az_rad), uy = -Math.cos(az_rad);
+  const along = dx * ux + dy * uy;               // component along shadow axis
+  const perp  = Math.abs(dx * uy - dy * ux);     // perpendicular component
+  const ra    = Math.min(tree.crownRadius / tan_alt, 400); // elongated semi-axis
+  const rp    = tree.crownRadius;                          // lateral semi-axis
+  return (along * along) / (ra * ra) + (perp * perp) / (rp * rp) <= 1.0;
+}
+
+/** Recompute currentTreeShade[][] from sceneTrees + lastSunPos, then recombine. */
+function recomputeTreeShadow() {
+  const treeShade = Array.from({length:ROWS}, () => Array(COLS).fill(1.0));
+  if (sceneTrees.length > 0 && lastSunPos.altitude > 0.5) {
+    const az_rad = lastSunPos.azimuth * Math.PI / 180;
+    const tan_alt = Math.tan(Math.max(1, lastSunPos.altitude) * Math.PI / 180);
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const pos = panelScenePos(r, c);
+        for (const tree of sceneTrees) {
+          if (panelInTreeShadow(pos.x, pos.y, tree, az_rad, tan_alt)) {
+            treeShade[r][c] = shadeLevel;
+            break;
+          }
+        }
+      }
+    }
+  }
+  currentTreeShade = treeShade;
+  combineShadeMaps();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2D SCENE MAP
+// ═══════════════════════════════════════════════════════════════════════════
+
+const mapCanvas = document.getElementById('mapCanvas');
+const mapCtx    = mapCanvas.getContext('2d');
+const MAP_SCALE = 9;   // pixels per metre
+
+function sceneToMap(x, y) {
+  return { mx: mapCanvas.width / 2 + x * MAP_SCALE,
+           my: mapCanvas.height / 2 - y * MAP_SCALE };
+}
+function mapToScene(mx, my) {
+  return { x: (mx - mapCanvas.width / 2) / MAP_SCALE,
+           y: (mapCanvas.height / 2 - my) / MAP_SCALE };
+}
+function treeAtMapPos(mx, my) {
+  const {x, y} = mapToScene(mx, my);
+  for (let i = sceneTrees.length - 1; i >= 0; i--) {
+    const t = sceneTrees[i];
+    const d = Math.hypot(x - t.x, y - t.y);
+    if (d <= t.crownRadius + 0.5) return t;
+  }
+  return null;
+}
+
+function drawSceneMap() {
+  const W = mapCanvas.width, H = mapCanvas.height;
+  mapCtx.clearRect(0, 0, W, H);
+
+  // Background
+  mapCtx.fillStyle = '#0c1a0d'; mapCtx.fillRect(0, 0, W, H);
+
+  // 10 m grid
+  mapCtx.strokeStyle = '#182818'; mapCtx.lineWidth = 0.5;
+  const gs = 10 * MAP_SCALE;
+  const ox = W/2 % gs, oy = H/2 % gs;
+  for (let x = ox; x < W; x += gs) { mapCtx.beginPath(); mapCtx.moveTo(x,0); mapCtx.lineTo(x,H); mapCtx.stroke(); }
+  for (let y = oy; y < H; y += gs) { mapCtx.beginPath(); mapCtx.moveTo(0,y); mapCtx.lineTo(W,y); mapCtx.stroke(); }
+
+  // Axes
+  mapCtx.strokeStyle = '#1f3320'; mapCtx.lineWidth = 1;
+  mapCtx.beginPath(); mapCtx.moveTo(W/2,0); mapCtx.lineTo(W/2,H); mapCtx.stroke();
+  mapCtx.beginPath(); mapCtx.moveTo(0,H/2); mapCtx.lineTo(W,H/2); mapCtx.stroke();
+
+  // Tree shadows
+  if (sceneTrees.length > 0 && lastSunPos.altitude > 0.5) drawMapTreeShadows();
+
+  // Array footprint
+  drawMapArray();
+
+  // Trees
+  sceneTrees.forEach(t => drawMapTree(t));
+
+  // Sun arrow
+  if (lastSunPos.altitude > 0.5) drawMapSunArrow();
+
+  // North arrow
+  drawMapNorthArrow(W - 26, 26);
+
+  // Scale bar (10 m)
+  drawMapScaleBar(10, H - 12, 10 * MAP_SCALE);
+}
+
+function drawMapArray() {
+  SECTIONS.forEach((sec, si) => {
+    for (let r = sec.rowMin; r <= sec.rowMax; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const pos = panelScenePos(r, c);
+        const {mx, my} = sceneToMap(pos.x, pos.y);
+        const pw = COL_SPACING * MAP_SCALE * 0.87;
+        const ph = ROW_SPACING * MAP_SCALE * 0.87;
+        const G  = effectiveG(r, c);
+        const panelShade = 1 - G * 0.6 - 0.2;
+        mapCtx.fillStyle = blendHex(sec.color, '#0a0f0a', panelShade);
+        mapCtx.fillRect(mx - pw/2, my - ph/2, pw, ph);
+        mapCtx.strokeStyle = sec.color + '55'; mapCtx.lineWidth = 0.5;
+        mapCtx.strokeRect(mx - pw/2, my - ph/2, pw, ph);
+      }
+    }
+  });
+
+  // Array bounding box
+  const tl = panelScenePos(0, 0), br = panelScenePos(ROWS-1, COLS-1);
+  const {mx:x1, my:y1} = sceneToMap(tl.x - COL_SPACING*0.5, tl.y + ROW_SPACING*0.5);
+  const {mx:x2, my:y2} = sceneToMap(br.x + COL_SPACING*0.5, br.y - ROW_SPACING*0.5);
+  mapCtx.strokeStyle = '#e9456088'; mapCtx.lineWidth = 1.5; mapCtx.setLineDash([4,3]);
+  mapCtx.strokeRect(x1, y1, x2-x1, y2-y1);
+  mapCtx.setLineDash([]);
+  mapCtx.fillStyle = '#e94560'; mapCtx.font = 'bold 8px sans-serif'; mapCtx.textAlign = 'center';
+  mapCtx.fillText('PV ARRAY', (x1+x2)/2, y1 - 3);
+}
+
+function drawMapTreeShadows() {
+  const az_rad  = lastSunPos.azimuth  * Math.PI / 180;
+  const tan_alt = Math.tan(Math.max(1, lastSunPos.altitude) * Math.PI / 180);
+
+  mapCtx.save(); mapCtx.globalAlpha = 0.35;
+  sceneTrees.forEach(tree => {
+    const shadow_len = Math.min(tree.height / tan_alt, 200);
+    const scx = tree.x - shadow_len * Math.sin(az_rad);
+    const scy = tree.y - shadow_len * Math.cos(az_rad);
+    const {mx: ex, my: ey} = sceneToMap(scx, scy);
+    const {mx: tx, my: ty} = sceneToMap(tree.x, tree.y);
+
+    const rp = tree.crownRadius * MAP_SCALE;
+    const ra = Math.min(tree.crownRadius / tan_alt, 150) * MAP_SCALE;
+    const screenAngle = Math.atan2(ey - ty, ex - tx);
+
+    mapCtx.save();
+    mapCtx.translate(ex, ey);
+    mapCtx.rotate(screenAngle - Math.PI/2);
+    mapCtx.scale(ra/rp, 1);
+    mapCtx.fillStyle = '#111800';
+    mapCtx.beginPath(); mapCtx.arc(0, 0, rp, 0, 2*Math.PI); mapCtx.fill();
+    mapCtx.restore();
+  });
+  mapCtx.restore();
+}
+
+function drawMapTree(tree) {
+  const {mx, my} = sceneToMap(tree.x, tree.y);
+  const rp = tree.crownRadius * MAP_SCALE;
+  const isSel = tree.id === selectedTreeId;
+
+  // Dark inner
+  mapCtx.fillStyle = isSel ? '#1a4520' : '#0d2010';
+  mapCtx.beginPath(); mapCtx.arc(mx, my, rp * 0.55, 0, 2*Math.PI); mapCtx.fill();
+
+  // Crown gradient
+  const gr = mapCtx.createRadialGradient(mx - rp*0.3, my - rp*0.3, 0, mx, my, rp);
+  gr.addColorStop(0, isSel ? '#86efac' : '#4ade80');
+  gr.addColorStop(0.65, isSel ? '#22c55e' : '#16a34a');
+  gr.addColorStop(1,   isSel ? '#14532d' : '#052e16');
+  mapCtx.fillStyle = gr;
+  mapCtx.beginPath(); mapCtx.arc(mx, my, rp, 0, 2*Math.PI); mapCtx.fill();
+
+  if (isSel) {
+    mapCtx.strokeStyle = '#fbbf24'; mapCtx.lineWidth = 2; mapCtx.setLineDash([3,2]);
+    mapCtx.beginPath(); mapCtx.arc(mx, my, rp + 3, 0, 2*Math.PI); mapCtx.stroke();
+    mapCtx.setLineDash([]);
+  }
+
+  // Height label
+  const fs = Math.max(8, Math.min(11, rp * 0.6));
+  mapCtx.fillStyle = '#fff'; mapCtx.font = `bold ${fs}px sans-serif`;
+  mapCtx.textAlign = 'center'; mapCtx.textBaseline = 'middle';
+  mapCtx.fillText(tree.height + 'm', mx, my);
+  mapCtx.textBaseline = 'alphabetic';
+}
+
+function drawMapNorthArrow(x, y) {
+  mapCtx.save(); mapCtx.translate(x, y);
+  mapCtx.strokeStyle = '#9ca3af'; mapCtx.lineWidth = 1.5;
+  mapCtx.beginPath(); mapCtx.moveTo(0, -13); mapCtx.lineTo(0, 13); mapCtx.stroke();
+  mapCtx.beginPath(); mapCtx.moveTo(-4, -7); mapCtx.lineTo(0, -13); mapCtx.lineTo(4, -7); mapCtx.stroke();
+  mapCtx.fillStyle = '#9ca3af'; mapCtx.font = 'bold 10px sans-serif';
+  mapCtx.textAlign = 'center'; mapCtx.fillText('N', 0, -17);
+  mapCtx.restore();
+}
+
+function drawMapScaleBar(x, y, barW) {
+  mapCtx.strokeStyle = '#6b7280'; mapCtx.lineWidth = 1.5;
+  mapCtx.beginPath(); mapCtx.moveTo(x, y); mapCtx.lineTo(x+barW, y); mapCtx.stroke();
+  mapCtx.beginPath(); mapCtx.moveTo(x, y-3); mapCtx.lineTo(x, y+3); mapCtx.stroke();
+  mapCtx.beginPath(); mapCtx.moveTo(x+barW, y-3); mapCtx.lineTo(x+barW, y+3); mapCtx.stroke();
+  mapCtx.fillStyle = '#6b7280'; mapCtx.font = '9px sans-serif'; mapCtx.textAlign = 'center';
+  mapCtx.fillText('10 m', x + barW/2, y - 5);
+}
+
+function drawMapSunArrow() {
+  const az = lastSunPos.azimuth * Math.PI / 180;
+  const len = 22;
+  const cx = mapCanvas.width / 2, cy = mapCanvas.height / 2;
+  // Sun is in direction (sin(az), cos(az)) from North — draw arrow pointing toward sun
+  const ex = cx + Math.sin(az) * len, ey = cy - Math.cos(az) * len;
+  mapCtx.strokeStyle = '#fbbf24'; mapCtx.lineWidth = 1.5; mapCtx.setLineDash([3,2]);
+  mapCtx.beginPath(); mapCtx.moveTo(cx, cy); mapCtx.lineTo(ex, ey); mapCtx.stroke();
+  mapCtx.setLineDash([]);
+  mapCtx.fillStyle = '#fbbf24';
+  mapCtx.beginPath(); mapCtx.arc(ex, ey, 3.5, 0, 2*Math.PI); mapCtx.fill();
+}
+
+// ── Map mouse / touch interactions ─────────────────────────────────────────
+let mapDragTree = null; // {tree, offX, offY}
+
+function mapCanvasPos(e) {
+  const bb = mapCanvas.getBoundingClientRect();
+  const sx = mapCanvas.width / bb.width, sy = mapCanvas.height / bb.height;
+  const src = e.touches ? e.touches[0] : e;
+  return { mx:(src.clientX-bb.left)*sx, my:(src.clientY-bb.top)*sy };
+}
+
+mapCanvas.addEventListener('mousedown', e => {
+  e.preventDefault();
+  const {mx, my} = mapCanvasPos(e);
+  const hit = treeAtMapPos(mx, my);
+  if (hit) {
+    // Select and prepare drag
+    selectTree(hit.id);
+    const {mx:tx, my:ty} = sceneToMap(hit.x, hit.y);
+    mapDragTree = { tree: hit, offX: mx - tx, offY: my - ty };
+  } else {
+    deselectTree();
+    const {x, y} = mapToScene(mx, my);
+    addTree(x, y);
+  }
+  drawSceneMap();
+});
+
+mapCanvas.addEventListener('mousemove', e => {
+  if (!mapDragTree) return;
+  e.preventDefault();
+  const {mx, my} = mapCanvasPos(e);
+  const {x, y} = mapToScene(mx - mapDragTree.offX, my - mapDragTree.offY);
+  mapDragTree.tree.x = x;
+  mapDragTree.tree.y = y;
+  recomputeTreeShadow();
+  drawSceneMap();
+  scheduleUpdate();
+  draw3DPreview();
+});
+
+mapCanvas.addEventListener('mouseup',    () => { mapDragTree = null; });
+mapCanvas.addEventListener('mouseleave', () => { mapDragTree = null; });
+
+mapCanvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const {mx, my} = mapCanvasPos(e);
+  const hit = treeAtMapPos(mx, my);
+  if (hit) {
+    selectTree(hit.id);
+    const {mx:tx, my:ty} = sceneToMap(hit.x, hit.y);
+    mapDragTree = { tree: hit, offX: mx - tx, offY: my - ty };
+  } else {
+    deselectTree();
+    const {x, y} = mapToScene(mx, my);
+    addTree(x, y);
+  }
+  drawSceneMap();
+}, {passive:false});
+
+mapCanvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!mapDragTree) return;
+  const {mx, my} = mapCanvasPos(e);
+  const {x, y} = mapToScene(mx - mapDragTree.offX, my - mapDragTree.offY);
+  mapDragTree.tree.x = x;
+  mapDragTree.tree.y = y;
+  recomputeTreeShadow();
+  drawSceneMap();
+  scheduleUpdate();
+  draw3DPreview();
+}, {passive:false});
+
+mapCanvas.addEventListener('touchend', () => { mapDragTree = null; });
+
+// ── Map canvas auto-size ────────────────────────────────────────────────────
+function resizeMapCanvas() {
+  const W = Math.min(mapCanvas.parentElement.clientWidth - 28, 700);
+  mapCanvas.width  = W;
+  mapCanvas.height = Math.round(W * 0.58);
+  drawSceneMap();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3D ISOMETRIC PREVIEW
+// ═══════════════════════════════════════════════════════════════════════════
+
+const previewCanvas = document.getElementById('previewCanvas');
+const pCtx          = previewCanvas.getContext('2d');
+const ISO_SCALE     = 7;   // pixels per metre in isometric view
+const PANEL_ELEV    = 1.5; // visual elevation (m) for panel slab
+
+/** Project scene coords (X=East, Y=North, Z=Up) to canvas 2D. */
+function isoProject(X, Y, Z) {
+  const sx = (X - Y)       * 0.866 * ISO_SCALE;
+  const sy = -(X + Y)      * 0.5   * ISO_SCALE - Z * ISO_SCALE;
+  return { sx, sy };
+}
+function isoToCanvas(X, Y, Z) {
+  const {sx, sy} = isoProject(X, Y, Z);
+  return { px: previewCanvas.width/2 + sx,
+           py: previewCanvas.height * 0.62 + sy };
+}
+
+function draw3DPreview() {
+  const W = previewCanvas.width, H = previewCanvas.height;
+  pCtx.clearRect(0, 0, W, H);
+
+  // Sky gradient
+  const sky = pCtx.createLinearGradient(0, 0, 0, H * 0.6);
+  sky.addColorStop(0, '#0c1e3c'); sky.addColorStop(1, '#1a3a5c');
+  pCtx.fillStyle = sky; pCtx.fillRect(0, 0, W, H);
+
+  // Ground plane
+  const gnd = pCtx.createLinearGradient(0, H * 0.5, 0, H);
+  gnd.addColorStop(0, '#0c1f0d'); gnd.addColorStop(1, '#091408');
+  pCtx.fillStyle = gnd; pCtx.fillRect(0, H * 0.5, W, H * 0.5);
+
+  // Ground grid
+  pCtx.strokeStyle = '#182818'; pCtx.lineWidth = 0.5;
+  for (let i = -12; i <= 12; i++) {
+    const a = isoToCanvas(i * 2, -12, 0), b = isoToCanvas(i * 2, 12, 0);
+    const c = isoToCanvas(-12, i * 2, 0), d = isoToCanvas(12, i * 2, 0);
+    pCtx.beginPath(); pCtx.moveTo(a.px, a.py); pCtx.lineTo(b.px, b.py); pCtx.stroke();
+    pCtx.beginPath(); pCtx.moveTo(c.px, c.py); pCtx.lineTo(d.px, d.py); pCtx.stroke();
+  }
+
+  // Sun direction indicator
+  if (lastSunPos.altitude > 0.5) draw3DSun();
+
+  // Draw trees (behind panels if to north/east)
+  const treesNorth = sceneTrees.filter(t => t.y > 0);
+  const treesSouth = sceneTrees.filter(t => t.y <= 0);
+  treesNorth.forEach(t => draw3DTree(t));
+
+  // Panel array — draw back rows first (painter's algorithm)
+  for (let r = ROWS - 1; r >= 0; r--) {
+    for (let c = 0; c < COLS; c++) {
+      draw3DPanel(r, c);
+    }
+  }
+
+  treesSouth.forEach(t => draw3DTree(t));
+}
+
+function draw3DPanel(r, c) {
+  const pos  = panelScenePos(r, c);
+  const si   = sectionOf(r);
+  const sect = SECTIONS[si];
+  const G    = effectiveG(r, c);
+  const baseColor = sect.color;
+
+  // Panel is a flat horizontal rectangle at PANEL_ELEV, tilted slightly by section
+  // Determine tilt for visual: top section slopes up toward back, bottom slopes down
+  const tiltZ = si === 0 ? 0.18 * (r - 2) * ROW_SPACING : -0.1 * (r - 5) * ROW_SPACING;
+
+  const hw = COL_SPACING * 0.43, hh = ROW_SPACING * 0.43;
+  // 4 corners of panel: NW, NE, SE, SW in scene
+  const corners = [
+    [-hw, +hh, PANEL_ELEV + tiltZ + 0.1],
+    [+hw, +hh, PANEL_ELEV + tiltZ + 0.1],
+    [+hw, -hh, PANEL_ELEV + tiltZ],
+    [-hw, -hh, PANEL_ELEV + tiltZ],
+  ].map(([dx, dy, dz]) => isoToCanvas(pos.x + dx, pos.y + dy, dz));
+
+  pCtx.beginPath();
+  pCtx.moveTo(corners[0].px, corners[0].py);
+  corners.slice(1).forEach(p => pCtx.lineTo(p.px, p.py));
+  pCtx.closePath();
+
+  const shadeAmt = 1 - G * 0.75 - 0.15;
+  pCtx.fillStyle = blendHex(baseColor, '#0a0a0a', shadeAmt);
+  pCtx.fill();
+  pCtx.strokeStyle = baseColor + '44'; pCtx.lineWidth = 0.5;
+  pCtx.stroke();
+
+  // Cell lines
+  if (G > 0.1) {
+    pCtx.strokeStyle = `rgba(255,255,255,${0.06 + G * 0.08})`; pCtx.lineWidth = 0.4;
+    const m01 = midPt(corners[0], corners[1]), m23 = midPt(corners[2], corners[3]);
+    pCtx.beginPath(); pCtx.moveTo(m01.px, m01.py); pCtx.lineTo(m23.px, m23.py); pCtx.stroke();
+    const m12 = midPt(corners[1], corners[2]), m30 = midPt(corners[3], corners[0]);
+    pCtx.beginPath(); pCtx.moveTo(m12.px, m12.py); pCtx.lineTo(m30.px, m30.py); pCtx.stroke();
+  }
+}
+
+function midPt(a, b) { return { px:(a.px+b.px)/2, py:(a.py+b.py)/2 }; }
+
+function draw3DTree(tree) {
+  const trunkH = tree.height * 0.55;
+  const crownH = tree.height - trunkH;
+
+  // Trunk: vertical line
+  const base  = isoToCanvas(tree.x, tree.y, 0);
+  const trunk = isoToCanvas(tree.x, tree.y, trunkH);
+  pCtx.strokeStyle = '#713f12'; pCtx.lineWidth = Math.max(1.5, tree.crownRadius * 1.2);
+  pCtx.beginPath(); pCtx.moveTo(base.px, base.py); pCtx.lineTo(trunk.px, trunk.py); pCtx.stroke();
+
+  // Crown: ellipse-like blob using arc (projected circle)
+  const topC = isoToCanvas(tree.x, tree.y, trunkH + crownH * 0.5);
+  const r3d  = tree.crownRadius * ISO_SCALE;
+  // In isometric, a horizontal circle projects to an ellipse with X:Y ratio = cos(30°):sin(30°) = 0.866:0.5
+  const rx = r3d * 0.866 * 1.6, ry = r3d * 0.5 * 1.6;
+
+  const isSel = tree.id === selectedTreeId;
+  const gr = pCtx.createRadialGradient(topC.px - rx*0.3, topC.py - ry*0.4, 0,
+                                       topC.px, topC.py, Math.max(rx, ry));
+  gr.addColorStop(0, isSel ? '#86efac' : '#4ade80');
+  gr.addColorStop(0.7, isSel ? '#16a34a' : '#15803d');
+  gr.addColorStop(1, '#052e16');
+  pCtx.fillStyle = gr;
+  pCtx.beginPath(); pCtx.ellipse(topC.px, topC.py, rx, ry, 0, 0, 2*Math.PI); pCtx.fill();
+
+  if (isSel) {
+    pCtx.strokeStyle = '#fbbf24'; pCtx.lineWidth = 1.5;
+    pCtx.beginPath(); pCtx.ellipse(topC.px, topC.py, rx + 3, ry + 2, 0, 0, 2*Math.PI); pCtx.stroke();
+  }
+}
+
+function draw3DSun() {
+  const altR = lastSunPos.altitude * Math.PI / 180;
+  const azR  = lastSunPos.azimuth  * Math.PI / 180;
+  const dist = 18; // scene metres out in sun direction for indicator
+  const sX = dist * Math.sin(azR), sY = dist * Math.cos(azR);
+  const sZ = dist * Math.tan(altR);
+  const sp = isoToCanvas(sX, sY, Math.min(sZ, 20));
+
+  // Rays
+  pCtx.strokeStyle = '#fbbf2488'; pCtx.lineWidth = 0.8;
+  for (let i = 0; i < 8; i++) {
+    const a = i * Math.PI / 4;
+    pCtx.beginPath();
+    pCtx.moveTo(sp.px + Math.cos(a) * 8, sp.py + Math.sin(a) * 8);
+    pCtx.lineTo(sp.px + Math.cos(a) * 14, sp.py + Math.sin(a) * 14);
+    pCtx.stroke();
+  }
+  // Sun disc
+  pCtx.fillStyle = '#fbbf24';
+  pCtx.beginPath(); pCtx.arc(sp.px, sp.py, 7, 0, 2*Math.PI); pCtx.fill();
+
+  // Direction line from array to sun
+  const orig = isoToCanvas(0, 0, PANEL_ELEV);
+  pCtx.strokeStyle = '#fbbf2422'; pCtx.lineWidth = 1;
+  pCtx.setLineDash([4,4]);
+  pCtx.beginPath(); pCtx.moveTo(orig.px, orig.py); pCtx.lineTo(sp.px, sp.py); pCtx.stroke();
+  pCtx.setLineDash([]);
+}
+
+function resizePreviewCanvas() {
+  const W = Math.min(previewCanvas.parentElement.clientWidth - 28, 900);
+  previewCanvas.width  = W;
+  previewCanvas.height = Math.round(W * 0.38);
+  draw3DPreview();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// YEARLY ENERGY SIMULATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+let simRunning = false;
+
+/**
+ * Run a yearly simulation using 36 representative days (every ~10 days),
+ * stepping in 30-minute intervals through each day.
+ * Accumulates energy (kWh) per config per calendar month.
+ * Runs asynchronously to keep UI responsive.
+ */
+async function runYearlySimulation() {
+  if (simRunning) return;
+  simRunning = true;
+
+  const btn = document.getElementById('runSimBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running…';
+  document.getElementById('simResultsDiv').style.display = 'none';
+  document.getElementById('simProgressWrap').style.display = 'block';
+  document.getElementById('simProgressFill').style.width = '0%';
+  document.getElementById('simStatusLabel').textContent = 'Simulating…';
+
+  // 36 sample days spread across the year
+  const SAMPLE_DAYS = Array.from({length: 36}, (_, i) => Math.round(1 + i * 365 / 36));
+  const STEP_MIN    = 30;     // time step in minutes
+  const DAY_WEIGHT  = 365 / SAMPLE_DAYS.length;  // days each sample represents
+
+  // monthlyEnergy[cfgId][month 0-11] = accumulated kWh
+  const monthlyEnergy = {};
+  CONFIGS.forEach(cfg => { monthlyEnergy[cfg.id] = Array(12).fill(0); });
+
+  // Save current global state so we can restore after simulation
+  const savedIrr      = irr.map(row => row.slice());
+  const savedShade    = shade.map(row => row.slice());
+
+  const REF_YEAR = new Date().getFullYear();
+
+  for (let di = 0; di < SAMPLE_DAYS.length; di++) {
+    const doy  = SAMPLE_DAYS[di];
+    const refDate = new Date(REF_YEAR, 0, doy);
+    const month   = refDate.getMonth();       // 0–11
+
+    for (let mins = 0; mins <= 1440; mins += STEP_MIN) {
+      const d  = new Date(REF_YEAR, 0, doy, Math.floor(mins/60), mins % 60, 0);
+      const sp = solarPosition(d);
+      if (sp.altitude < 0.5) continue;       // skip night
+
+      const n    = dayOfYear(d);
+      const sinA = Math.sin(sp.altitude * Math.PI / 180);
+      const cs   = clearSkyIrr(sinA, n);
+
+      // Update irr[][] (section-based)
+      const poaPerSection = SECTIONS.map(sec =>
+        poaIrradiance(cs.dni, cs.dhi, cs.ghi, sp.altitude, sp.azimuth, sec.tilt, sec.azimuth)
+      );
+      for (let r = 0; r < ROWS; r++) {
+        const frac = Math.min(1, poaPerSection[sectionOf(r)] / STC_IRRAD);
+        for (let c = 0; c < COLS; c++) irr[r][c] = frac;
+      }
+
+      // Tree shadow (no manual shade during sim — only trees)
+      const az_rad  = sp.azimuth  * Math.PI / 180;
+      const tan_alt = Math.tan(Math.max(1, sp.altitude) * Math.PI / 180);
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const pos = panelScenePos(r, c);
+          let blocked = false;
+          for (const tree of sceneTrees) {
+            if (panelInTreeShadow(pos.x, pos.y, tree, az_rad, tan_alt)) { blocked = true; break; }
+          }
+          shade[r][c] = blocked ? shadeLevel : 1.0;
+        }
+      }
+
+      // Compute all configs and accumulate energy
+      const allResults = computeAll();
+      const dt = STEP_MIN / 60;                           // hours per step
+      allResults.forEach(res => {
+        monthlyEnergy[res.id][month] += res.totalP * dt * DAY_WEIGHT / 1000; // kWh
+      });
+    }
+
+    // Yield to browser every day
+    const pct = ((di + 1) / SAMPLE_DAYS.length * 100).toFixed(0);
+    document.getElementById('simProgressFill').style.width = pct + '%';
+    document.getElementById('simStatusLabel').textContent = `Day ${di + 1}/${SAMPLE_DAYS.length}…`;
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+
+  // Restore global state
+  for (let r = 0; r < ROWS; r++) { irr[r] = savedIrr[r]; shade[r] = savedShade[r]; }
+
+  // Present results
+  document.getElementById('simProgressWrap').style.display = 'none';
+  document.getElementById('simStatusLabel').textContent = 'Complete ✓';
+  btn.disabled = false;
+  btn.textContent = '↺ Re-run Yearly Sim';
+  displaySimResults(monthlyEnergy);
+  simRunning = false;
+}
+
+function displaySimResults(monthlyEnergy) {
+  // ── Table ──────────────────────────────────────────────────────────────
+  const yearlyTotals = {};
+  CONFIGS.forEach(cfg => {
+    yearlyTotals[cfg.id] = monthlyEnergy[cfg.id].reduce((a, b) => a + b, 0);
+  });
+  const maxYearly = Math.max(...Object.values(yearlyTotals));
+
+  let html = '';
+  CONFIGS.forEach(cfg => {
+    const tot = yearlyTotals[cfg.id];
+    const pct = ((tot / maxYearly) * 100).toFixed(1);
+    const daily = (tot / 365).toFixed(2);
+    const best = Math.abs(tot - maxYearly) < 0.1;
+    html += `<tr>
+      <td class="cfg-name"><span class="cfg-dot" style="background:${cfg.cfgColor}"></span>${cfg.short}</td>
+      <td class="${best ? 'best-val' : ''}">${tot.toFixed(0)} ${best ? '★' : ''}</td>
+      <td>${pct}%</td>
+      <td>${daily}</td>
+    </tr>`;
+  });
+  document.getElementById('yearlyTableBody').innerHTML = html;
+
+  // ── Monthly bar chart ──────────────────────────────────────────────────
+  const mc = document.getElementById('monthlyChart');
+  const mW = mc.parentElement.clientWidth - 4;
+  mc.width  = mW; mc.height = 170;
+  const cc  = mc.getContext('2d');
+  const ML = 46, MR = 8, MT = 24, MB = 28;
+  const pw = mW - ML - MR, ph = mc.height - MT - MB;
+
+  cc.fillStyle = '#111827'; cc.fillRect(0, 0, mW, mc.height);
+
+  const allMonthlyVals = CONFIGS.flatMap(cfg => monthlyEnergy[cfg.id]);
+  const maxM = niceMax(Math.max(...allMonthlyVals, 1), 100);
+
+  // Grid
+  cc.strokeStyle = '#1f2937'; cc.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = MT + ph - (i / 4) * ph;
+    cc.beginPath(); cc.moveTo(ML, y); cc.lineTo(ML + pw, y); cc.stroke();
+    cc.fillStyle = '#6b7280'; cc.font = '9px sans-serif'; cc.textAlign = 'right';
+    cc.fillText(((i / 4) * maxM).toFixed(0), ML - 3, y + 3);
+  }
+
+  const months = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+  const barGroupW = pw / 12;
+  const barW = barGroupW / (CONFIGS.length + 1);
+
+  CONFIGS.forEach((cfg, ci) => {
+    cc.fillStyle = cfg.cfgColor;
+    for (let m = 0; m < 12; m++) {
+      const val = monthlyEnergy[cfg.id][m];
+      const bh  = (val / maxM) * ph;
+      const bx  = ML + m * barGroupW + (ci + 0.5) * barW;
+      const by  = MT + ph - bh;
+      cc.fillRect(bx, by, Math.max(barW - 1, 1), bh);
+    }
+  });
+
+  // Month labels
+  cc.fillStyle = '#6b7280'; cc.font = '9px sans-serif'; cc.textAlign = 'center';
+  for (let m = 0; m < 12; m++) {
+    cc.fillText(months[m], ML + (m + 0.5) * barGroupW, MT + ph + 14);
+  }
+
+  // Y-axis label
+  cc.save(); cc.translate(11, MT + ph/2); cc.rotate(-Math.PI/2);
+  cc.fillStyle = '#6b7280'; cc.font = '9px sans-serif'; cc.textAlign = 'center';
+  cc.fillText('kWh/month', 0, 0); cc.restore();
+
+  // Legend (top row)
+  let lx = ML;
+  CONFIGS.forEach(cfg => {
+    cc.fillStyle = cfg.cfgColor;
+    cc.fillRect(lx, 6, 8, 8);
+    cc.fillStyle = '#9ca3af'; cc.font = '8px sans-serif'; cc.textAlign = 'left';
+    cc.fillText(cfg.short, lx + 10, 14);
+    lx += cc.measureText(cfg.short).width + 22;
+  });
+
+  document.getElementById('simResultsDiv').style.display = 'block';
+}
+
 // ── Update cycle ───────────────────────────────────────────────────────────
 let updateTimer=null;
 function scheduleUpdate(){
@@ -1002,12 +1824,16 @@ function heavyUpdate(){
   const hlRes=allResults.find(r=>r.id===highlightedConfig);
   updatePowerDetail(hlRes.mpptResults);
   updateChart(hlRes.mpptResults);
+  drawSceneMap();
+  draw3DPreview();
 }
 function fullUpdate(){drawArray();heavyUpdate();}
 
 // ── UI controls ────────────────────────────────────────────────────────────
 document.getElementById('clearBtn').addEventListener('click',()=>{
-  shade=Array.from({length:ROWS},()=>Array(COLS).fill(1.0)); fullUpdate();
+  manualShade=Array.from({length:ROWS},()=>Array(COLS).fill(1.0));
+  combineShadeMaps();
+  fullUpdate();
 });
 
 const shadeSlider=document.getElementById('shadeSlider');
@@ -1019,13 +1845,14 @@ shadeSlider.addEventListener('input',()=>{
 document.querySelectorAll('.preset-btn').forEach(btn=>{
   btn.addEventListener('click',()=>{
     const p=btn.dataset.preset;
-    shade=Array.from({length:ROWS},()=>Array(COLS).fill(1.0));
-    if(p==='row0')   for(let c=0;c<COLS;c++) shade[0][c]=shadeLevel;
-    else if(p==='row3')   for(let c=0;c<COLS;c++) shade[3][c]=shadeLevel;
-    else if(p==='row6')   for(let c=0;c<COLS;c++) shade[6][c]=shadeLevel;
-    else if(p==='col4')   for(let r=0;r<ROWS;r++) shade[r][4]=shadeLevel;
-    else if(p==='corner') for(let r=0;r<3;r++) for(let c=0;c<3;c++) shade[r][c]=shadeLevel;
-    else if(p==='checker') for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if((r+c)%2===0) shade[r][c]=shadeLevel;
+    manualShade=Array.from({length:ROWS},()=>Array(COLS).fill(1.0));
+    if(p==='row0')   for(let c=0;c<COLS;c++) manualShade[0][c]=shadeLevel;
+    else if(p==='row3')   for(let c=0;c<COLS;c++) manualShade[3][c]=shadeLevel;
+    else if(p==='row6')   for(let c=0;c<COLS;c++) manualShade[6][c]=shadeLevel;
+    else if(p==='col4')   for(let r=0;r<ROWS;r++) manualShade[r][4]=shadeLevel;
+    else if(p==='corner') for(let r=0;r<3;r++) for(let c=0;c<3;c++) manualShade[r][c]=shadeLevel;
+    else if(p==='checker') for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if((r+c)%2===0) manualShade[r][c]=shadeLevel;
+    combineShadeMaps();
     fullUpdate();
   });
 });
@@ -1053,6 +1880,66 @@ function onDateTimeChange() {
 document.getElementById('dateInput').addEventListener('input', onDateTimeChange);
 document.getElementById('timeSlider').addEventListener('input', onDateTimeChange);
 
+// ── New UI controls: scene map & simulation ────────────────────────────────
+
+// Clear all trees
+document.getElementById('clearTreesBtn').addEventListener('click', () => {
+  sceneTrees = [];
+  deselectTree();
+  updateTreeCountLabel();
+  recomputeTreeShadow();
+  drawSceneMap();
+  draw3DPreview();
+  fullUpdate();
+});
+
+// Delete selected tree
+document.getElementById('deleteTreeBtn').addEventListener('click', () => {
+  if (selectedTreeId === null) return;
+  sceneTrees = sceneTrees.filter(t => t.id !== selectedTreeId);
+  deselectTree();
+  updateTreeCountLabel();
+  recomputeTreeShadow();
+  drawSceneMap();
+  draw3DPreview();
+  fullUpdate();
+});
+
+// Tree height slider
+document.getElementById('treeHeightSlider').addEventListener('input', function () {
+  const t = sceneTrees.find(tr => tr.id === selectedTreeId);
+  if (!t) return;
+  t.height = parseInt(this.value);
+  document.getElementById('treeHeightVal').textContent = t.height + ' m';
+  recomputeTreeShadow();
+  drawSceneMap();
+  draw3DPreview();
+  scheduleUpdate();
+});
+
+// Tree crown-radius slider
+document.getElementById('treeCrownSlider').addEventListener('input', function () {
+  const t = sceneTrees.find(tr => tr.id === selectedTreeId);
+  if (!t) return;
+  t.crownRadius = parseInt(this.value);
+  document.getElementById('treeCrownVal').textContent = t.crownRadius + ' m';
+  recomputeTreeShadow();
+  drawSceneMap();
+  draw3DPreview();
+  scheduleUpdate();
+});
+
+// Run yearly simulation button
+document.getElementById('runSimBtn').addEventListener('click', () => {
+  runYearlySimulation();
+});
+
+// Resize canvases on window resize
+window.addEventListener('resize', () => {
+  resizeMapCanvas();
+  resizePreviewCanvas();
+});
+
 // ── Init ───────────────────────────────────────────────────────────────────
 (function init() {
   // Default date: today, 12:00 local time
@@ -1067,6 +1954,11 @@ document.getElementById('timeSlider').addEventListener('input', onDateTimeChange
   const noon = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0);
   updateIrradiance(noon);
   updateAnnotation();
+
+  // Size and draw new canvases
+  resizeMapCanvas();
+  resizePreviewCanvas();
+
   fullUpdate();
 })();
 </script>
