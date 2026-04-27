@@ -186,7 +186,7 @@
       <div class="comp-wrap">
         <table class="comp-table">
           <thead><tr>
-            <th>Config</th><th>Total Power</th><th>% STC</th><th>MPPT powers (hover)</th>
+            <th>Config</th><th>Total Power</th><th>% STC</th><th>% of best</th><th>MPPT powers (hover)</th>
           </tr></thead>
           <tbody id="compTableBody"></tbody>
         </table>
@@ -250,7 +250,7 @@ const COL8 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d3
 const COL9 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171','#60a5fa'];
 
 // ── Block structure helpers ────────────────────────────────────────────────
-const ROW_GROUPS = [[0,2],[3,5],[6,7]];        // 3+3+2 rows (configs A/B)
+const ROW_GROUPS = [[0,1],[2,4],[5,7]];        // 2+3+3 rows: 1–2 | 3–5 | 6–8 (configs A/B)
 const ROW_GROUPS4 = [[0,1],[2,3],[4,5],[6,7]]; // 2+2+2+2 rows (config F)
 const COL_GROUPS = [[0,2],[3,5],[6,8]];        // 3+3+3 cols  (configs D/E)
 const DE_ROW_GROUPS = [[0,1],[2,4],[5,7]];     // 2+3+3 rows — 3×3 blocks on bottom (configs D/E)
@@ -260,13 +260,13 @@ const DE_BLOCKS = DE_ROW_GROUPS.flatMap(([r0,r1]) => COL_GROUPS.map(([c0,c1]) =>
 const CONFIGS = [
   {
     id:'A', label:'Option A', short:'A \u2014 SP',
-    desc:'3 MPPTs \u00b7 SP: row groups 1\u20133 | 4\u20136 | 7\u20138, each = parallel strings of 9',
+    desc:'3 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20135 | 6\u20138, each = parallel strings of 9',
     cfgColor:'#38bdf8', mpptColors:COL3,
     blocks: ROW_GROUPS.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
   {
     id:'B', label:'Option B', short:'B \u2014 TCT',
-    desc:'3 MPPTs \u00b7 V-TCT: same row groups as A, cross-tied (cols in series, rows in \u2225 per col)',
+    desc:'3 MPPTs \u00b7 V-TCT: same row groups as A (1\u20132 | 3\u20135 | 6\u20138), cross-tied (cols in series, rows in \u2225 per col)',
     cfgColor:'#a78bfa', mpptColors:['#a78bfa','#c4b5fd','#7c3aed'],
     blocks: ROW_GROUPS.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'v-tct',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
@@ -470,7 +470,7 @@ function drawGroupDividers() {
   ctx.strokeStyle = '#f59e0b88'; ctx.lineWidth = 1.5; ctx.setLineDash([4,3]);
 
   if (id === 'A' || id === 'B') {
-    for (const sepRow of [2, 5]) {
+    for (const sepRow of [1, 4]) {
       const rctA = panelRect(sepRow, 0);
       const y = rctA.y + rctA.h + GAP/2;
       ctx.beginPath(); ctx.moveTo(PAD_L-4, y); ctx.lineTo(PAD_L + COLS*(PW+GAP)-GAP+4, y); ctx.stroke();
@@ -868,6 +868,7 @@ function updateComparisonTable(allResults) {
     const isBest=Math.abs(res.totalP-maxP)<1;
     const sel=res.id===highlightedConfig?' class="selected"':'';
     const pct=((res.totalP/stcMax)*100).toFixed(1);
+    const pctBest=((res.totalP/maxP)*100).toFixed(1);
     const bars=res.mpptResults.map((m,i)=>{
       const h=Math.max(3,Math.round((m.mpp.P/maxMpptP)*20));
       const tip=`${m.label}: ${m.mpp.P.toFixed(0)} W @ ${m.mpp.V.toFixed(1)} V / ${m.mpp.I.toFixed(2)} A`;
@@ -877,6 +878,7 @@ function updateComparisonTable(allResults) {
       <td class="cfg-name"><span class="cfg-dot" style="background:${res.cfgColor}"></span>${res.short}</td>
       <td class="${isBest?'best-val':''}">${(res.totalP/1000).toFixed(3)} kW ${isBest?'\u2605':''}</td>
       <td>${pct}%</td>
+      <td>${pctBest}%</td>
       <td><div class="mini-bars">${bars}</div></td>
     </tr>`;
   });
