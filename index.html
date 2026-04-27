@@ -250,10 +250,11 @@ const COL8 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d3
 const COL9 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171','#60a5fa'];
 
 // ── Block structure helpers ────────────────────────────────────────────────
-const ROW_GROUPS = [[0,2],[3,5],[6,7]];     // 3+3+2 rows (configs A/B)
+const ROW_GROUPS = [[0,2],[3,5],[6,7]];        // 3+3+2 rows (configs A/B)
 const ROW_GROUPS4 = [[0,1],[2,3],[4,5],[6,7]]; // 2+2+2+2 rows (config F)
-const COL_GROUPS = [[0,2],[3,5],[6,8]];     // 3+3+3 cols  (configs D/E)
-const DE_BLOCKS = ROW_GROUPS.flatMap(([r0,r1]) => COL_GROUPS.map(([c0,c1]) => ({r0,r1,c0,c1})));
+const COL_GROUPS = [[0,2],[3,5],[6,8]];        // 3+3+3 cols  (configs D/E)
+const DE_ROW_GROUPS = [[0,1],[2,4],[5,7]];     // 2+3+3 rows — 3×3 blocks on bottom (configs D/E)
+const DE_BLOCKS = DE_ROW_GROUPS.flatMap(([r0,r1]) => COL_GROUPS.map(([c0,c1]) => ({r0,r1,c0,c1})));
 
 // ── Config definitions (A–F) ───────────────────────────────────────────────
 const CONFIGS = [
@@ -277,13 +278,13 @@ const CONFIGS = [
   },
   {
     id:'D', label:'Option D', short:'D \u2014 Blk SP',
-    desc:'9 MPPTs \u00b7 Block SP: 3\u00d73 macro grid (6\u00d73\u00d73 + 3\u00d72\u00d73 blocks), SP within each block',
+    desc:'9 MPPTs \u00b7 Block SP: 3\u00d73 macro grid (2\u00d73 top + 3\u00d73 mid/bot blocks), SP within each block',
     cfgColor:'#fb923c', mpptColors:COL9,
     blocks: DE_BLOCKS.map((b,i)=>({...b,topo:'sp',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
     id:'E', label:'Option E', short:'E \u2014 Blk TCT',
-    desc:'9 MPPTs \u00b7 Block V-TCT: same block structure as D, cross-tied within each block',
+    desc:'9 MPPTs \u00b7 Block V-TCT: same block structure as D (2\u00d73 top + 3\u00d73 mid/bot), cross-tied within each block',
     cfgColor:'#f472b6', mpptColors:COL9,
     blocks: DE_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
   },
@@ -468,8 +469,15 @@ function drawGroupDividers() {
   const id = highlightedConfig;
   ctx.strokeStyle = '#f59e0b88'; ctx.lineWidth = 1.5; ctx.setLineDash([4,3]);
 
-  if (id !== 'C' && id !== 'F') {
+  if (id === 'A' || id === 'B') {
     for (const sepRow of [2, 5]) {
+      const rctA = panelRect(sepRow, 0);
+      const y = rctA.y + rctA.h + GAP/2;
+      ctx.beginPath(); ctx.moveTo(PAD_L-4, y); ctx.lineTo(PAD_L + COLS*(PW+GAP)-GAP+4, y); ctx.stroke();
+    }
+  }
+  if (id === 'D' || id === 'E') {
+    for (const sepRow of [1, 4]) {
       const rctA = panelRect(sepRow, 0);
       const y = rctA.y + rctA.h + GAP/2;
       ctx.beginPath(); ctx.moveTo(PAD_L-4, y); ctx.lineTo(PAD_L + COLS*(PW+GAP)-GAP+4, y); ctx.stroke();
