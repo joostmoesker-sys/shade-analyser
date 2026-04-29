@@ -314,8 +314,8 @@
       </div>
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:0.77rem;color:#9ca3af">
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
-          <input type="checkbox" id="salderingToggle" checked style="accent-color:#4ade80;width:13px;height:13px">
-          Saldering (net metering) &nbsp;<span style="color:#4ade80;font-size:.7rem">Dynamic APX — saldering: full rate / feed-in: APX × 0.70</span>
+          <input type="checkbox" id="salderingToggle" style="accent-color:#4ade80;width:13px;height:13px">
+          Saldering (net metering) &nbsp;<span style="color:#ef4444;font-size:.7rem">Abolished 2027 — post-2027 model always active (sell at bare APX)</span>
         </label>
       </div>
       <div id="simResultsDiv" style="display:none">
@@ -447,8 +447,9 @@
             <label><strong style="color:#22c55e;">V3 Forecast Horizon:</strong></label>
             <select id="horizonSelect" style="margin-left:4px; padding:4px 10px; border-radius:4px; background:#1e3a5f; color:#d1d5db; border:1px solid #374151;">
               <option value="24">24 hours</option>
-              <option value="48" selected>48 hours (recommended)</option>
-              <option value="96">96 hours (max look-ahead)</option>
+              <option value="48">48 hours</option>
+              <option value="96">96 hours</option>
+              <option value="120" selected>120 hours (5-day look-ahead)</option>
             </select>
             <label style="margin-left:8px; display:flex; align-items:center; gap:5px;">
               <input type="checkbox" id="useV3DP" checked style="accent-color:#22c55e;">
@@ -1361,14 +1362,15 @@ const CHARGE_EFF_PV           = 0.95;  // PV → battery one-way efficiency
 const DISCHARGE_EFF           = 0.95;  // battery → load/grid one-way efficiency
 const GRID_ROUNDTRIP_EFF      = 0.80;  // grid → battery → grid round-trip efficiency
 const MAX_BATTERY_POWER_KW    = 15;    // realistic inverter/battery power limit (kW)
-const SELL_PRICE_FACTOR_DEF   = 0.85;  // default sell tariff = buy tariff × 0.85 (common in NL)
+const SELL_PRICE_FACTOR_DEF   = 0.85;  // default sell tariff = buy tariff × 0.85 (legacy / override)
+const TIBBER_OPSLAG_EUR_KWH   = 0.04;  // Tibber fixed surcharge on every imported kWh (exported: bare APX)
 
 // ── Advanced battery v2 strategy tunable parameters ──────────────────────────
 // These can be adjusted in real time by the v2 UI panel sliders.
 let batteryParams = {
   minProfitSpread:    0.06,   // minimum €/kWh spread to justify grid→battery→grid cycle
   selfUseMultiplier:  1.05,   // premium weight for self-use vs. export (value = price × multiplier)
-  forecastHorizon:    48,     // hours to look ahead for expected deficit calculation
+  forecastHorizon:    120,    // hours to look ahead for DP planning (120h = 5-day rolling horizon)
   cycleCost:          0.025,  // estimated cost per kWh cycle (wear, depreciation)
   useAdvancedStrategy: true,  // v2 smart dispatch on; false → v1 behaviour
   useV3DP:            true,   // v3 dynamic programming dispatch on
@@ -1377,7 +1379,7 @@ let batteryParams = {
 // ── V3 Dynamic Programming constants ─────────────────────────────────────────
 const DP_SOC_STEPS      = 20;   // SOC discretisation: 5% steps (0..19 → 0%..95% of capacity)
 const DP_ACTIONS        = ['charge', 'discharge_self', 'discharge_export', 'idle'];
-const MAX_HORIZON_HOURS = 96;   // maximum DP look-ahead window (hours)
+const MAX_HORIZON_HOURS = 120;  // maximum DP look-ahead window (hours); 5-day horizon
 
 // ── House load profile constants (Dutch well-insulated house, 12 kW heat pump) ──
 // Base load: 12 kWh/day (appliances, lighting, EV slow-charge)
@@ -3384,6 +3386,8 @@ function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDail
  * @returns Float64Array(8760) — €/kWh buy tariff
  */
 function generateYearlyTariffs() {
+  // Buy tariff: bare APX price + Tibber fixed opslag (surcharge on all imports).
+  // Exported kWh are sold at the bare APX price — see generateYearlySellTariffs().
   const tariffs = new Float64Array(8760);
   for (let doy = 1; doy <= 365; doy++) {
     const date   = new Date(2025, 0, doy);
@@ -3396,7 +3400,30 @@ function generateYearlyTariffs() {
       let p = HOURLY_APX_PRICE_2025[month][h];
       if (isWknd) p *= 0.82;  // weekend lower demand → lower prices
       p *= dailyVar;
-      tariffs[(doy - 1) * 24 + h] = Math.max(0.005, Math.min(0.80, p));
+      // Buy = APX + Tibber opslag; clamp at reasonable bounds
+      tariffs[(doy - 1) * 24 + h] = Math.max(0.005, Math.min(0.80, p)) + TIBBER_OPSLAG_EUR_KWH;
+    }
+  }
+  return tariffs;
+}
+
+/**
+ * Sell tariff profile (8760 h): bare APX price without any opslag.
+ * Post-2027 (saldering abolished) the grid feed-in rate is simply the hourly APX spot price.
+ */
+function generateYearlySellTariffs() {
+  const tariffs = new Float64Array(8760);
+  for (let doy = 1; doy <= 365; doy++) {
+    const date   = new Date(2025, 0, doy);
+    const month  = date.getMonth();
+    const dow    = date.getDay();
+    const isWknd = dow === 0 || dow === 6;
+    const dailyVar = 1 + 0.10 * Math.sin(doy * 1.7 + month * 0.4);
+    for (let h = 0; h < 24; h++) {
+      let p = HOURLY_APX_PRICE_2025[month][h];
+      if (isWknd) p *= 0.82;
+      p *= dailyVar;
+      tariffs[(doy - 1) * 24 + h] = Math.max(0.005, Math.min(0.80, p)); // bare APX
     }
   }
   return tariffs;
@@ -3417,7 +3444,7 @@ function generateYearlyTariffs() {
  * @param {Float64Array} pvHourly   — kWh/hour PV output for this config
  * @param {Float64Array} loadHourly — kWh/hour house load
  * @param {Float64Array} tariffs    — €/kWh buy tariff, hourly
- * @param {object}  opts            — { useBattery, useGridPrecharge, zeroExport, batCapKwh, sellFactor }
+ * @param {object}  opts            — { useBattery, useGridPrecharge, zeroExport, batCapKwh, sellFactor, sellTariffs }
  * @returns rich result object with all monetary flows and kWh breakdowns
  */
 function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
@@ -3427,6 +3454,7 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
     zeroExport          = false,  // if true: no selling to grid (curtail surplus PV, skip battery-sell hours)
     batCapKwh           = BATTERY_CAPACITY_KWH,
     sellFactor          = SELL_PRICE_FACTOR_DEF,
+    sellTariffs         = null,   // optional separate sell-price array (Tibber model: bare APX)
   } = opts;
 
   const nH   = 8760;
@@ -3451,7 +3479,8 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
       if (pvHourly[base + h] < 0.05) nightHours.push(base + h);
     }
     if (nightHours.length === 0) continue;
-    nightHours.sort((a, b) => tariffs[b] - tariffs[a]);
+    // Sort by sell price descending to pick the most profitable export hours
+    nightHours.sort((a, b) => (sellTariffs ? sellTariffs[b] - sellTariffs[a] : tariffs[b] - tariffs[a]));
     const topN = Math.min(nightHours.length, 6);
     for (let i = 0; i < topN; i++) isSellHour[nightHours[i]] = 1;
   }
@@ -3506,7 +3535,7 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
     const pv       = pvHourly[h];
     const load     = loadHourly[h];
     const buyPrice = tariffs[h];
-    const sellPrice = buyPrice * sellFactor;
+    const sellPrice = sellTariffs ? sellTariffs[h] : buyPrice * sellFactor;
     const month    = new Date(2025, 0, Math.floor(h / 24) + 1).getMonth();
 
     monthlyBaselineCost[month] += load * buyPrice;
@@ -3712,10 +3741,11 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
  * @param {Float64Array} pvKwh     — hourly PV (8760)
  * @param {Float64Array} loadKwh   — hourly load (8760)
  * @param {Float64Array} tariffs   — hourly buy tariff (8760)
- * @param {number}       sellFactor — sell tariff = buy × sellFactor (passed through from simulation opts)
+ * @param {number}       sellFactor — sell tariff = buy × sellFactor (used when sellTariffs absent)
+ * @param {Float64Array|null} sellTariffs — optional separate sell-price array (Tibber model)
  * @returns Array(365) of daily stat objects
  */
-function precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor = SELL_PRICE_FACTOR_DEF) {
+function precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor = SELL_PRICE_FACTOR_DEF, sellTariffs = null) {
   const days = 365;
   const daily = [];
   for (let d = 0; d < days; d++) {
@@ -3729,12 +3759,13 @@ function precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor = SELL_PRICE_F
       const p = tariffs[idx];
       if (p > maxPrice) maxPrice = p;
       if (p < minPrice) minPrice = p;
-      // Self-use hours: weight by selfUseMultiplier; export hours: weight by sell factor
+      // Self-use hours: weight by selfUseMultiplier; export hours: use sell price
       const isDeficit = loadKwh[idx] > pvKwh[idx];
+      const sp = sellTariffs ? sellTariffs[idx] : p * sellFactor;
       const value = isDeficit
         ? p * batteryParams.selfUseMultiplier
-        : p * sellFactor;
-      hourValues.push({ hour: h, value, price: p, isDeficit });
+        : sp;
+      hourValues.push({ hour: h, value, price: p, sellPrice: sp, isDeficit });
     }
     // Sort hours by value descending — used for priority allocation
     hourValues.sort((a, b) => b.value - a.value);
@@ -3812,7 +3843,7 @@ function allocateDailyEnergy(dailyStats, day, availableEnergy) {
  * @param {Float64Array} pvKwh    — kWh/hour PV output (8760)
  * @param {Float64Array} loadKwh  — kWh/hour house load (8760)
  * @param {Float64Array} tariffs  — €/kWh buy tariff, hourly (8760)
- * @param {object}       options  — { useBattery, useGridPrecharge, useAdvancedStrategy, sellFactor }
+ * @param {object}       options  — { useBattery, useGridPrecharge, useAdvancedStrategy, sellFactor, sellTariffs }
  * @returns rich result object including hourlyPlan sample for the dispatch visualizer
  */
 function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
@@ -3820,9 +3851,10 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
   const useBattery   = options.useBattery ?? true;
   const usePrecharge = options.useGridPrecharge ?? false;
   const sellFactor   = options.sellFactor ?? SELL_PRICE_FACTOR_DEF;
+  const sellTariffs  = options.sellTariffs ?? null; // optional separate sell-price array
 
   // Precompute daily statistics (needed for smart SOC floor + priority allocation)
-  const dailyStats = precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor);
+  const dailyStats = precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor, sellTariffs);
 
   // State
   let soc = BATTERY_CAPACITY_KWH * 0.5;  // start at 50% SOC
@@ -3848,8 +3880,8 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
     const hod = h % 24;
     const pv       = pvKwh[h];
     const load     = loadKwh[h];
-    const buyPrice = tariffs[h];
-    const sellPrice = buyPrice * sellFactor;
+    const buyPrice  = tariffs[h];
+    const sellPrice = sellTariffs ? sellTariffs[h] : buyPrice * sellFactor;
 
     let net = pv - load;         // positive = surplus, negative = deficit
     let dischargedSelf = 0, dischargedExport = 0, chargedPv = 0, gridCharge = 0;
@@ -3920,13 +3952,12 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
     }
 
     // ── v2 Priority Export: sell battery at high prices after covering self-use ──
-    // Only in v2 mode and only when sell price is significantly above threshold.
-    // We compare against today's minimum sell price so this fires during genuinely
-    // high-price hours. A larger minProfitSpread → fewer but higher-value export events.
-    // Limit to 60% of max inverter power so the remaining capacity is available for
-    // unexpected self-use demand in the same hour (conservative export cap).
+    // Compare current sell price against today's min sell price + required spread.
+    const dayMinSell = sellTariffs
+      ? dailyStats[day].minPrice - TIBBER_OPSLAG_EUR_KWH  // min APX ≈ min buy - opslag
+      : dailyStats[day].minPrice * sellFactor;
     if (useV2 && available > 1 &&
-        sellPrice > dailyStats[day].minPrice * sellFactor + batteryParams.minProfitSpread) {
+        sellPrice > dayMinSell + batteryParams.minProfitSpread) {
       const extra = Math.min(available * DISCHARGE_EFF, MAX_BATTERY_POWER_KW * 0.6);
       if (extra > 0.1) {
         dischargedExport = extra;
@@ -3994,15 +4025,16 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
  * Actions: 0=charge  1=discharge_self  2=discharge_export  3=idle
  * Objective: maximise net economic value (€) over the horizon.
  *
- * @param {Array} pvSlice     — kWh/hour PV output (length = horizon)
- * @param {Array} loadSlice   — kWh/hour house load (length = horizon)
- * @param {Array} tariffSlice — €/kWh buy tariff (length = horizon)
- * @param {number} horizon    — number of hours to optimise
- * @param {object} params     — { allowGridPrecharge, selfUseMultiplier, minProfitSpread, sellFactor }
- * @param {number} currentSoc — actual SOC (kWh) at the start of the horizon
+ * @param {Array} pvSlice      — kWh/hour PV output (length = horizon)
+ * @param {Array} loadSlice    — kWh/hour house load (length = horizon)
+ * @param {Array} tariffSlice  — €/kWh buy tariff (length = horizon)
+ * @param {number} horizon     — number of hours to optimise
+ * @param {object} params      — { allowGridPrecharge, selfUseMultiplier, minProfitSpread, sellFactor }
+ * @param {number} currentSoc  — actual SOC (kWh) at the start of the horizon
+ * @param {Array|null} sellSlice — optional separate sell-price array (Tibber model: bare APX)
  * @returns {{ plan: Array<{hour,action,soc}>, totalValue: number }}
  */
-function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, currentSoc) {
+function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, currentSoc, sellSlice = null) {
   const n      = Math.min(horizon, MAX_HORIZON_HOURS);
   const states = DP_SOC_STEPS;
   // States 0..19 map to 0%..95% of capacity in 5% steps (spec: "0 to 19 → 0% to 95%")
@@ -4014,19 +4046,19 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
   const policy = Array.from({ length: n },     () => new Uint8Array(states));
 
   // Terminal value: energy still stored at the end of the horizon is valued at
-  // average future price × selfUseMultiplier × 0.9.  The 0.9 discount accounts for
-  // uncertainty about whether the energy will actually be self-consumed beyond the
-  // horizon vs exported at a lower sell price.  The previous 0.6 × 0.3 = 0.18 factor
-  // was far too aggressive — it made the DP strongly prefer near-term export over
-  // saving for future self-use, propagating a myopic bias back through the 48 h plan.
-  const avgFuturePrice = tariffSlice.slice(0, n).reduce((a, b) => a + b, 0) / n;
-  // Baseline against which "high price" is judged for export decisions.
-  // Using the horizon-average sell price + spread guarantees the gate can fire
-  // during genuinely above-average hours (the previous gate `sell > buy*0.92 + spread`
-  // was mathematically unreachable for any sellFactor < 0.92).
-  const exportThreshold = avgFuturePrice * sellFactor + (params.minProfitSpread || 0.06);
+  // average future sell price × selfUseMultiplier × 0.9.  The 0.9 discount accounts for
+  // uncertainty about whether the energy will actually be self-consumed beyond the horizon.
+  // Use sell tariff for terminal value since unused energy would ultimately be exported.
+  const avgFutureSell = sellSlice
+    ? sellSlice.slice(0, n).reduce((a, b) => a + b, 0) / n
+    : tariffSlice.slice(0, n).reduce((a, b) => a + b, 0) / n * sellFactor;
+  // Average buy price for the horizon — used for export gate threshold
+  const avgFutureBuy  = tariffSlice.slice(0, n).reduce((a, b) => a + b, 0) / n;
+  // Export threshold: only export when current sell price exceeds the horizon-average
+  // sell price + the user's required profit spread.
+  const avgFutureExportThreshold = avgFutureSell + (params.minProfitSpread || 0.06);
   for (let s = 0; s < states; s++) {
-    dp[n][s] = s * socStep * avgFuturePrice * (params.selfUseMultiplier || 1.05) * 0.9;
+    dp[n][s] = s * socStep * avgFutureSell * (params.selfUseMultiplier || 1.05) * 0.9;
   }
 
   // Backward induction
@@ -4034,7 +4066,8 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
     const pv   = pvSlice[t];
     const load = loadSlice[t];
     const buy  = tariffSlice[t];
-    const sell = buy * sellFactor;
+    // Use separate sell tariff when available (Tibber model: bare APX, no opslag)
+    const sell = sellSlice ? sellSlice[t] : buy * sellFactor;
 
     for (let s = 0; s < states; s++) {
       const curSoc   = s * socStep;
@@ -4062,6 +4095,7 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
       }
 
       // ── Action 1: Discharge for self-use ──
+      // Value = avoided buy-price per kWh (includes Tibber opslag → higher than sell)
       const deficit    = Math.max(0, load - pv);
       const selfAvail  = Math.max(0, curSoc - BATTERY_CAPACITY_KWH * MIN_SOC_SELF);
       // canDisSelf = kWh delivered to load (= drawn × DISCHARGE_EFF)
@@ -4075,9 +4109,8 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
 
       // ── Action 2: Discharge for grid export (only if profitable) ──
       // Fires when the current sell price is meaningfully above the horizon's
-      // average sell price (plus the user's required profit spread). This is
-      // the analogue of V2's "priority export" gate, scoped to the DP horizon.
-      if (sell > exportThreshold) {
+      // average sell price (plus the user's required profit spread).
+      if (sell > avgFutureExportThreshold) {
         const expAvail  = Math.max(0, curSoc - BATTERY_CAPACITY_KWH * MIN_SOC_SELL);
         const canDisExp = Math.min(expAvail * DISCHARGE_EFF * 0.7, MAX_BATTERY_POWER_KW * 0.6);
         if (canDisExp > 0.05) {
@@ -4126,7 +4159,7 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
  * @param {Float64Array} pvKwh    — kWh/hour PV (8760)
  * @param {Float64Array} loadKwh  — kWh/hour house load (8760)
  * @param {Float64Array} tariffs  — €/kWh buy tariff (8760)
- * @param {object}       options  — { useBattery, useGridPrecharge, sellFactor, horizonHours }
+ * @param {object}       options  — { useBattery, useGridPrecharge, sellFactor, sellTariffs, horizonHours }
  * @returns result object compatible with V2 (annualSavings, hourlyPlan, …)
  */
 function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
@@ -4134,6 +4167,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
   const useBattery   = options.useBattery ?? true;
   const usePrecharge = options.useGridPrecharge ?? false;
   const sellFactor   = options.sellFactor ?? SELL_PRICE_FACTOR_DEF;
+  const sellTariffs  = options.sellTariffs ?? null; // separate sell-price array (Tibber: bare APX)
 
   if (!useBattery) {
     // No battery: delegate to V2 baseline (identical no-battery path)
@@ -4173,23 +4207,24 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
     const pvSlice     = [];
     const loadSlice   = [];
     const tariffSlice = [];
+    const sellSlice   = sellTariffs ? [] : null;
     for (let i = 0; i < hCount; i++) {
       pvSlice.push(pvKwh[startH + i]);
       loadSlice.push(loadKwh[startH + i]);
       tariffSlice.push(tariffs[startH + i]);
+      if (sellSlice) sellSlice.push(sellTariffs[startH + i]);
     }
 
-    const { plan } = optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, hCount, dpParams, soc);
+    const { plan } = optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, hCount, dpParams, soc, sellSlice);
 
     // Per-day export threshold: only sell battery when current sell price exceeds
-    // the day's average sell price + the user's required profit spread. This is the
-    // executor-side analogue of the DP's `exportThreshold` and replaces the
-    // mathematically-unreachable `sellPrice > buyPrice * 0.92 + spread` gate.
-    let dayBuySum = 0;
+    // the day's average sell price + the user's required profit spread.
+    let dayAvgSellSum = 0;
     const dayHours = Math.min(24, 8760 - startH);
-    for (let i = 0; i < dayHours; i++) dayBuySum += tariffs[startH + i];
-    const dayAvgSell    = (dayBuySum / dayHours) * sellFactor;
-    const exportGatePx  = dayAvgSell + batteryParams.minProfitSpread;
+    for (let i = 0; i < dayHours; i++) {
+      dayAvgSellSum += sellTariffs ? sellTariffs[startH + i] : tariffs[startH + i] * sellFactor;
+    }
+    const exportGatePx = (dayAvgSellSum / dayHours) + batteryParams.minProfitSpread;
 
     // Execute the first 24 hours of the DP plan with real energy balance physics
     for (let i = 0; i < 24 && (startH + i) < 8760; i++) {
@@ -4197,7 +4232,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
       const pv        = pvKwh[h];
       const load      = loadKwh[h];
       const buyPrice  = tariffs[h];
-      const sellPrice = buyPrice * sellFactor;
+      const sellPrice = sellTariffs ? sellTariffs[h] : buyPrice * sellFactor;
       const dpAction  = plan[i] ? plan[i].action : 'idle';
 
       const net = pv - load; // positive = PV surplus, negative = load deficit
@@ -4347,9 +4382,10 @@ function runEconSim() {
   const zeroExport  = document.getElementById('econZeroExportToggle').checked;
 
   const loadProfile    = precomputeYearlyLoad(baseDayKwh, hpWinterKwh);
-  const tariffProfile  = generateYearlyTariffs();
+  const tariffProfile  = generateYearlyTariffs();      // buy = APX + TIBBER_OPSLAG
+  const sellProfile    = generateYearlySellTariffs();  // sell = bare APX
 
-  const opts = { useBattery, useGridPrecharge, zeroExport, batCapKwh, sellFactor };
+  const opts = { useBattery, useGridPrecharge, zeroExport, batCapKwh, sellFactor, sellTariffs: sellProfile };
 
   // Run for all configs
   const econResults = {};
@@ -4364,7 +4400,7 @@ function runEconSim() {
     );
   }
 
-  lastEconResults = { econResults, loadProfile, tariffProfile, opts };
+  lastEconResults = { econResults, loadProfile, tariffProfile, sellProfile, opts };
   const elapsed = (performance.now() - t0).toFixed(0);
 
   displayEconResults(econResults, batCapKwh, elapsed);
@@ -4388,6 +4424,7 @@ function runEconSim() {
       useGridPrecharge,
       useAdvancedStrategy: batteryParams.useAdvancedStrategy,
       sellFactor,
+      sellTariffs: sellProfile,
     };
     const v2Result = simulateBatteryAndEconomicsV2(bestPvArr, loadProfile, tariffProfile, v2opts);
 
@@ -4417,6 +4454,7 @@ function runEconSim() {
         useBattery: true,
         useGridPrecharge,
         sellFactor,
+        sellTariffs: sellProfile,
         horizonHours: batteryParams.forecastHorizon,
       };
       const v3Result = simulateBatteryAndEconomicsV3(bestPvArr, loadProfile, tariffProfile, v3opts);
@@ -4617,7 +4655,8 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
   // ── Note ─────────────────────────────────────────────────────────────────
   document.getElementById('econNoteText').textContent =
     `Completed in ${elapsedMs} ms. Clear-sky model (optimistic — real yield 15–25% lower with clouds). ` +
-    `Battery capex excluded (already paid for). Sell tariff = buy × ${document.getElementById('econSellFactorSlider').value}%. ` +
+    `Battery capex excluded (already paid for). ` +
+    `Buy tariff = APX + €${TIBBER_OPSLAG_EUR_KWH.toFixed(2)}/kWh (Tibber opslag); sell = bare APX. ` +
     `Base load ${document.getElementById('econBaseLoadSlider').value} kWh/d + ` +
     `HP winter ${document.getElementById('econHpSlider').value} kWh/d (electrical). ` +
     `PV→battery efficiency: ${CHARGE_EFF_PV * 100 | 0}%/${DISCHARGE_EFF * 100 | 0}%. ` +
@@ -4633,7 +4672,6 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
  */
 function exportEconCsv() {
   if (!lastEconResults || !lastHourlyPvKwh) { alert('Run economic simulation first.'); return; }
-  const { loadProfile, tariffProfile, opts } = lastEconResults;
 
   // Find best config by savings
   const ids = CONFIGS.map(c => c.id).filter(id => lastEconResults.econResults[id]);
@@ -4645,11 +4683,13 @@ function exportEconCsv() {
     ? lastHourlyPvKwh[bestId]
     : new Float64Array(lastHourlyPvKwh[bestId]);
 
-  let csv = 'Hour,Date,PV_kWh,Load_kWh,Tariff_EUR_kWh,SellTariff_EUR_kWh\n';
+  let csv = 'Hour,Date,PV_kWh,Load_kWh,BuyTariff_EUR_kWh,SellTariff_EUR_kWh\n';
+  const { tariffProfile: tp, sellProfile: sp, opts, loadProfile } = lastEconResults;
   for (let h = 0; h < 8760; h++) {
     const date = new Date(2025, 0, Math.floor(h / 24) + 1, h % 24);
     const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:00`;
-    csv += `${h},${dateStr},${pvArr[h].toFixed(4)},${loadProfile[h].toFixed(4)},${tariffProfile[h].toFixed(4)},${(tariffProfile[h]*opts.sellFactor).toFixed(4)}\n`;
+    const sellP = sp ? sp[h] : tp[h] * opts.sellFactor;
+    csv += `${h},${dateStr},${pvArr[h].toFixed(4)},${loadProfile[h].toFixed(4)},${tp[h].toFixed(4)},${sellP.toFixed(4)}\n`;
   }
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
@@ -4694,26 +4734,23 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
   });
   const maxYearly = Math.max(...Object.values(yearlyTotals));
   
-  const useSaldering = document.getElementById('salderingToggle')?.checked ?? true;
-  
-  // Compute yearly revenues per config — always use dynamic APX 2025 hourly prices
-  // Saldering ON  → full APX rate (offset consumption at spot price)
-  // Saldering OFF → APX × FEED_IN_FACTOR (lower wholesale feed-in tariff)
+  // Compute yearly revenues per config — always use bare APX (post-2027 model: saldering abolished)
+  // revenueDynamic is computed in the worker using DYNAMIC_PRICES = bare APX spot prices.
   const yearlyRevenue = {};
   CONFIGS.forEach(cfg => {
     const dynRev = revenueDynamic && revenueDynamic[cfg.id]
       ? revenueDynamic[cfg.id].reduce((a,b)=>a+b,0)
-      : yearlyTotals[cfg.id] * PRICE_SALDERING; // fallback if worker result missing
-    yearlyRevenue[cfg.id] = useSaldering ? dynRev : dynRev * FEED_IN_FACTOR;
+      : yearlyTotals[cfg.id] * PRICE_NO_SALDERING; // fallback if worker result missing
+    yearlyRevenue[cfg.id] = dynRev;
   });
 
-  // Yearly no-shade revenues per config — same dynamic pricing logic
+  // Yearly no-shade revenues per config — same post-2027 model
   const yearlyNSRevenue = {};
   CONFIGS.forEach(cfg => {
     const dynNSRev = noShadeRevenueDynamic && noShadeRevenueDynamic[cfg.id]
       ? noShadeRevenueDynamic[cfg.id].reduce((a,b)=>a+b,0)
-      : (noShadeEnergy ? noShadeEnergy[cfg.id].reduce((a,b)=>a+b,0) : yearlyTotals[cfg.id]) * PRICE_SALDERING;
-    yearlyNSRevenue[cfg.id] = useSaldering ? dynNSRev : dynNSRev * FEED_IN_FACTOR;
+      : (noShadeEnergy ? noShadeEnergy[cfg.id].reduce((a,b)=>a+b,0) : yearlyTotals[cfg.id]) * PRICE_NO_SALDERING;
+    yearlyNSRevenue[cfg.id] = dynNSRev;
   });
   
   const maxRevenue = Math.max(...Object.values(yearlyRevenue));
@@ -4837,18 +4874,19 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
 
   // ── Disclaimer note ────────────────────────────────────────────────────
   const note = document.getElementById('simNoteText');
+  const tariffNote = 'Revenue uses dynamic APX/EPEX hourly prices 2025 (bare APX, post-2027 model — saldering abolished).';
   if (weatherMode) {
     note.textContent =
       'Weather-adjusted estimate: PVGIS SARAH-3 / KNMI monthly cloud-correction Kc applied with beam/diffuse split ' +
       '(365 days × 1-hour steps). Further losses (inverter, wiring, soiling ~15–20%) ' +
       'not included. Tree shade (with foliage seasonality) from current scene is applied. ' +
-      'Revenue uses dynamic APX/EPEX hourly prices 2025 — saldering: full APX rate; feed-in: APX × 0.70.';
+      tariffNote;
   } else {
     note.textContent =
       'Clear-sky estimate (no cloud losses, 365 days × 1-hour steps). ' +
       'Enable "Weather-adjusted" for a realistic yield estimate. ' +
       'Tree shade from current scene is applied. ' +
-      'Revenue uses dynamic APX/EPEX hourly prices 2025 — saldering: full APX rate; feed-in: APX × 0.70.';
+      tariffNote;
   }
 
   document.getElementById('simResultsDiv').style.display = 'block';
