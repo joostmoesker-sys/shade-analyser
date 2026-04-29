@@ -299,7 +299,7 @@
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:0.77rem;color:#9ca3af">
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
           <input type="checkbox" id="salderingToggle" checked style="accent-color:#4ade80;width:13px;height:13px">
-          Saldering (net metering) &nbsp;<span style="color:#4ade80;font-size:.7rem">€0.26/kWh ON / €0.08 OFF</span>
+          Saldering (net metering) &nbsp;<span style="color:#4ade80;font-size:.7rem">Dynamic APX — saldering: full rate / feed-in: APX × 0.70</span>
         </label>
       </div>
       <div id="simResultsDiv" style="display:none">
@@ -979,14 +979,15 @@ const HOURLY_APX_PRICE_2025 = [
 ];
 
 // ── Block structure helpers ────────────────────────────────────────────────
-const ROW_GROUPS = [[0,1],[2,4],[5,7]];        // 2+3+3 rows: 1–2 | 3–5 | 6–8 (configs A/B)
-const COL_GROUPS = [[0,2],[3,5],[6,8]];        // 3+3+3 cols  (configs D/E/F/G)
+const ROW_GROUPS  = [[0,1],[2,4],[5,7]];       // 2+3+3 rows: 1–2 | 3–5 | 6–8 (configs A/B)
+const ROW_GROUPS4 = [[0,1],[2,3],[4,5],[6,7]]; // 2+2+2+2 rows (configs F/G — 4 MPPTs)
+const COL_GROUPS  = [[0,2],[3,5],[6,8]];       // 3+3+3 cols  (configs D/E/H/I)
 const DE_ROW_GROUPS = [[0,1],[2,4],[5,7]];     // 2+3+3 rows — 3×3 blocks on bottom (configs D/E)
 const DE_BLOCKS = DE_ROW_GROUPS.flatMap(([r0,r1]) => COL_GROUPS.map(([c0,c1]) => ({r0,r1,c0,c1})));
-// Column-span blocks for F/G (all 8 rows, 3 col groups)
-const FG_BLOCKS = COL_GROUPS.map(([c0,c1]) => ({r0:0, r1:ROWS-1, c0, c1}));
+// Column-span blocks for H/I (all 8 rows, 3 col groups)
+const HI_BLOCKS = COL_GROUPS.map(([c0,c1]) => ({r0:0, r1:ROWS-1, c0, c1}));
 
-// ── Config definitions (A–F) ───────────────────────────────────────────────
+// ── Config definitions (A–I) ───────────────────────────────────────────────
 const CONFIGS = [
   {
     id:'A', label:'Option A', short:'A \u2014 SP',
@@ -1019,16 +1020,28 @@ const CONFIGS = [
     blocks: DE_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
-    id:'F', label:'Option F', short:'F \u2014 3\u00d7col TCT',
-    desc:'3 MPPTs \u00b7 V-TCT: column groups 1\u20133 | 4\u20136 | 7\u20139 (all 8 rows), cross-tied within each col-group',
-    cfgColor:'#22d3ee', mpptColors:COL3,
-    blocks: FG_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+    id:'F', label:'Option F', short:'F \u2014 4\u00d718 10kW',
+    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d79 = 18 panels per MPPT) \u00b7 10 kW total inverter limit',
+    cfgColor:'#22d3ee', mpptColors:COL4,
+    blocks: ROW_GROUPS4.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
   {
-    id:'G', label:'Option G', short:'G \u2014 3\u00d7col SP',
+    id:'G', label:'Option G', short:'G \u2014 4\u00d718 15kW',
+    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d79 = 18 panels per MPPT) \u00b7 15 kW total inverter limit',
+    cfgColor:'#f59e0b', mpptColors:COL4,
+    blocks: ROW_GROUPS4.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
+  },
+  {
+    id:'H', label:'Option H', short:'H \u2014 3\u00d7col TCT',
+    desc:'3 MPPTs \u00b7 V-TCT: column groups 1\u20133 | 4\u20136 | 7\u20139 (all 8 rows), cross-tied within each col-group',
+    cfgColor:'#34d399', mpptColors:COL3,
+    blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+  },
+  {
+    id:'I', label:'Option I', short:'I \u2014 3\u00d7col SP',
     desc:'3 MPPTs \u00b7 SP: column groups 1\u20133 | 4\u20136 | 7\u20139 (all 8 rows), each col = series string, strings in parallel',
-    cfgColor:'#f59e0b', mpptColors:COL3,
-    blocks: FG_BLOCKS.map((b,i)=>({...b,topo:'sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+    cfgColor:'#f87171', mpptColors:COL3,
+    blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
   },
 ];
 
@@ -1039,8 +1052,10 @@ const INVERTER_SPECS = {
   C: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:27, totalPowerW:null },
   D: { VmpptMin:75,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
   E: { VmpptMin:75,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
-  F: { VmpptMin:60, VmpptMax:600, ImaxPerMppt:40, totalPowerW:null },
-  G: { VmpptMin:60, VmpptMax:600, ImaxPerMppt:40, totalPowerW:null },
+  F: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:10000 },
+  G: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:15000 },
+  H: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:40, totalPowerW:null },
+  I: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:40, totalPowerW:null },
 };
 
 /**
@@ -1055,10 +1070,14 @@ function applyInverterClipping(mpp, spec) {
   return { P, V, I, clipped: false };
 }
 
-// Economic constants (WP8) — Dutch 2025 energy prices
-const PRICE_SALDERING    = 0.26;  // €/kWh retail net-metering
-const PRICE_NO_SALDERING = 0.08;  // €/kWh feed-in
-const CONFIG_COST = { A:850, B:850, C:850, D:650, E:650, F:850, G:850 }; // € installed cost
+// Economic constants (WP8) — Dutch 2025 dynamic APX/EPEX energy pricing
+// Revenue is always computed using the HOURLY_APX_PRICE_2025 profile (per-hour).
+// Saldering ON  → full APX retail rate (you offset your consumption at the spot price).
+// Saldering OFF → feed-in rate = APX × FEED_IN_FACTOR (lower wholesale/feed-in tariff).
+const FEED_IN_FACTOR  = 0.70;  // feed-in ≈ 70 % of APX spot (no saldering / direct feed-in)
+const PRICE_SALDERING    = 0.26;  // €/kWh — kept for reference / heatmap € fallback
+const PRICE_NO_SALDERING = 0.08;  // €/kWh — kept for reference / heatmap € fallback
+const CONFIG_COST = { A:850, B:850, C:850, D:650, E:650, F:1205, G:1805, H:850, I:850 }; // € installed cost
 const MIN_ROI_DISPLAY_YEARS = 5;
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -2495,29 +2514,24 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
   
   const useSaldering = document.getElementById('salderingToggle')?.checked ?? true;
   
-  // Compute yearly revenues per config
+  // Compute yearly revenues per config — always use dynamic APX 2025 hourly prices
+  // Saldering ON  → full APX rate (offset consumption at spot price)
+  // Saldering OFF → APX × FEED_IN_FACTOR (lower wholesale feed-in tariff)
   const yearlyRevenue = {};
   CONFIGS.forEach(cfg => {
-    if (useSaldering) {
-      yearlyRevenue[cfg.id] = yearlyTotals[cfg.id] * PRICE_SALDERING;
-    } else {
-      // Use dynamic APX prices accumulated in worker
-      yearlyRevenue[cfg.id] = revenueDynamic && revenueDynamic[cfg.id]
-        ? revenueDynamic[cfg.id].reduce((a,b)=>a+b,0) : yearlyTotals[cfg.id] * PRICE_NO_SALDERING;
-    }
+    const dynRev = revenueDynamic && revenueDynamic[cfg.id]
+      ? revenueDynamic[cfg.id].reduce((a,b)=>a+b,0)
+      : yearlyTotals[cfg.id] * PRICE_SALDERING; // fallback if worker result missing
+    yearlyRevenue[cfg.id] = useSaldering ? dynRev : dynRev * FEED_IN_FACTOR;
   });
 
-  // Yearly no-shade revenues per config
+  // Yearly no-shade revenues per config — same dynamic pricing logic
   const yearlyNSRevenue = {};
   CONFIGS.forEach(cfg => {
-    if (useSaldering) {
-      const nsTot = noShadeEnergy ? noShadeEnergy[cfg.id].reduce((a,b)=>a+b,0) : yearlyTotals[cfg.id];
-      yearlyNSRevenue[cfg.id] = nsTot * PRICE_SALDERING;
-    } else {
-      yearlyNSRevenue[cfg.id] = noShadeRevenueDynamic && noShadeRevenueDynamic[cfg.id]
-        ? noShadeRevenueDynamic[cfg.id].reduce((a,b)=>a+b,0)
-        : (noShadeEnergy ? noShadeEnergy[cfg.id].reduce((a,b)=>a+b,0) : yearlyTotals[cfg.id]) * PRICE_NO_SALDERING;
-    }
+    const dynNSRev = noShadeRevenueDynamic && noShadeRevenueDynamic[cfg.id]
+      ? noShadeRevenueDynamic[cfg.id].reduce((a,b)=>a+b,0)
+      : (noShadeEnergy ? noShadeEnergy[cfg.id].reduce((a,b)=>a+b,0) : yearlyTotals[cfg.id]) * PRICE_SALDERING;
+    yearlyNSRevenue[cfg.id] = useSaldering ? dynNSRev : dynNSRev * FEED_IN_FACTOR;
   });
   
   const maxRevenue = Math.max(...Object.values(yearlyRevenue));
@@ -2645,12 +2659,14 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
     note.textContent =
       'Weather-adjusted estimate: PVGIS SARAH-3 / KNMI monthly cloud-correction Kc applied with beam/diffuse split ' +
       '(365 days × 1-hour steps). Further losses (inverter, wiring, soiling ~15–20%) ' +
-      'not included. Tree shade (with foliage seasonality) from current scene is applied. Prices: €0.26/kWh (saldering) / €0.08/kWh (feed-in).';
+      'not included. Tree shade (with foliage seasonality) from current scene is applied. ' +
+      'Revenue uses dynamic APX/EPEX hourly prices 2025 — saldering: full APX rate; feed-in: APX × 0.70.';
   } else {
     note.textContent =
       'Clear-sky estimate (no cloud losses, 365 days × 1-hour steps). ' +
       'Enable "Weather-adjusted" for a realistic yield estimate. ' +
-      'Tree shade from current scene is applied. Prices: €0.26/kWh (saldering) / €0.08/kWh (feed-in).';
+      'Tree shade from current scene is applied. ' +
+      'Revenue uses dynamic APX/EPEX hourly prices 2025 — saldering: full APX rate; feed-in: APX × 0.70.';
   }
 
   // Show and draw heatmap
@@ -2698,9 +2714,11 @@ function drawHeatmap() {
     }
   }
 
-  // Convert to € if needed
+  // Convert to € if needed — use average APX price as proxy for per-panel value
   if (metric === 'eur') {
-    const price = useSald ? PRICE_SALDERING : PRICE_NO_SALDERING;
+    // Average of all monthly-hourly APX prices
+    const avgApx = HOURLY_APX_PRICE_2025.reduce((s,row)=>s+row.reduce((a,b)=>a+b,0),0) / (12*24);
+    const price = useSald ? avgApx : avgApx * FEED_IN_FACTOR;
     for (let i = 0; i < ROWS * COLS; i++) vals[i] *= price;
   }
 
