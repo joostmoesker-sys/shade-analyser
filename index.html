@@ -3750,7 +3750,7 @@ function precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor = SELL_PRICE_F
   const daily = [];
   for (let d = 0; d < days; d++) {
     const startH = d * 24;
-    let dailyPv = 0, dailyLoad = 0, maxPrice = 0, minPrice = Infinity;
+    let dailyPv = 0, dailyLoad = 0, maxPrice = 0, minPrice = Infinity, minSellPrice = Infinity;
     const hourValues = [];
     for (let h = 0; h < 24; h++) {
       const idx = startH + h;
@@ -3762,6 +3762,7 @@ function precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor = SELL_PRICE_F
       // Self-use hours: weight by selfUseMultiplier; export hours: use sell price
       const isDeficit = loadKwh[idx] > pvKwh[idx];
       const sp = sellTariffs ? sellTariffs[idx] : p * sellFactor;
+      if (sp < minSellPrice) minSellPrice = sp;
       const value = isDeficit
         ? p * batteryParams.selfUseMultiplier
         : sp;
@@ -3784,6 +3785,7 @@ function precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor = SELL_PRICE_F
       load:            dailyLoad,
       maxPrice,
       minPrice,
+      minSellPrice,    // actual minimum sell price for the day (used for export gate)
       priorityHours:   hourValues,
       expectedDeficit48h: deficit48,
       // Deficit for today (used to decide if pre-charge is worth it for today's supply)
@@ -3953,11 +3955,8 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
 
     // ── v2 Priority Export: sell battery at high prices after covering self-use ──
     // Compare current sell price against today's min sell price + required spread.
-    const dayMinSell = sellTariffs
-      ? dailyStats[day].minPrice - TIBBER_OPSLAG_EUR_KWH  // min APX ≈ min buy - opslag
-      : dailyStats[day].minPrice * sellFactor;
     if (useV2 && available > 1 &&
-        sellPrice > dayMinSell + batteryParams.minProfitSpread) {
+        sellPrice > dailyStats[day].minSellPrice + batteryParams.minProfitSpread) {
       const extra = Math.min(available * DISCHARGE_EFF, MAX_BATTERY_POWER_KW * 0.6);
       if (extra > 0.1) {
         dischargedExport = extra;
@@ -4014,7 +4013,7 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
 
 // ── V3 DYNAMIC PROGRAMMING BATTERY DISPATCH ───────────────────────────────────
 // Uses a lightweight backward-induction DP to plan battery dispatch over a
-// rolling look-ahead horizon (24 / 48 / 96 h), then executes the first 24 h
+// rolling look-ahead horizon (24 / 48 / 96 / 120 h), then executes the first 24 h
 // of that plan against real PV/load data.
 // ═════════════════════════════════════════════════════════════════════════════
 
