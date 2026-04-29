@@ -126,6 +126,34 @@
     .econ-export-btn { padding:4px 10px; font-size:0.72rem; border:1px solid #374151; border-radius:5px; background:#111827; color:#9ca3af; cursor:pointer; transition:all 0.15s; }
     .econ-export-btn:hover { border-color:#4ade80; color:#4ade80; }
 
+    /* ── Tabs ─────────────────────────────────────────────────────────────── */
+    .tab-bar { display:flex; gap:4px; flex-wrap:nowrap; overflow-x:auto; margin-bottom:10px; background:#0f1923; border-radius:8px; padding:4px; scrollbar-width:thin; }
+    .tab-btn { padding:7px 14px; border:none; border-radius:6px; background:transparent; color:#6b7280; cursor:pointer; font-size:0.78rem; font-weight:600; white-space:nowrap; transition:all 0.15s; flex-shrink:0; }
+    .tab-btn:hover { background:#1e3a5f; color:#e5e7eb; }
+    .tab-btn.active { background:#1e3a5f; color:#60a5fa; border-bottom:2px solid #e94560; }
+    .tab-panel { display:none; }
+    .tab-panel.active { display:block; }
+
+    /* ── Toast notifications ──────────────────────────────────────────────── */
+    #toast-container { position:fixed; top:16px; right:16px; z-index:9999; display:flex; flex-direction:column; gap:8px; pointer-events:none; max-width:340px; }
+    .toast { padding:10px 16px; border-radius:8px; font-size:0.82rem; color:#e5e7eb; pointer-events:auto; opacity:0; transform:translateX(20px); transition:opacity 0.3s,transform 0.3s; box-shadow:0 4px 12px rgba(0,0,0,0.5); line-height:1.5; }
+    .toast.show { opacity:1; transform:translateX(0); }
+    .toast.success { background:#064e3b; border:1px solid #065f46; }
+    .toast.error   { background:#450a0a; border:1px solid #7f1d1d; }
+    .toast.info    { background:#0c1a2e; border:1px solid #1e3a5f; }
+
+    /* ── Help modal ───────────────────────────────────────────────────────── */
+    #help-modal-overlay { display:none; position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.75); align-items:center; justify-content:center; }
+    #help-modal-overlay.open { display:flex; }
+    #help-modal { background:#1f2937; border:1px solid #374151; border-radius:12px; padding:24px; max-width:560px; width:90%; max-height:85vh; overflow-y:auto; position:relative; }
+    #help-modal h2 { color:#60a5fa; font-size:1.1rem; margin-bottom:12px; }
+    #help-modal h4 { color:#e94560; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.5px; margin:14px 0 6px; }
+    #help-modal p, #help-modal li { font-size:0.82rem; color:#9ca3af; line-height:1.6; margin-bottom:4px; }
+    #help-modal ul { padding-left:16px; margin-bottom:8px; }
+    #help-modal .modal-close { position:absolute; top:12px; right:14px; background:none; border:none; color:#6b7280; font-size:1.3rem; cursor:pointer; padding:4px 8px; border-radius:4px; }
+    #help-modal .modal-close:hover { color:#e5e7eb; background:#374151; }
+    .kbd { display:inline-block; background:#374151; border:1px solid #4b5563; border-radius:4px; padding:1px 6px; font-size:0.76rem; font-family:monospace; color:#e5e7eb; }
+
   </style>
 </head>
 <body>
@@ -133,6 +161,11 @@
 <header>
   <h1>&#9728;&#65039; PV Array Shade Analyser</h1>
   <p>Lucksolar LS-M120-340W &nbsp;&middot;&nbsp; 8&times;9 (72 panels) &nbsp;&middot;&nbsp; Neer, Netherlands &nbsp;&middot;&nbsp; Clear-sky irradiance model &nbsp;&middot;&nbsp; 7 Wiring Configs</p>
+  <div style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <button class="btn" id="undoBtn" title="Undo last shade/tree change (Ctrl+Z)" disabled aria-label="Undo">&#8617; Undo</button>
+    <button class="btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled aria-label="Redo">&#8618; Redo</button>
+    <button class="btn" id="helpBtn" title="Open help (press ?)" style="border-color:#60a5fa;color:#60a5fa" aria-label="Help">? Help</button>
+  </div>
 </header>
 
 <div class="app-body">
@@ -260,6 +293,17 @@
   <!-- RIGHT PANEL -->
   <div class="right-panel">
 
+    <!-- Tab Navigation Bar -->
+    <div class="tab-bar" id="rightTabBar" role="tablist" aria-label="Results panels">
+      <button class="tab-btn active" data-tab="comparison" role="tab" aria-selected="true" aria-controls="tab-comparison" title="Configuration Comparison and MPPT Details">&#128202; Comparison</button>
+      <button class="tab-btn" data-tab="curves" role="tab" aria-selected="false" aria-controls="tab-curves" title="I-V and P-V curves">&#128200; Curves</button>
+      <button class="tab-btn" data-tab="yearly" role="tab" aria-selected="false" aria-controls="tab-yearly" title="Yearly Energy Simulation">&#128197; Yearly Sim</button>
+      <button class="tab-btn" data-tab="economics" role="tab" aria-selected="false" aria-controls="tab-economics" title="Economic Forecast and Battery Analysis">&#128267; Economics</button>
+    </div>
+
+    <!-- ── Tab: Comparison ────────────────────────────────────────────── -->
+    <div class="tab-panel active" id="tab-comparison" role="tabpanel" aria-labelledby="tab-btn-comparison">
+
     <div class="card">
       <h3>Configuration Comparison &nbsp;<span style="font-size:.71rem;color:#6b7280;text-transform:none">click a row to annotate array &amp; update chart</span></h3>
       <div class="comp-wrap">
@@ -282,12 +326,22 @@
       <div class="power-grid" id="powerGrid"></div>
     </div>
 
+    </div><!-- /tab-comparison -->
+
+    <!-- ── Tab: Curves ───────────────────────────────────────────────── -->
+    <div class="tab-panel" id="tab-curves" role="tabpanel" aria-labelledby="tab-btn-curves">
+
     <div class="card">
       <h3>I&ndash;V &amp; P&ndash;V Curves &nbsp;&middot;&nbsp; <span id="chartCfgLabel" style="color:#38bdf8">Option A</span>
         <span style="font-size:.7rem;color:#4b5563;text-transform:none;font-weight:400">&mdash; solid=I(A) &nbsp;&middot;&nbsp; dashed=P(W) &nbsp;&middot;&nbsp; &#9733;=MPP</span>
       </h3>
       <div class="chart-wrap"><canvas id="ivChart"></canvas></div>
     </div>
+
+    </div><!-- /tab-curves -->
+
+    <!-- ── Tab: Yearly Simulation ────────────────────────────────────── -->
+    <div class="tab-panel" id="tab-yearly" role="tabpanel" aria-labelledby="tab-btn-yearly">
 
     <!-- Yearly Energy Simulation -->
     <div class="card">
@@ -340,6 +394,10 @@
       </div>
     </div>
 
+    </div><!-- /tab-yearly -->
+
+    <!-- ── Tab: Economics & Battery ──────────────────────────────────── -->
+    <div class="tab-panel" id="tab-economics" role="tabpanel" aria-labelledby="tab-btn-economics">
 
     <!-- ══ Economic Forecast with Battery ══════════════════════════════════ -->
     <div class="card" id="econForecastCard">
@@ -459,10 +517,64 @@
       </div>
     </div>
 
+    </div><!-- /tab-economics -->
+
+  </div><!-- /right-panel -->
+</div><!-- /app-body -->
+
+
+
+<!-- ── Help Modal ────────────────────────────────────────────────────────── -->
+<div id="help-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
+  <div id="help-modal">
+    <button class="modal-close" id="helpModalClose" aria-label="Close help">&#10005;</button>
+    <h2 id="helpModalTitle">&#9728;&#65039; PV Array Shade Analyser &mdash; Quick Help</h2>
+
+    <h4>&#9654; Quick Start (3 steps)</h4>
+    <ol>
+      <li>Set the <b>date &amp; time</b> to get realistic irradiance for Neer, Netherlands.</li>
+      <li><b>Paint shade</b> on panels (left-drag = shade, right-drag / Shift = clear) or place <b>trees</b> on the scene map.</li>
+      <li>Compare wiring configurations in the <b>Comparison</b> tab — the best config is highlighted &#9733;. Run <b>Yearly Sim</b> for annual yield estimates.</li>
+    </ol>
+
+    <h4>&#127775; What the panel colours mean</h4>
+    <ul>
+      <li><b style="color:#60a5fa">Blue</b> panels = Top section (tilt +30°, az 225°)</li>
+      <li><b style="color:#f97316">Orange</b> panels = Bottom section (tilt &minus;20°, az 225°)</li>
+      <li>Darker panels = more shade / lower irradiance</li>
+      <li>MPPT group colour = wiring config being annotated</li>
+    </ul>
+
+    <h4>&#128268; Technical terms</h4>
+    <ul>
+      <li><b>MPPT</b> — Maximum Power Point Tracker: a DC/DC converter that finds the peak of the I&ndash;V curve.</li>
+      <li><b>POA</b> — Plane of Array irradiance: solar power hitting the tilted panel surface (W/m²).</li>
+      <li><b>V-TCT</b> — Vertical Cross-Tied topology: columns connected in series, rows cross-tied (parallel) at each column level. Reduces mismatch losses from horizontal shading.</li>
+      <li><b>H-TCT</b> — Horizontal Cross-Tied: rows in series, columns cross-tied.</li>
+      <li><b>SP</b> — Series-Parallel: strings of panels in series connected in parallel to the MPPT.</li>
+      <li><b>STC</b> — Standard Test Conditions: 1000 W/m², 25°C, AM 1.5. Reference power rating.</li>
+      <li><b>Bypass diode</b> — Diode that short-circuits a shaded cell sub-string (0.5 V drop) to prevent hot-spots and recover power from unshaded panels.</li>
+      <li><b>Saldering</b> — Dutch net-metering: exported kWh offsets imported kWh at the same retail tariff.</li>
+    </ul>
+
+    <h4>&#9000; Keyboard Shortcuts</h4>
+    <ul>
+      <li><span class="kbd">Ctrl+Z</span> / <span class="kbd">Cmd+Z</span> &mdash; Undo last shade or tree change</li>
+      <li><span class="kbd">Ctrl+Shift+Z</span> &mdash; Redo</li>
+      <li><span class="kbd">1</span>&ndash;<span class="kbd">9</span> &mdash; Select wiring config A&ndash;M in comparison table</li>
+      <li><span class="kbd">?</span> &mdash; Open / close this help dialog</li>
+      <li><span class="kbd">Esc</span> &mdash; Close this dialog</li>
+    </ul>
+
+    <h4>&#128279; Resources</h4>
+    <ul>
+      <li><a href="README.md" target="_blank" style="color:#60a5fa">README &amp; technical documentation</a></li>
+    </ul>
   </div>
 </div>
 
-
+<!-- ── Toast notification container ─────────────────────────────────────── -->
+<div id="toast-container" aria-live="polite" aria-atomic="false"></div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
      Simulation Web Worker source — type="text/x-worker" prevents execution.
@@ -1074,6 +1186,30 @@ self.onmessage = function(e) {
 <script>
 'use strict';
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  SHADE ANALYSER — MAIN APPLICATION SCRIPT
+ *
+ *  Sections:
+ *    1. CONSTANTS & CONFIGURATION  — panel specs, location, wiring configs,
+ *                                    economic constants, inverter specs
+ *    2. GLOBAL STATE               — shade maps, irradiance, undo stack
+ *    3. PHYSICS ENGINE             — irradiance model, diode solver, wiring
+ *                                    topologies, MPP finder
+ *    4. CANVAS DRAWING             — array canvas, scene map, IV/PV charts
+ *    5. TREE SHADOW GEOMETRY       — scene coordinates, shadow ellipse model
+ *    6. LEAFLET / OSM INTEGRATION  — tile map, array/tree overlays
+ *    7. YEARLY SIMULATION          — Web Worker dispatch, 8760-hour engine
+ *    8. BATTERY ECONOMICS          — v1 self-use, v2 smart-dispatch, CSV export
+ *    9. UI CONTROLS & EVENT HANDLERS
+ *   10. TABS · TOASTS · HELP MODAL · KEYBOARD SHORTCUTS
+ *  ═══════════════════════════════════════════════════════════════════════════
+ */
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECTION 1: CONSTANTS & CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════
+
 // ── Panel & array constants ─────────────────────────────────────────────────
 const ROWS = 8, COLS = 9;
 const BYPASS_VD = 0.5, VT_25 = 0.025693;
@@ -1360,6 +1496,10 @@ let batteryParams = {
 const BASE_LOAD_DEFAULT_KWH   = 12;
 const HP_WINTER_DEFAULT_KWH   = 28;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SECTION 2: GLOBAL STATE
+// ═══════════════════════════════════════════════════════════════════════════
+
 // ── State ──────────────────────────────────────────────────────────────────
 let highlightedConfig = 'A';
 // manualShade[r][c]: user-painted shade factor (1 = open, shadeLevel = blocked)
@@ -1380,7 +1520,80 @@ let lastSimRevenueDynamic = null, lastSimNoShadeRevenueDynamic = null;
 let lastHourlyPvKwh = null;  // { cfgId: Float64Array(8760) }
 let lastEconResults = null;  // cached economic sim results for CSV export
 
-/** Combine manual + tree shade into the shade[][] array used by physics */
+// ── Undo / Redo stack ──────────────────────────────────────────────────────
+const MAX_UNDO = 20;
+const undoStack = [];
+const redoStack = [];
+
+/**
+ * Capture a snapshot of mutable shade + tree state and push it onto undoStack.
+ * Call this BEFORE applying any user-driven change (paint stroke, add/delete tree, preset).
+ */
+function pushUndoSnapshot() {
+  undoStack.push({
+    manualShade:    manualShade.map(row => row.slice()),
+    currentTreeShade: currentTreeShade.map(row => row.slice()),
+    sceneTrees:     JSON.parse(JSON.stringify(sceneTrees)),
+  });
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0; // any new action clears redo history
+  _updateUndoRedoBtns();
+}
+
+/** Update enabled state of Undo/Redo buttons. */
+function _updateUndoRedoBtns() {
+  const u = document.getElementById('undoBtn');
+  const r = document.getElementById('redoBtn');
+  if (u) u.disabled = undoStack.length === 0;
+  if (r) r.disabled = redoStack.length === 0;
+}
+
+/**
+ * Restore the most recent snapshot from undoStack.
+ * Pushes current state onto redoStack first.
+ */
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push({
+    manualShade:    manualShade.map(row => row.slice()),
+    currentTreeShade: currentTreeShade.map(row => row.slice()),
+    sceneTrees:     JSON.parse(JSON.stringify(sceneTrees)),
+  });
+  const prev = undoStack.pop();
+  _applySnapshot(prev);
+}
+
+/**
+ * Re-apply the most recently undone snapshot from redoStack.
+ */
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push({
+    manualShade:    manualShade.map(row => row.slice()),
+    currentTreeShade: currentTreeShade.map(row => row.slice()),
+    sceneTrees:     JSON.parse(JSON.stringify(sceneTrees)),
+  });
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  const next = redoStack.pop();
+  _applySnapshot(next);
+}
+
+/** @private Apply a previously captured snapshot to the live state. */
+function _applySnapshot(snap) {
+  manualShade    = snap.manualShade;
+  currentTreeShade = snap.currentTreeShade;
+  sceneTrees     = snap.sceneTrees;
+  nextTreeId     = sceneTrees.length > 0 ? Math.max(...sceneTrees.map(t => t.id)) + 1 : 0;
+  combineShadeMaps();
+  drawArray();
+  drawSceneMap();
+  updateTreeCountLabel();
+  if (leafletActive) syncTreeLayersToLeaflet();
+  scheduleUpdate();
+  _updateUndoRedoBtns();
+}
+
+
 function combineShadeMaps() {
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
@@ -1645,11 +1858,11 @@ function canvasPos(e) {
   return { x:(src.clientX-bb.left)*sx, y:(src.clientY-bb.top)*sy };
 }
 canvas.addEventListener('contextmenu', e => e.preventDefault());
-canvas.addEventListener('mousedown', e => { e.preventDefault(); isPainting=true; paintMode=(e.button===2||e.shiftKey)?'clear':'shade'; applyPaint(canvasPos(e)); });
+canvas.addEventListener('mousedown', e => { e.preventDefault(); isPainting=true; paintMode=(e.button===2||e.shiftKey)?'clear':'shade'; pushUndoSnapshot(); applyPaint(canvasPos(e)); });
 canvas.addEventListener('mousemove', e => { if(isPainting) applyPaint(canvasPos(e)); });
 canvas.addEventListener('mouseup',   () => { isPainting=false; });
 canvas.addEventListener('mouseleave',() => { isPainting=false; });
-canvas.addEventListener('touchstart', e => { e.preventDefault(); isPainting=true; paintMode='shade'; applyPaint(canvasPos(e)); }, {passive:false});
+canvas.addEventListener('touchstart', e => { e.preventDefault(); isPainting=true; paintMode='shade'; pushUndoSnapshot(); applyPaint(canvasPos(e)); }, {passive:false});
 canvas.addEventListener('touchmove',  e => { e.preventDefault(); if(isPainting) applyPaint(canvasPos(e)); }, {passive:false});
 canvas.addEventListener('touchend',   () => { isPainting=false; });
 
@@ -1660,6 +1873,10 @@ function applyPaint(pos) {
   combineShadeMaps();
   scheduleUpdate();
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECTION 3: PHYSICS ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
 
 // ── Solar position & irradiance — Neer, Netherlands ────────────────────────
 
@@ -1835,6 +2052,10 @@ function updateIrradiance(date) {
     }
   });
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECTION 4: CANVAS DRAWING
+// ═══════════════════════════════════════════════════════════════════════════
 
 // ── Physics ────────────────────────────────────────────────────────────────
 
@@ -2173,6 +2394,7 @@ let nextTreeId    = 0;
 let selectedTreeId = null;
 
 function addTree(x, y) {
+  pushUndoSnapshot();
   const t = { id: nextTreeId++, x, y, height: 8, crownRadius: 6, hasUnderstoryFoliage: true };
   sceneTrees.push(t);
   selectTree(t.id);
@@ -3260,6 +3482,13 @@ function runYearlySimulation() {
             Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggRevenueDynamic[cfg.id])])),
             Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggNoShadeRevenueDynamic[cfg.id])])),
             Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggHourlyKwh[cfg.id])])));
+          // Find best config for toast
+          const totals = CONFIGS.map(cfg => ({ id: cfg.id, kwh: (result[cfg.id] || []).reduce((s,v)=>s+v,0) }));
+          totals.sort((a,b) => b.kwh - a.kwh);
+          if (totals.length > 0) {
+            const best = totals[0];
+            showToast(`&#9733; Yearly sim complete — Best: Config ${best.id} (${best.kwh.toFixed(0)} kWh/yr)`, 'success', 5000);
+          }
         }
       }
     };
@@ -4220,6 +4449,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
   document.getElementById('econResultsDiv').style.display = 'block';
   document.getElementById('econStatusLabel').textContent = `Done ✓ (${elapsedMs} ms)`;
   document.getElementById('econStatusLabel').style.color = '#4ade80';
+  showToast(`&#128267; Economic analysis complete (${elapsedMs} ms)`, 'success', 4000);
 }
 
 /**
@@ -4468,6 +4698,7 @@ function fullUpdate(){drawArray();heavyUpdate();}
 
 // ── UI controls ────────────────────────────────────────────────────────────
 document.getElementById('clearBtn').addEventListener('click',()=>{
+  pushUndoSnapshot();
   manualShade=Array.from({length:ROWS},()=>Array(COLS).fill(1.0));
   combineShadeMaps();
   fullUpdate();
@@ -4481,6 +4712,7 @@ shadeSlider.addEventListener('input',()=>{
 
 document.querySelectorAll('.preset-btn').forEach(btn=>{
   btn.addEventListener('click',()=>{
+    pushUndoSnapshot();
     const p=btn.dataset.preset;
     manualShade=Array.from({length:ROWS},()=>Array(COLS).fill(1.0));
     if(p==='row0')   for(let c=0;c<COLS;c++) manualShade[0][c]=shadeLevel;
@@ -4541,6 +4773,7 @@ document.getElementById('loadTreesBtn').addEventListener('click', () => {
 
 // Clear all trees
 document.getElementById('clearTreesBtn').addEventListener('click', () => {
+  pushUndoSnapshot();
   sceneTrees = [];
   deselectTree();
   updateTreeCountLabel();
@@ -4554,6 +4787,7 @@ document.getElementById('clearTreesBtn').addEventListener('click', () => {
 // Delete selected tree
 document.getElementById('deleteTreeBtn').addEventListener('click', () => {
   if (selectedTreeId === null) return;
+  pushUndoSnapshot();
   sceneTrees = sceneTrees.filter(t => t.id !== selectedTreeId);
   deselectTree();
   updateTreeCountLabel();
@@ -4826,11 +5060,148 @@ document.getElementById('econBatSizeSelect').addEventListener('change', () => {
   // Initialise the v2 battery strategy UI panel controls
   initBatteryV2UI();
 
+  // Wire up undo/redo header buttons
+  document.getElementById('undoBtn').addEventListener('click', undo);
+  document.getElementById('redoBtn').addEventListener('click', redo);
+
   // Auto-open OSM map once Leaflet is loaded (window.load fires after all scripts execute)
   window.addEventListener('load', function () {
     if (!leafletActive) toggleOSMMap();
   });
 })();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECTION: TAB SWITCHING
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Switch the right panel to the specified tab.
+ * @param {string} tabId - One of 'comparison', 'curves', 'yearly', 'economics'
+ */
+function switchTab(tabId) {
+  document.querySelectorAll('#rightTabBar .tab-btn').forEach(btn => {
+    const active = btn.dataset.tab === tabId;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.id === 'tab-' + tabId);
+  });
+  // Refresh canvas-based charts when their tab becomes visible
+  if (tabId === 'curves') {
+    setTimeout(() => {
+      const hlRes = computeConfig(highlightedConfig);
+      updateChart(hlRes);
+    }, 30);
+  }
+}
+
+// Wire tab bar click
+document.getElementById('rightTabBar').addEventListener('click', e => {
+  const btn = e.target.closest('.tab-btn');
+  if (btn && btn.dataset.tab) switchTab(btn.dataset.tab);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECTION: TOAST NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Display a transient toast notification.
+ * @param {string} html    - HTML content for the toast
+ * @param {'success'|'error'|'info'} type - Visual style
+ * @param {number} timeout - Auto-dismiss after this many ms (default 3000)
+ */
+function showToast(html, type = 'info', timeout = 3000) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = html;
+  container.appendChild(el);
+  // Trigger CSS transition
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+  const dismiss = () => {
+    el.classList.remove('show');
+    el.addEventListener('transitionend', () => el.remove(), { once: true });
+  };
+  const timer = setTimeout(dismiss, timeout);
+  el.addEventListener('click', () => { clearTimeout(timer); dismiss(); });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECTION: HELP MODAL
+// ═══════════════════════════════════════════════════════════════════════════
+
+function openHelpModal() {
+  const overlay = document.getElementById('help-modal-overlay');
+  if (!overlay) return;
+  overlay.classList.add('open');
+  // Focus the close button for accessibility
+  const closeBtn = document.getElementById('helpModalClose');
+  if (closeBtn) setTimeout(() => closeBtn.focus(), 50);
+}
+
+function closeHelpModal() {
+  const overlay = document.getElementById('help-modal-overlay');
+  if (overlay) overlay.classList.remove('open');
+}
+
+document.getElementById('helpBtn').addEventListener('click', openHelpModal);
+document.getElementById('helpModalClose').addEventListener('click', closeHelpModal);
+document.getElementById('help-modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('help-modal-overlay')) closeHelpModal();
+});
+
+// Show onboarding toast on first visit
+if (!localStorage.getItem('shadeAnalyserSeenHelp')) {
+  setTimeout(() => {
+    showToast('&#128075; Welcome! Press <b>?</b> or click <b>Help</b> for a quick start guide.', 'info', 6000);
+    localStorage.setItem('shadeAnalyserSeenHelp', '1');
+  }, 1200);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECTION: KEYBOARD SHORTCUTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+document.addEventListener('keydown', e => {
+  const tag = document.activeElement ? document.activeElement.tagName : '';
+  const inInput = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
+
+  // Undo / Redo — always active
+  if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+    if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+    if ((e.key === 'z' && e.shiftKey) || e.key === 'y') { e.preventDefault(); redo(); return; }
+  }
+
+  // Skip remaining shortcuts when focus is inside a form element
+  if (inInput) return;
+
+  // Help modal
+  if (e.key === '?') { e.preventDefault(); openHelpModal(); return; }
+  if (e.key === 'Escape') { closeHelpModal(); return; }
+
+  // Number keys 1–9 → select config A–M (in CONFIGS order)
+  if (e.key >= '1' && e.key <= '9') {
+    const idx = parseInt(e.key) - 1;
+    if (idx < CONFIGS.length) {
+      const newCfg = CONFIGS[idx].id;
+      highlightedConfig = newCfg;
+      updateAnnotation();
+      drawArray();
+      const res = computeConfig(highlightedConfig);
+      updatePowerDetail(res);
+      updateChart(res);
+      // Update table selection
+      document.querySelectorAll('#compTableBody tr').forEach(r => {
+        r.classList.toggle('selected', r.dataset.cfgid === newCfg);
+      });
+      showToast(`Config ${newCfg} selected`, 'info', 1500);
+    }
+    return;
+  }
+});
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 </body>
