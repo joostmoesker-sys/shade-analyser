@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PV Array Shade Analyser — Neer, NL</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', system-ui, sans-serif; background: #111827; color: #e5e7eb; min-height: 100vh; }
@@ -87,6 +88,10 @@
     .specs-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); gap: 6px; font-size:.78rem; color:#9ca3af; }
 
     /* ── Scene map ──────────────────────────────────────────────────────────── */
+    #googleMap { width:100%; height:300px; border-radius:6px; display:none; }
+    #leafletMap { width:100%; height:300px; border-radius:6px; display:none; }
+    .leaflet-container { background:#0c1a0d; }
+    .leaflet-control-attribution { font-size:9px; opacity:0.6; }
     #mapCanvas { display:block; border-radius:6px; cursor:crosshair; touch-action:none; width:100%; max-width:700px; }
     .map-ctrls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; font-size:0.77rem; }
     .tree-props-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; font-size:0.77rem;
@@ -103,16 +108,14 @@
     #monthlyChart { display:block; }
     .sim-note { font-size:0.68rem; color:#4b5563; margin-top:6px; }
 
-    /* ── 3D preview ──────────────────────────────────────────────────────────── */
-    #previewCanvas { display:block; border-radius:6px; width:100%; }
-    .preview-legend { display:flex; gap:10px; flex-wrap:wrap; font-size:0.71rem; color:#6b7280; margin-top:6px; }
+
   </style>
 </head>
 <body>
 
 <header>
   <h1>&#9728;&#65039; PV Array Shade Analyser</h1>
-  <p>Lucksolar LS-MD120-340W &nbsp;&middot;&nbsp; 8&times;9 (72 panels) &nbsp;&middot;&nbsp; Neer, Netherlands &nbsp;&middot;&nbsp; Clear-sky irradiance model &nbsp;&middot;&nbsp; 6 Wiring Configs</p>
+  <p>Lucksolar LS-M120-340W &nbsp;&middot;&nbsp; 8&times;9 (72 panels) &nbsp;&middot;&nbsp; Neer, Netherlands &nbsp;&middot;&nbsp; Clear-sky irradiance model &nbsp;&middot;&nbsp; 7 Wiring Configs</p>
 </header>
 
 <div class="app-body">
@@ -189,37 +192,47 @@
     <div class="card">
       <h3>&#127758; Scene Map
         <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">
-          &nbsp;top-down &middot; click empty area = add tree &middot; click tree = select &amp; drag
+          &nbsp;top-down &middot; <span style="color:#e94560">✥</span> drag = move array &middot; <span style="color:#38bdf8">↻</span> drag = rotate &middot; click empty = add tree &middot; click tree = drag
         </span>
       </h3>
+      <div id="leafletMap"></div>
       <canvas id="mapCanvas" height="300"></canvas>
       <div class="map-ctrls">
+        <button class="btn map-mode-btn" id="toggleGoogleMapBtn">🗺 Use OSM Map</button>
+        <button class="btn" id="centerBosheiBtn" style="display:none">📍 Boshei 4</button>
         <button class="btn" id="clearTreesBtn">&#127795; Clear Trees</button>
         <span id="treeCountLabel" style="color:#6b7280;font-size:0.75rem">No trees</span>
         <span style="flex:1"></span>
-        <span style="font-size:0.71rem;color:#4b5563">&#9632; = 10 m</span>
+        <span id="mapScaleLabel" style="font-size:0.71rem;color:#4b5563">&#9632; = 10 m</span>
       </div>
       <div class="tree-props-row" id="treePropsRow" style="display:none">
         <label>H:</label>
         <input type="range" id="treeHeightSlider" min="2" max="25" value="8">
         <span id="treeHeightVal" style="color:#fbbf24;min-width:26px">8 m</span>
         <label style="margin-left:6px">Crown&#8960;:</label>
-        <input type="range" id="treeCrownSlider" min="1" max="10" value="3">
-        <span id="treeCrownVal" style="color:#4ade80;min-width:26px">3 m</span>
+        <input type="range" id="treeCrownSlider" min="1" max="10" value="6">
+        <span id="treeCrownVal" style="color:#4ade80;min-width:26px">6 m</span>
+        <label style="margin-left:8px;display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.78rem">
+          <input type="checkbox" id="treeUnderstoryCheck" checked>
+          <span style="color:#86efac">Understory</span>
+        </label>
         <button class="btn" id="deleteTreeBtn" style="margin-left:6px;border-color:#ef4444;color:#ef4444">&#10005; Delete</button>
       </div>
       <p class="instructions">Shadows from trees are automatically applied to the array based on current date &amp; time.</p>
+      <div id="foliageBadge" style="display:inline-flex;align-items:center;gap:5px;font-size:0.72rem;color:#4ade80;background:#0a1f0a;border:1px solid #166534;border-radius:5px;padding:3px 8px;margin-top:6px">
+        🌿 <span id="foliageBadgeText">Jan: 25% canopy</span>
+      </div>
     </div>
 
     <!-- Panel specs -->
     <div class="card">
-      <h3>Panel &mdash; Lucksolar LS-MD120-340W</h3>
+      <h3>Panel &mdash; Lucksolar LS-M120-340W</h3>
       <div class="specs-grid">
         <span>Pmax: <b style="color:#e5e7eb">340 W</b></span>
-        <span>Vmp: <b style="color:#e5e7eb">38.4 V</b></span>
-        <span>Imp: <b style="color:#e5e7eb">8.85 A</b></span>
-        <span>Voc: <b style="color:#e5e7eb">46.4 V</b></span>
-        <span>Isc: <b style="color:#e5e7eb">9.35 A</b></span>
+        <span>Vmp: <b style="color:#e5e7eb">34.52 V</b></span>
+        <span>Imp: <b style="color:#e5e7eb">9.85 A</b></span>
+        <span>Voc: <b style="color:#e5e7eb">40.98 V</b></span>
+        <span>Isc: <b style="color:#e5e7eb">10.28 A</b></span>
         <span>Bypass: <b style="color:#e5e7eb">3&times;0.5 V</b></span>
       </div>
     </div>
@@ -275,18 +288,25 @@
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:0.77rem;color:#9ca3af">
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
           <input type="checkbox" id="weatherToggle" checked style="accent-color:#38bdf8;width:13px;height:13px">
-          Weather-adjusted &nbsp;<span style="color:#38bdf8">(PVGIS/KNMI Kc, Neer NL)</span>
+          Weather-adjusted &nbsp;<span style="color:#38bdf8">(Cloud Correction 2025 — KNMI/PVGIS Kc, Neer NL)</span>
         </label>
+
         <span id="simModeLabel" style="font-size:0.71rem;color:#4b5563"></span>
+      </div>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:0.77rem;color:#9ca3af">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input type="checkbox" id="salderingToggle" checked style="accent-color:#4ade80;width:13px;height:13px">
+          Saldering (net metering) &nbsp;<span style="color:#4ade80;font-size:.7rem">Dynamic APX — saldering: full rate / feed-in: APX × 0.70</span>
+        </label>
       </div>
       <div id="simResultsDiv" style="display:none">
         <div id="simWeatherBadge" style="display:none;margin-bottom:8px;font-size:0.72rem;color:#38bdf8;background:#0c2233;border:1px solid #1e4060;border-radius:5px;padding:5px 10px">
-          &#9729; Weather-adjusted — cloud-correction Kc applied per month (PVGIS SARAH-3 / KNMI 1991–2020, Neer NL)
+          ☁ Using 2025 KNMI/PVGIS data — beam/diffuse split applied per month
         </div>
         <div class="comp-wrap">
           <table class="comp-table">
             <thead><tr>
-              <th>Config</th><th>Yearly kWh</th><th>% of best</th><th>Avg kWh/day</th>
+              <th>Config</th><th>Yearly kWh</th><th>% Best</th><th title="Higher % = better shade management">% No-Shade</th><th>kWh/day</th><th>Revenue</th><th title="Profit loss vs best configuration">Δ vs Best</th><th title="Profit loss vs unshaded baseline">Δ vs No-Shade</th><th>ROI</th>
             </tr></thead>
             <tbody id="yearlyTableBody"></tbody>
           </table>
@@ -297,27 +317,39 @@
           <canvas id="kcChart" height="38"></canvas>
         </div>
         <p class="sim-note" id="simNoteText"></p>
+        <div id="heatmapSection" style="margin-top:14px;display:none">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+            <span style="font-size:0.78rem;font-weight:600;color:#9ca3af">&#128200; Panel Heatmap</span>
+            <select id="heatmapMetric" style="background:#111827;color:#9ca3af;border:1px solid #374151;border-radius:5px;padding:3px 7px;font-size:0.75rem">
+              <option value="kwh">kWh / panel</option>
+              <option value="eur">€ / panel</option>
+            </select>
+            <select id="heatmapMonth" style="background:#111827;color:#9ca3af;border:1px solid #374151;border-radius:5px;padding:3px 7px;font-size:0.75rem">
+              <option value="-1">All Year</option>
+              <option value="0">January</option><option value="1">February</option>
+              <option value="2">March</option><option value="3">April</option>
+              <option value="4">May</option><option value="5">June</option>
+              <option value="6">July</option><option value="7">August</option>
+              <option value="8">September</option><option value="9">October</option>
+              <option value="10">November</option><option value="11">December</option>
+            </select>
+            <span id="heatmapRangeLabel" style="font-size:0.7rem;color:#4b5563"></span>
+          </div>
+          <canvas id="heatmapCanvas" style="display:block;width:100%;max-width:700px;border-radius:6px"></canvas>
+          <div id="heatmapLegendBar" style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:0.7rem;color:#6b7280">
+            <span>Low</span>
+            <canvas id="heatmapLegendCanvas" width="180" height="14" style="border-radius:3px"></canvas>
+            <span>High</span>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- 3D Scene Preview -->
-    <div class="card">
-      <h3>&#128301; 3D Scene Preview
-        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">
-          &nbsp;isometric &middot; updates with time &amp; scene layout
-        </span>
-      </h3>
-      <canvas id="previewCanvas" height="260"></canvas>
-      <div class="preview-legend">
-        <span><span style="display:inline-block;width:10px;height:10px;background:#60a5fa;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Top section (R1–5)</span>
-        <span><span style="display:inline-block;width:10px;height:10px;background:#f97316;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Bottom section (R6–8)</span>
-        <span><span style="display:inline-block;width:10px;height:10px;background:#4ade80;border-radius:50%;vertical-align:middle;margin-right:3px"></span>Trees</span>
-        <span><span style="display:inline-block;width:10px;height:10px;background:#fbbf24;border-radius:50%;vertical-align:middle;margin-right:3px"></span>Sun</span>
-      </div>
-    </div>
 
   </div>
 </div>
+
+
 
 <!-- ═══════════════════════════════════════════════════════════════════════
      Simulation Web Worker source — type="text/x-worker" prevents execution.
@@ -327,10 +359,12 @@
 'use strict';
 // ── Constants received via the 'run' postMessage ───────────────────────────
 let ROWS, COLS, SECTION_DIV, STC_IRRAD, BYPASS_VD, NEER_LAT;
-let PNL, SECTIONS, CONFIGS, MONTHLY_KC;
+let PNL, SECTIONS, CONFIGS, MONTHLY_KC, FOLIAGE;
 let MAX_SHADOW_LEN, MAX_SHADOW_AXIS;
 let PANEL_POS;   // precomputed flat [{x,y}], length ROWS*COLS
 let DOY_TO_MONTH; // precomputed int[365], 0-11
+let INVERTER_SPECS_W; // inverter specs for clipping
+let DYNAMIC_PRICES; // Float64, length 12*24, flat [month*24+hour]
 
 // ── DST for Neer NL, 2024 reference year ───────────────────────────────────
 // Spring forward: March 31 = DOY 91; Fall back: October 27 = DOY 301.
@@ -384,13 +418,24 @@ function poaIrradiance(dni, dhi, ghi, sun_alt_deg, sun_az_deg, tilt_deg, az_deg)
 
 function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
   if (tan_alt < 0.01) return false;
+  const sin_alt = tan_alt / Math.sqrt(1 + tan_alt * tan_alt);
   const sl  = Math.min(tree.height / tan_alt, MAX_SHADOW_LEN);
   const scx = tree.x - sl * Math.sin(az_rad), scy = tree.y - sl * Math.cos(az_rad);
   const dx = px - scx, dy = py - scy;
   const ux = -Math.sin(az_rad), uy = -Math.cos(az_rad);
   const along = dx*ux + dy*uy, perp = Math.abs(dx*uy - dy*ux);
-  const ra = Math.min(tree.crownRadius / tan_alt, MAX_SHADOW_AXIS), rp = tree.crownRadius;
-  return (along*along)/(ra*ra) + (perp*perp)/(rp*rp) <= 1.0;
+  const ra = Math.min(tree.crownRadius / sin_alt, MAX_SHADOW_AXIS), rp = tree.crownRadius;
+  if ((along*along)/(ra*ra) + (perp*perp)/(rp*rp) <= 1.0) return true;
+  // Understory foliage cylinder: z=0 to height/2 casts a stadium-shaped shadow
+  if (tree.hasUnderstoryFoliage) {
+    const L = Math.min(tree.height / 2 / tan_alt, MAX_SHADOW_LEN);
+    const abx = L * ux, aby = L * uy;
+    const apx = px - tree.x, apy = py - tree.y;
+    const t = L > 0 ? Math.max(0, Math.min(1, (apx*abx + apy*aby) / (L*L))) : 0;
+    const ex = apx - t*abx, ey = apy - t*aby;
+    if (ex*ex + ey*ey <= tree.crownRadius * tree.crownRadius) return true;
+  }
+  return false;
 }
 
 // ── IV-curve physics (reduced resolution: nPts=40/100 vs 80/200 for display) 
@@ -400,13 +445,78 @@ function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
 // Quantisation factor: 4000 → 0.25‰ steps over G ∈ [0,1].
 // At this resolution the MPP power error is negligible (<0.05% for realistic IV curves).
 const G_CACHE_QUANTISATION = 4000;
-let _ivCache; // Map<int, curve>, reset each timestep
+const DIFFUSE_SHADE_FACTOR = 0.85; // diffuse sky irradiance fraction retained when beam-blocked
+let _ivCache;  // Map<int, curve>, reset each timestep
+let _hcCache;  // Map<int, curve> for half-cut shaded panels, reset each timestep
 
 function cachedPanelIV(G) {
   const key = Math.round(G * G_CACHE_QUANTISATION);
   let cv = _ivCache.get(key);
   if (!cv) { cv = panelIV_sim(G); _ivCache.set(key, cv); }
   return cv;
+}
+
+// ── Half-cut cell panel model ──────────────────────────────────────────────
+// The LS-M120-340W has 2 parallel half-strings of 60 cells each.
+// Each half-string: Isc/2, same Voc, Rs×2, Rsh×2, I0/2.
+// When one half is shaded, compute IV as parallel(halfString_shaded, halfString_full).
+
+function halfStringIV(G, nPts=40) {
+  if (G < 0.001) return [{V:0, I:0}];
+  const Iph2  = PNL.Isc * G / 2;         // half the photocurrent
+  const I02   = PNL.I0  / 2;             // half the saturation current
+  const Rs2   = PNL.Rs  * 2;             // series resistance per half-string
+  const Rsh2  = PNL.Rsh * 2;             // shunt resistance per half-string
+  const VocG  = PNL.Voc + PNL.nNsVt * Math.log(G);
+  const curve = [];
+  for (let k=0; k<=nPts; k++) {
+    const V = (k/nPts) * VocG;
+    let I = Iph2;
+    for (let it=0; it<15; it++) {
+      const x = Math.min((V + I*Rs2) / PNL.nNsVt, 80), ex = Math.exp(x);
+      const f  = I - Iph2 + I02*(ex-1) + (V + I*Rs2)/Rsh2;
+      const df = 1 + I02*ex*Rs2/PNL.nNsVt + Rs2/Rsh2;
+      const dI = f/df; I -= dI;
+      if (Math.abs(dI) < 1e-9) break;
+    }
+    curve.push({V, I: Math.max(0, I)});
+  }
+  return curve;
+}
+
+function halfCutPanelIV(G_s, G_u, nPts=40) {
+  // G_u: unshaded half-string G; G_s: shaded half-string G
+  if (G_u < 0.001) return [{V:0, I:0}];
+  const hs_u = halfStringIV(G_u, nPts);            // unshaded half
+  const fn_s = G_s > 0.001 ? makeIofV(halfStringIV(G_s, nPts)) : () => 0;
+  const fn_u = makeIofV(hs_u);
+  const maxV = hs_u[hs_u.length-1].V;
+  const result = [];
+  for (let k=0; k<=nPts; k++) {
+    const V = (k/nPts) * maxV;
+    result.push({V, I: fn_u(V) + fn_s(V)});
+  }
+  return result;
+}
+
+function cachedHalfCutPanelIV(G_s, G_u) {
+  const ks = Math.round(G_s * G_CACHE_QUANTISATION);
+  const ku = Math.round(G_u * G_CACHE_QUANTISATION);
+  const key = ks * 10000 + ku;
+  let cv = _hcCache.get(key);
+  if (!cv) { cv = halfCutPanelIV(G_s, G_u); _hcCache.set(key, cv); }
+  return cv;
+}
+
+// Returns the IV curve for panel at (r,c):
+// - If unshaded: standard cachedPanelIV (both halves at same G)
+// - If shaded: half-cut model with one half unshaded, one at shade*G
+function getPanelIV(r, c) {
+  const i  = r*COLS + c;
+  const sh = _shade[i];
+  const Gu = _irr[i];
+  if (sh >= 0.999 || Gu < 0.001) return cachedPanelIV(Math.max(0, Gu * sh));
+  return cachedHalfCutPanelIV(Gu * sh, Gu);
 }
 
 function panelIV_sim(G, nPts=40) {
@@ -452,6 +562,91 @@ function makeIofV(curve) {
     return 0;
   };
 }
+
+// Half-cut aware series string: uses getPanelIV for each panel at (r, c0..c1)
+function stringIV_hc(r, c0, c1, nPts=100) {
+  const ivs = [];
+  for (let c=c0; c<=c1; c++) ivs.push(getPanelIV(r, c));
+  const fns    = ivs.map(iv => makeVofI(iv, true));
+  const maxIsc = Math.max(...ivs.map(iv => iv[0] ? iv[0].I : 0), 0.001);
+  const result = [];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of fns) V += fn(I);
+    result.push({V, I});
+  }
+  result.sort((a,b)=>a.V-b.V); return result;
+}
+
+// Half-cut aware V-TCT block
+function blockVTCT_hc(r0, r1, c0, c1, nPts=100) {
+  const secCurves = [];
+  for (let c=c0; c<=c1; c++) {
+    const rowFns = []; let maxVsec = 0;
+    for (let r=r0; r<=r1; r++) {
+      const piv = getPanelIV(r, c);
+      rowFns.push(makeIofV(piv));
+      if (piv.length > 1) maxVsec = Math.max(maxVsec, piv[piv.length-1].V);
+    }
+    const sec = [];
+    for (let k=0; k<=nPts; k++) {
+      const V=(k/nPts)*maxVsec; sec.push({V, I: rowFns.reduce((s,fn)=>s+fn(V), 0)});
+    }
+    secCurves.push(sec);
+  }
+  const VofI   = secCurves.map(cv => makeVofI(cv, false));
+  const maxIsc = Math.max(...secCurves.map(cv => cv[0] ? cv[0].I : 0), 0.001);
+  const result = [];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of VofI) V += fn(I);
+    result.push({V, I});
+  }
+  result.sort((a,b)=>a.V-b.V); return result;
+}
+
+// Half-cut aware vertical series string: column c, rows r0..r1
+function colStringIV_hc(c, r0, r1, nPts=100) {
+  const ivs = [];
+  for (let r=r0; r<=r1; r++) ivs.push(getPanelIV(r, c));
+  const fns    = ivs.map(iv => makeVofI(iv, true));
+  const maxIsc = Math.max(...ivs.map(iv => iv[0] ? iv[0].I : 0), 0.001);
+  const result = [];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of fns) V += fn(I);
+    result.push({V, I});
+  }
+  result.sort((a,b)=>a.V-b.V); return result;
+}
+
+// Half-cut aware H-TCT block: rows in series, cols cross-tied at each row level
+function blockHTCT_hc(r0, r1, c0, c1, nPts=100) {
+  const secCurves = [];
+  for (let r=r0; r<=r1; r++) {
+    const colFns = []; let maxVsec = 0;
+    for (let c=c0; c<=c1; c++) {
+      const piv = getPanelIV(r, c);
+      colFns.push(makeIofV(piv));
+      if (piv.length > 1) maxVsec = Math.max(maxVsec, piv[piv.length-1].V);
+    }
+    const sec = [];
+    for (let k=0; k<=nPts; k++) {
+      const V=(k/nPts)*maxVsec; sec.push({V, I: colFns.reduce((s,fn)=>s+fn(V), 0)});
+    }
+    secCurves.push(sec);
+  }
+  const VofI   = secCurves.map(cv => makeVofI(cv, false));
+  const maxIsc = Math.max(...secCurves.map(cv => cv[0] ? cv[0].I : 0), 0.001);
+  const result = [];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of VofI) V += fn(I);
+    result.push({V, I});
+  }
+  result.sort((a,b)=>a.V-b.V); return result;
+}
+
 
 function stringIV_sim(Gs, nPts=100) {
   const fns    = Gs.map(G => makeVofI(cachedPanelIV(G), true));
@@ -506,14 +701,30 @@ function blockVTCT_sim(r0, r1, c0, c1, nPts=100) {
   result.sort((a,b)=>a.V-b.V); return result;
 }
 
+function snakeStringIV_sim(cells, nPts=100) {
+  const ivs = cells.map(({r,c}) => getPanelIV(r, c));
+  const fns = ivs.map(iv => makeVofI(iv, true));
+  const maxIsc = Math.max(...ivs.map(iv => iv[0] ? iv[0].I : 0), 0.001);
+  const result = [];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of fns) V += fn(I);
+    result.push({V, I});
+  }
+  result.sort((a,b)=>a.V-b.V); return result;
+}
+
 function computeBlockIV_sim(block) {
   const {r0,r1,c0,c1,topo} = block;
+  if (topo==='snake-series') return snakeStringIV_sim(block.cells);
   if (topo==='series' || (topo==='sp' && r0===r1))
-    return stringIV_sim(Array.from({length:c1-c0+1}, (_,i) => eG(r0, c0+i)));
+    return stringIV_hc(r0, c0, c1);
   if (topo==='sp')
-    return parallelIV_sim(Array.from({length:r1-r0+1}, (_,i) =>
-      stringIV_sim(Array.from({length:c1-c0+1}, (_,j) => eG(r0+i, c0+j)))));
-  if (topo==='v-tct') return blockVTCT_sim(r0, r1, c0, c1);
+    return parallelIV_sim(Array.from({length:r1-r0+1}, (_,i) => stringIV_hc(r0+i, c0, c1)));
+  if (topo==='col-sp')
+    return parallelIV_sim(Array.from({length:c1-c0+1}, (_,j) => colStringIV_hc(c0+j, r0, r1)));
+  if (topo==='v-tct') return blockVTCT_hc(r0, r1, c0, c1);
+  if (topo==='h-tct') return blockHTCT_hc(r0, r1, c0, c1);
   return [{V:0, I:0}];
 }
 
@@ -534,26 +745,52 @@ self.onmessage = function(e) {
   PNL=d.PNL; SECTIONS=d.SECTIONS; CONFIGS=d.CONFIGS; MONTHLY_KC=d.MONTHLY_KC;
   MAX_SHADOW_LEN=d.MAX_SHADOW_LEN; MAX_SHADOW_AXIS=d.MAX_SHADOW_AXIS;
   DOY_TO_MONTH=d.DOY_TO_MONTH; PANEL_POS=d.PANEL_POS;
+  FOLIAGE = d.FOLIAGE || [1,1,1,1,1,1,1,1,1,1,1,1];
+  INVERTER_SPECS_W = d.INVERTER_SPECS || {};
+  DYNAMIC_PRICES = d.DYNAMIC_PRICES || null;
 
   const sceneTrees = d.sceneTrees;
   const shadeLevel = d.shadeLevel;
   const useWeather = d.useWeather;
+  const doyStart = d.doyStart || 1;
+  const doyEnd = d.doyEnd || 365;
 
   // Working arrays: flat Float32Array (index = r*COLS+c)
   _irr   = new Float32Array(ROWS * COLS);
   _shade = new Float32Array(ROWS * COLS).fill(1);
   _ivCache = new Map();
+  _hcCache = new Map();
 
   // monthlyEnergy[cfgId][0-11] in kWh
   const monthlyEnergy = {};
   CONFIGS.forEach(cfg => { monthlyEnergy[cfg.id] = new Float64Array(12); });
+  
+  // No-shade baseline energy
+  const noShadeEnergy = {};
+  CONFIGS.forEach(cfg => { noShadeEnergy[cfg.id] = new Float64Array(12); });
+
+  // per-panel energy by month (flat: month*ROWS*COLS + r*COLS+c)
+  const panelEnergyByMonth = new Float64Array(12 * ROWS * COLS);
+  const noShadePanelEnergyByMonth = new Float64Array(12 * ROWS * COLS);
+  // per-config dynamic revenue by month (APX prices when saldering=OFF)
+  const configRevenueDynamic = {};
+  const noShadeRevenueDynamic = {};
+  CONFIGS.forEach(cfg => {
+    configRevenueDynamic[cfg.id]   = new Float64Array(12);
+    noShadeRevenueDynamic[cfg.id]  = new Float64Array(12);
+  });
 
   const hasTrees = sceneTrees.length > 0;
 
-  for (let doy = 1; doy <= 365; doy++) {
+  for (let doy = doyStart; doy <= doyEnd; doy++) {
     const month = DOY_TO_MONTH[doy - 1];
     const kc    = useWeather ? MONTHLY_KC[month] : 1.0;
     const dst   = isDSTdoy(doy);
+    
+    // Apply foliage factor for current month
+    const foliageFactor = FOLIAGE[month];
+    const adjSceneTrees = foliageFactor === 1.0 ? sceneTrees : 
+      sceneTrees.map(t => ({...t, crownRadius: t.crownRadius * foliageFactor}));
 
     for (let hour = 0; hour < 24; hour++) {
       // Use the mid-hour instant for trapezoidal numerical integration
@@ -570,14 +807,29 @@ self.onmessage = function(e) {
         Math.min(1, poaIrradiance(cs.dni, cs.dhi, cs.ghi, sp.altitude, sp.azimuth,
           SECTIONS[1].tilt, SECTIONS[1].azimuth) * kc / STC_IRRAD),
       ];
+      
+      // Compute beam fraction for each section
+      const beamFrac = [
+        frac[0] > 0 ? Math.min(1, Math.max(0, cs.dni * Math.max(0, 
+          Math.cos(sp.altitude*Math.PI/180)*Math.sin(sp.azimuth*Math.PI/180)*Math.sin(SECTIONS[0].tilt*Math.PI/180)*Math.sin(SECTIONS[0].azimuth*Math.PI/180) +
+          Math.cos(sp.altitude*Math.PI/180)*Math.cos(sp.azimuth*Math.PI/180)*Math.sin(SECTIONS[0].tilt*Math.PI/180)*Math.cos(SECTIONS[0].azimuth*Math.PI/180) +
+          Math.sin(sp.altitude*Math.PI/180)*Math.cos(SECTIONS[0].tilt*Math.PI/180)
+        ) * kc / STC_IRRAD) / frac[0]) : 0.5,
+        frac[1] > 0 ? Math.min(1, Math.max(0, cs.dni * Math.max(0,
+          Math.cos(sp.altitude*Math.PI/180)*Math.sin(sp.azimuth*Math.PI/180)*Math.sin(SECTIONS[1].tilt*Math.PI/180)*Math.sin(SECTIONS[1].azimuth*Math.PI/180) +
+          Math.cos(sp.altitude*Math.PI/180)*Math.cos(sp.azimuth*Math.PI/180)*Math.sin(SECTIONS[1].tilt*Math.PI/180)*Math.cos(SECTIONS[1].azimuth*Math.PI/180) +
+          Math.sin(sp.altitude*Math.PI/180)*Math.cos(SECTIONS[1].tilt*Math.PI/180)
+        ) * kc / STC_IRRAD) / frac[1]) : 0.5,
+      ];
 
       // Fill flat irr[] (section boundary at SECTION_DIV)
       for (let r=0; r<ROWS; r++) {
-        const f = r <= SECTION_DIV ? frac[0] : frac[1];
+        const sIdx = r <= SECTION_DIV ? 0 : 1;
+        const f = frac[sIdx];
         for (let c=0; c<COLS; c++) _irr[r*COLS+c] = f;
       }
 
-      // Tree shadow into flat shade[]
+      // Tree shadow into flat shade[] with beam/diffuse split
       if (!hasTrees) {
         _shade.fill(1);
       } else {
@@ -585,36 +837,117 @@ self.onmessage = function(e) {
         const tan_alt = Math.tan(sp.altitude * Math.PI / 180);
         for (let i=0; i<ROWS*COLS; i++) {
           const pp = PANEL_POS[i];
+          const r = Math.floor(i / COLS);
+          const sIdx = r <= SECTION_DIV ? 0 : 1;
+          const bf = beamFrac[sIdx];
           let blocked = false;
-          for (const tree of sceneTrees) {
+          for (const tree of adjSceneTrees) {
             if (panelInTreeShadow(pp.x, pp.y, tree, az_rad, tan_alt)) { blocked=true; break; }
           }
-          _shade[i] = blocked ? shadeLevel : 1;
+          if (blocked) {
+            _shade[i] = shadeLevel * bf + (1.0 - bf) * DIFFUSE_SHADE_FACTOR;
+          } else {
+            _shade[i] = 1;
+          }
         }
       }
 
-      // Reset G-cache; per-timestep there are at most 4 unique G values
-      // (2 section fracs × blocked/unblocked), so this is near-free.
+      // Reset G-caches; per-timestep there are at most a few unique G pairs.
       _ivCache.clear();
+      _hcCache.clear();
 
-      // Accumulate 1-hour energy for every config (W × 1 h / 1000 = kWh)
+      // Accumulate per-panel energy using half-cut model:
+      // when shaded, one half-string is at shade*G and the other at full G.
+      const dynPrice = DYNAMIC_PRICES ? DYNAMIC_PRICES[month * 24 + hour] : 0;
+      for (let i = 0; i < ROWS * COLS; i++) {
+        const sh = _shade[i];
+        const Gu = _irr[i];
+        // Half-cut: effective G = average of shaded half and unshaded half
+        const Geff = sh >= 0.999 ? Gu : (Gu * sh + Gu) / 2;
+        const ePanelKwh = Geff * PNL.Pmax / STC_IRRAD / 1000;
+        panelEnergyByMonth[month * ROWS * COLS + i] += ePanelKwh;
+      }
+
+      // Accumulate 1-hour energy for every config with inverter clipping (W × 1 h / 1000 = kWh)
       for (const cfg of CONFIGS) {
-        let power = 0;
-        for (const block of cfg.blocks) power += findMPP(computeBlockIV_sim(block)).P;
-        monthlyEnergy[cfg.id][month] += power / 1000;
+        const spec = INVERTER_SPECS_W[cfg.id] || null;
+        let totalP = 0;
+        for (const block of cfg.blocks) {
+          const mpp = findMPP(computeBlockIV_sim(block));
+          let blockP = mpp.P;
+          // Apply inverter clipping per MPPT
+          if (spec) {
+            const {P,V,I} = mpp;
+            if (V < spec.VmpptMin || V > spec.VmpptMax) blockP = 0;
+            else if (I > spec.ImaxPerMppt) blockP = V * spec.ImaxPerMppt;
+          }
+          totalP += blockP;
+        }
+        // Apply total power limit
+        if (spec && spec.totalPowerW && totalP > spec.totalPowerW) totalP = spec.totalPowerW;
+        monthlyEnergy[cfg.id][month] += totalP / 1000;
+        if (dynPrice > 0) configRevenueDynamic[cfg.id][month] += (totalP / 1000) * dynPrice;
+      }
+      
+      // Compute no-shade baseline (only if trees exist)
+      if (hasTrees) {
+        const savedShade = new Float32Array(_shade);
+        _shade.fill(1);
+        _ivCache.clear();
+        for (let i = 0; i < ROWS * COLS; i++) {
+          const ePanelKwh = _irr[i] * PNL.Pmax / STC_IRRAD / 1000;
+          noShadePanelEnergyByMonth[month * ROWS * COLS + i] += ePanelKwh;
+        }
+        for (const cfg of CONFIGS) {
+          const spec = INVERTER_SPECS_W[cfg.id] || null;
+          let totalP = 0;
+          for (const block of cfg.blocks) {
+            const mpp = findMPP(computeBlockIV_sim(block));
+            let blockP = mpp.P;
+            if (spec) {
+              const {P,V,I} = mpp;
+              if (V < spec.VmpptMin || V > spec.VmpptMax) blockP = 0;
+              else if (I > spec.ImaxPerMppt) blockP = V * spec.ImaxPerMppt;
+            }
+            totalP += blockP;
+          }
+          if (spec && spec.totalPowerW && totalP > spec.totalPowerW) totalP = spec.totalPowerW;
+          noShadeEnergy[cfg.id][month] += totalP / 1000;
+          if (dynPrice > 0) noShadeRevenueDynamic[cfg.id][month] += (totalP / 1000) * dynPrice;
+        }
+        _shade.set(savedShade);
+      } else {
+        // No trees: no-shade equals shaded
+        for (const cfg of CONFIGS) {
+          noShadeEnergy[cfg.id][month] = monthlyEnergy[cfg.id][month];
+        }
+        // Copy panel energy and revenue to no-shade baseline
+        const base = month * ROWS * COLS;
+        for (let i = 0; i < ROWS * COLS; i++) noShadePanelEnergyByMonth[base + i] = panelEnergyByMonth[base + i];
+        CONFIGS.forEach(cfg => { noShadeRevenueDynamic[cfg.id][month] = configRevenueDynamic[cfg.id][month]; });
       }
     }
 
     // Post progress every 10 days so the UI progress bar stays responsive
-    if (doy % 10 === 0 || doy === 365) {
-      self.postMessage({ type: 'progress', doy, pct: (doy / 365 * 100) | 0 });
+    if (doy % 10 === 0 || doy === doyEnd) {
+      self.postMessage({ type: 'progress', doy, pct: ((doy - doyStart + 1) / (doyEnd - doyStart + 1) * 100) | 0 });
     }
   }
 
   // Convert Float64Arrays to plain arrays for structured-clone transfer
   const result = {};
   CONFIGS.forEach(cfg => { result[cfg.id] = Array.from(monthlyEnergy[cfg.id]); });
-  self.postMessage({ type: 'done', monthlyEnergy: result });
+  const noShadeResult = {};
+  CONFIGS.forEach(cfg => { noShadeResult[cfg.id] = Array.from(noShadeEnergy[cfg.id]); });
+  self.postMessage({
+    type: 'done',
+    monthlyEnergy: result,
+    noShadeEnergy: noShadeResult,
+    panelEnergyByMonth: Array.from(panelEnergyByMonth),
+    noShadePanelEnergyByMonth: Array.from(noShadePanelEnergyByMonth),
+    configRevenueDynamic: Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(configRevenueDynamic[cfg.id])])),
+    noShadeRevenueDynamic: Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(noShadeRevenueDynamic[cfg.id])])),
+  });
 };
 </script>
 
@@ -626,7 +959,7 @@ const ROWS = 8, COLS = 9;
 const BYPASS_VD = 0.5, VT_25 = 0.025693;
 const STC_IRRAD = 1000; // W/m²
 
-const PNL = { Pmax:340, Vmp:38.4, Imp:8.85, Voc:46.4, Isc:9.35, Ns:60, n:1.3, Rs:0.25, Rsh:400 };
+const PNL = { Pmax:340, Vmp:34.52, Imp:9.85, Voc:40.98, Isc:10.28, Ns:60, n:1.2, Rs:0.28, Rsh:350 };
 PNL.nNsVt = PNL.n * PNL.Ns * VT_25;
 PNL.I0 = (PNL.Isc - PNL.Voc / PNL.Rsh) / (Math.exp(PNL.Voc / PNL.nNsVt) - 1);
 
@@ -651,8 +984,9 @@ function sectionOf(r) { return r <= SECTION_DIV ? 0 : 1; }
 // ── Colour palettes ────────────────────────────────────────────────────────
 const COL3 = ['#38bdf8', '#4ade80', '#fb923c'];
 const COL4 = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490'];
+const COL5 = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490', '#164e63'];
+const COL6 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24'];
 const COL8 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171'];
-const COL9 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171','#60a5fa'];
 
 // ── Monthly cloud-correction factors (Kc) for Neer, NL ────────────────────
 // Kc = actual POA irradiance / clear-sky POA irradiance, per calendar month.
@@ -675,14 +1009,90 @@ const MONTHLY_KC = [
   0.35, // Dec — shortest days, heavy overcast
 ];
 
+// Monthly foliage factor for NL deciduous trees
+// Jan–Mar: mostly bare (25% residual); Apr: partial leaf-out (55%);
+// May–Sep: full canopy; Oct: partial drop (70%); Nov–Dec: mostly bare.
+const FOLIAGE = [0.25, 0.25, 0.25, 0.55, 1.00, 1.00, 1.00, 1.00, 1.00, 0.70, 0.30, 0.30];
+
+// ── Dutch APX/EPEX hourly price profile 2025 (€/kWh, indicative) ──────────
+// Represents typical wholesale spot prices for NL 2025:
+// – Winter (Dec–Feb): high flat prices, morning+evening peaks
+// – Spring/Fall: moderate, mild duck curve
+// – Summer (Jun–Aug): pronounced solar duck curve, near-zero/negative midday
+// Source: ENTSO-E NL day-ahead 2024 extended to 2025 pattern.
+const HOURLY_APX_PRICE_2025 = [
+  // Jan  0     1     2     3     4     5     6     7     8     9    10    11    12    13    14    15    16    17    18    19    20    21    22    23
+  [0.090,0.080,0.072,0.068,0.066,0.068,0.080,0.105,0.125,0.120,0.112,0.108,0.105,0.100,0.098,0.102,0.118,0.150,0.180,0.172,0.152,0.132,0.112,0.098],
+  // Feb
+  [0.086,0.076,0.070,0.065,0.063,0.065,0.076,0.100,0.118,0.112,0.102,0.097,0.094,0.088,0.086,0.090,0.108,0.138,0.168,0.160,0.142,0.122,0.104,0.092],
+  // Mar
+  [0.078,0.068,0.062,0.058,0.056,0.058,0.068,0.090,0.105,0.098,0.084,0.072,0.068,0.063,0.062,0.068,0.085,0.118,0.145,0.138,0.120,0.102,0.086,0.080],
+  // Apr
+  [0.068,0.058,0.052,0.048,0.046,0.048,0.056,0.075,0.088,0.078,0.058,0.040,0.035,0.030,0.030,0.038,0.062,0.098,0.130,0.122,0.105,0.088,0.072,0.068],
+  // May
+  [0.062,0.052,0.046,0.042,0.040,0.042,0.048,0.062,0.072,0.060,0.038,0.020,0.015,0.012,0.014,0.025,0.050,0.085,0.118,0.110,0.092,0.075,0.062,0.062],
+  // Jun
+  [0.055,0.045,0.040,0.037,0.037,0.038,0.044,0.056,0.065,0.050,0.025,0.005,0.000,0.000,0.005,0.015,0.042,0.078,0.108,0.100,0.085,0.070,0.058,0.055],
+  // Jul
+  [0.058,0.048,0.042,0.039,0.038,0.040,0.046,0.058,0.068,0.054,0.028,0.008,0.002,0.000,0.005,0.018,0.045,0.080,0.110,0.102,0.086,0.072,0.060,0.058],
+  // Aug
+  [0.062,0.052,0.046,0.043,0.042,0.044,0.050,0.063,0.074,0.060,0.036,0.018,0.012,0.010,0.015,0.028,0.052,0.086,0.116,0.108,0.090,0.075,0.064,0.062],
+  // Sep
+  [0.070,0.060,0.054,0.050,0.049,0.050,0.060,0.078,0.090,0.080,0.065,0.052,0.048,0.044,0.044,0.050,0.068,0.100,0.130,0.122,0.105,0.088,0.074,0.070],
+  // Oct
+  [0.080,0.070,0.063,0.059,0.058,0.060,0.072,0.095,0.112,0.108,0.098,0.090,0.086,0.082,0.082,0.088,0.105,0.138,0.165,0.155,0.135,0.115,0.096,0.082],
+  // Nov
+  [0.088,0.078,0.071,0.067,0.065,0.068,0.080,0.104,0.124,0.118,0.108,0.102,0.098,0.094,0.094,0.100,0.118,0.150,0.178,0.170,0.148,0.128,0.108,0.090],
+  // Dec
+  [0.098,0.088,0.080,0.075,0.074,0.076,0.090,0.115,0.138,0.132,0.122,0.116,0.112,0.108,0.108,0.114,0.132,0.168,0.198,0.190,0.165,0.142,0.120,0.100],
+];
+
 // ── Block structure helpers ────────────────────────────────────────────────
-const ROW_GROUPS = [[0,1],[2,4],[5,7]];        // 2+3+3 rows: 1–2 | 3–5 | 6–8 (configs A/B)
-const ROW_GROUPS4 = [[0,1],[2,3],[4,5],[6,7]]; // 2+2+2+2 rows (config F)
-const COL_GROUPS = [[0,2],[3,5],[6,8]];        // 3+3+3 cols  (configs D/E)
+const ROW_GROUPS  = [[0,1],[2,4],[5,7]];       // 2+3+3 rows: 1–2 | 3–5 | 6–8 (configs A/B)
+const ROW_GROUPS4 = [[0,1],[2,3],[4,5],[6,7]]; // 2+2+2+2 rows (configs F/G — 4 MPPTs)
+const COL_GROUPS  = [[0,2],[3,5],[6,8]];       // 3+3+3 cols  (configs D/E/H/I)
+const COL_GROUPS5 = [[0,1],[2,3],[4,5],[6,7],[8,8]]; // 2+2+2+2+1 cols (configs J/K — 5 MPPTs)
 const DE_ROW_GROUPS = [[0,1],[2,4],[5,7]];     // 2+3+3 rows — 3×3 blocks on bottom (configs D/E)
 const DE_BLOCKS = DE_ROW_GROUPS.flatMap(([r0,r1]) => COL_GROUPS.map(([c0,c1]) => ({r0,r1,c0,c1})));
+// Column-span blocks for H/I (all 8 rows, 3 col groups)
+const HI_BLOCKS = COL_GROUPS.map(([c0,c1]) => ({r0:0, r1:ROWS-1, c0, c1}));
+// Column-span blocks for J/K (all 8 rows, 5 col groups)
+const JK_BLOCKS = COL_GROUPS5.map(([c0,c1]) => ({r0:0, r1:ROWS-1, c0, c1}));
 
-// ── Config definitions (A–F) ───────────────────────────────────────────────
+/** Build ordered cell list for a row-wise snake (L): 8 rows × 9 cols, 12 panels/string */
+function buildSnakeRowCells() {
+  const strings = Array.from({length: 6}, () => []);
+  let idx = 0;
+  for (let r = 0; r < ROWS; r++) {
+    const ltr = r % 2 === 0;
+    for (let ci = 0; ci < COLS; ci++) {
+      const c = ltr ? ci : COLS - 1 - ci;
+      strings[Math.floor(idx / 12)].push({r, c});
+      idx++;
+    }
+  }
+  return strings;
+}
+
+/** Build ordered cell list for a column-wise snake (M): 8 rows × 9 cols, 12 panels/string */
+function buildSnakeColCells() {
+  const strings = Array.from({length: 6}, () => []);
+  let idx = 0;
+  for (let c = 0; c < COLS; c++) {
+    const ttb = c % 2 === 0;
+    for (let ri = 0; ri < ROWS; ri++) {
+      const r = ttb ? ri : ROWS - 1 - ri;
+      strings[Math.floor(idx / 12)].push({r, c});
+      idx++;
+    }
+  }
+  return strings;
+}
+
+const SNAKE_ROW_CELLS = buildSnakeRowCells(); // 6 strings × 12 cells each (config L)
+const SNAKE_COL_CELLS = buildSnakeColCells(); // 6 strings × 12 cells each (config M)
+
+const COL9 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171','#60a5fa'];
 const CONFIGS = [
   {
     id:'A', label:'Option A', short:'A \u2014 SP',
@@ -715,12 +1125,93 @@ const CONFIGS = [
     blocks: DE_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
-    id:'F', label:'Option F', short:'F \u2014 4\u00d718',
-    desc:'4 MPPTs \u00b7 2 rows \u00d7 9 cols = 18 panels per MPPT in SP, row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138',
+    id:'F', label:'Option F', short:'F \u2014 4\u00d718 10kW',
+    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d79 = 18 panels per MPPT) \u00b7 10 kW total inverter limit',
     cfgColor:'#22d3ee', mpptColors:COL4,
     blocks: ROW_GROUPS4.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
+  {
+    id:'G', label:'Option G', short:'G \u2014 4\u00d718 15kW',
+    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d79 = 18 panels per MPPT) \u00b7 15 kW total inverter limit',
+    cfgColor:'#f59e0b', mpptColors:COL4,
+    blocks: ROW_GROUPS4.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
+  },
+  {
+    id:'H', label:'Option H', short:'H \u2014 3\u00d7col-SP',
+    desc:'3 MPPTs \u00b7 col-SP: col groups 1\u20133 | 4\u20136 | 7\u20139 \u2014 each col = 8-panel series string, 3 strings in \u2225 per MPPT',
+    cfgColor:'#34d399', mpptColors:COL3,
+    blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+  },
+  {
+    id:'I', label:'Option I', short:'I \u2014 3\u00d7col-TCT',
+    desc:'3 MPPTs \u00b7 H-TCT: same col groups as H (1\u20133 | 4\u20136 | 7\u20139), horizontal cross-tied within each group',
+    cfgColor:'#f87171', mpptColors:COL3,
+    blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'h-tct',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+  },
+  {
+    id:'J', label:'Option J', short:'J \u2014 5\u00d7col-SP',
+    desc:'5 MPPTs \u00b7 col-SP: col groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 | 9 \u2014 each col = series string, strings in \u2225 per MPPT (MPPT 5 = single string)',
+    cfgColor:'#67e8f9', mpptColors:COL5,
+    blocks: JK_BLOCKS.map((b,i)=>({...b,topo:'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+  },
+  {
+    id:'K', label:'Option K', short:'K \u2014 5\u00d7col-TCT',
+    desc:'5 MPPTs \u00b7 H-TCT: col groups 1\u20132, 3\u20134, 5\u20136, 7\u20138 horizontal cross-tied; MPPT 5 (col 9) = single series string',
+    cfgColor:'#fca5a5', mpptColors:COL5,
+    blocks: JK_BLOCKS.map((b,i)=>({...b,topo:i<4?'h-tct':'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+  },
+  {
+    id:'L', label:'Option L', short:'L \u2014 6\u00d712 Snake\u2194',
+    desc:'6 MPPTs \u00b7 Row-wise snake: 12 panels in series per MPPT, string snakes across rows (left\u2194right alternating)',
+    cfgColor:'#86efac', mpptColors:COL6,
+    blocks: SNAKE_ROW_CELLS.map((cells,i)=>({r0:0,r1:ROWS-1,c0:0,c1:COLS-1,topo:'snake-series',cells,label:`MPPT ${i+1} (snake row ${i+1})`})),
+  },
+  {
+    id:'M', label:'Option M', short:'M \u2014 6\u00d712 Snake\u2195',
+    desc:'6 MPPTs \u00b7 Column-wise snake: 12 panels in series per MPPT, string snakes across columns (top\u2195bottom alternating)',
+    cfgColor:'#fde68a', mpptColors:COL6,
+    blocks: SNAKE_COL_CELLS.map((cells,i)=>({r0:0,r1:ROWS-1,c0:0,c1:COLS-1,topo:'snake-series',cells,label:`MPPT ${i+1} (snake col ${i+1})`})),
+  },
 ];
+
+// ── Inverter specs per configuration (WP6) ─────────────────────────────────
+const INVERTER_SPECS = {
+  A: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
+  B: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
+  C: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
+  D: { VmpptMin:75,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
+  E: { VmpptMin:75,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
+  F: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:10000 },
+  G: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:15000 },
+  H: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
+  I: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
+  J: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
+  K: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
+  L: { VmpptMin:75,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
+  M: { VmpptMin:75,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
+};
+
+/**
+ * Apply inverter MPPT constraints to a raw MPP result.
+ * @returns {P,V,I,clipped}
+ */
+function applyInverterClipping(mpp, spec) {
+  if (!spec) return { ...mpp, clipped: false };
+  let { P, V, I } = mpp;
+  if (V < spec.VmpptMin || V > spec.VmpptMax) return { P:0, V, I:0, clipped: true };
+  if (I > spec.ImaxPerMppt) { I = spec.ImaxPerMppt; P = V * I; return { P, V, I, clipped: true }; }
+  return { P, V, I, clipped: false };
+}
+
+// Economic constants (WP8) — Dutch 2025 dynamic APX/EPEX energy pricing
+// Revenue is always computed using the HOURLY_APX_PRICE_2025 profile (per-hour).
+// Saldering ON  → full APX retail rate (you offset your consumption at the spot price).
+// Saldering OFF → feed-in rate = APX × FEED_IN_FACTOR (lower wholesale/feed-in tariff).
+const FEED_IN_FACTOR  = 0.70;  // feed-in ≈ 70 % of APX spot (no saldering / direct feed-in)
+const PRICE_SALDERING    = 0.26;  // €/kWh — kept for reference / heatmap € fallback
+const PRICE_NO_SALDERING = 0.08;  // €/kWh — kept for reference / heatmap € fallback
+const CONFIG_COST = { A:850, B:850, C:850, D:650, E:650, F:1205, G:1805, H:850, I:850, J:850, K:850, L:900, M:900 }; // € installed cost
+const MIN_ROI_DISPLAY_YEARS = 5;
 
 // ── State ──────────────────────────────────────────────────────────────────
 let highlightedConfig = 'A';
@@ -735,6 +1226,9 @@ let irr = Array.from({length:ROWS}, () => Array(COLS).fill(1.0));
 let shadeLevel = 0.05;
 let isPainting = false, paintMode = 'shade';
 let lastSunPos = { altitude: 0, azimuth: 180 }; // updated by updateIrradiance
+let lastSimResults = null, lastSimNoShade = null, lastSimWeather = false;
+let lastSimPanelEnergy = null, lastSimNoShadePanelEnergy = null;
+let lastSimRevenueDynamic = null, lastSimNoShadeRevenueDynamic = null;
 
 /** Combine manual + tree shade into the shade[][] array used by physics */
 function combineShadeMaps() {
@@ -778,7 +1272,11 @@ function getMpptIdx(r, c) {
   const blocks = CONFIGS.find(x => x.id === highlightedConfig).blocks;
   for (let i=0; i<blocks.length; i++) {
     const b = blocks[i];
-    if (r>=b.r0 && r<=b.r1 && c>=b.c0 && c<=b.c1) return i;
+    if (b.topo === 'snake-series') {
+      if (b.cells.some(cell => cell.r === r && cell.c === c)) return i;
+    } else {
+      if (r>=b.r0 && r<=b.r1 && c>=b.c0 && c<=b.c1) return i;
+    }
   }
   return 0;
 }
@@ -921,15 +1419,31 @@ function drawGroupDividers() {
       ctx.beginPath(); ctx.moveTo(PAD_L-4, y); ctx.lineTo(PAD_L + COLS*(PW+GAP)-GAP+4, y); ctx.stroke();
     }
   }
-  if (id === 'F') {
-    for (const sepRow of [1, 3, 5]) {
-      const rctA = panelRect(sepRow, 0);
-      const y = rctA.y + rctA.h + GAP/2;
-      ctx.beginPath(); ctx.moveTo(PAD_L-4, y); ctx.lineTo(PAD_L + COLS*(PW+GAP)-GAP+4, y); ctx.stroke();
+  if (id === 'F' || id === 'G') {
+    for (const sepCol of [2, 5]) {
+      const rctA = panelRect(0, sepCol);
+      const x = rctA.x + rctA.w + GAP/2;
+      ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
     }
   }
   if (id === 'D' || id === 'E') {
     for (const sepCol of [2, 5]) {
+      const rctA = panelRect(0, sepCol);
+      const x = rctA.x + rctA.w + GAP/2;
+      ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
+    }
+  }
+  // Column dividers for H/I (3 col groups: 0-2 | 3-5 | 6-8)
+  if (id === 'H' || id === 'I') {
+    for (const sepCol of [2, 5]) {
+      const rctA = panelRect(0, sepCol);
+      const x = rctA.x + rctA.w + GAP/2;
+      ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
+    }
+  }
+  // Column dividers for J/K (5 col groups: 0-1 | 2-3 | 4-5 | 6-7 | 8)
+  if (id === 'J' || id === 'K') {
+    for (const sepCol of [1, 3, 5, 7]) {
       const rctA = panelRect(0, sepCol);
       const x = rctA.x + rctA.w + GAP/2;
       ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
@@ -1265,16 +1779,55 @@ function blockVTCT(r0, r1, c0, c1, nPts=200) {
   result.sort((a,b)=>a.V-b.V); return result;
 }
 
+/** Horizontal TCT: rows in series, columns cross-tied at each row level — uses effectiveG */
+function blockHTCT(r0, r1, c0, c1, nPts=200) {
+  const secCurves=[];
+  for (let r=r0; r<=r1; r++) {
+    const pcurves=[];
+    for (let c=c0; c<=c1; c++) pcurves.push(panelIV(effectiveG(r,c), 80));
+    const fns=pcurves.map(cv=>makeIofV(cv));
+    const maxVsec=Math.max(...Array.from({length:c1-c0+1},(_,j)=>{
+      const G=effectiveG(r,c0+j); return G>0.001 ? PNL.Voc+PNL.nNsVt*Math.log(G) : 0;
+    }));
+    const sec=[];
+    for (let k=0;k<=nPts;k++) { const V=(k/nPts)*maxVsec; sec.push({V,I:fns.reduce((s,fn)=>s+fn(V),0)}); }
+    secCurves.push(sec);
+  }
+  const VofI=secCurves.map(cv=>makeVofI(cv,false));
+  const maxIsc=Math.max(...secCurves.map(cv=>cv[0].I));
+  const result=[];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of VofI) V+=fn(I);
+    result.push({V,I});
+  }
+  result.sort((a,b)=>a.V-b.V); return result;
+}
+
+
+function snakeStringIV(cells, nPts=200) {
+  return stringIV(cells.map(({r,c}) => effectiveG(r, c)), nPts);
+}
+
+/** Column series string: panels at column c, rows r0..r1 connected in series. */
+function colStringIV(c, r0, r1, nPts=200) {
+  return stringIV(Array.from({length:r1-r0+1}, (_,i) => effectiveG(r0+i, c)), nPts);
+}
+
 /** Dispatch by topology — uses effectiveG */
 function computeBlockIV(block) {
   const {r0,r1,c0,c1,topo}=block;
   const eG=(r,c)=>effectiveG(r,c);
+  if (topo==='snake-series') return snakeStringIV(block.cells);
   if (topo==='series'||(topo==='sp'&&r0===r1))
     return stringIV(Array.from({length:c1-c0+1},(_,i)=>eG(r0,c0+i)));
   if (topo==='sp')
     return parallelIV(Array.from({length:r1-r0+1},(_,i)=>
       stringIV(Array.from({length:c1-c0+1},(_,j)=>eG(r0+i,c0+j)))));
+  if (topo==='col-sp')
+    return parallelIV(Array.from({length:c1-c0+1},(_,j)=>colStringIV(c0+j,r0,r1)));
   if (topo==='v-tct') return blockVTCT(r0,r1,c0,c1);
+  if (topo==='h-tct') return blockHTCT(r0,r1,c0,c1);
   return [{V:0,I:0}];
 }
 
@@ -1286,10 +1839,20 @@ function findMPP(curve) {
 
 function computeConfig(id) {
   const cfg=CONFIGS.find(c=>c.id===id);
-  return cfg.blocks.map((block,i) => {
+  const spec = INVERTER_SPECS[id] || null;
+  const mpptResults = cfg.blocks.map((block,i) => {
     const curve=computeBlockIV(block);
-    return {label:block.label, curve, mpp:findMPP(curve), color:cfg.mpptColors[i%cfg.mpptColors.length]};
+    const rawMpp = findMPP(curve);
+    const mpp = applyInverterClipping(rawMpp, spec);
+    return {label:block.label, curve, mpp, color:cfg.mpptColors[i%cfg.mpptColors.length], clipped:mpp.clipped};
   });
+  // Apply total power limit if set
+  let totalP = mpptResults.reduce((s,r) => s + r.mpp.P, 0);
+  if (spec && spec.totalPowerW && totalP > spec.totalPowerW) {
+    const scale = spec.totalPowerW / totalP;
+    mpptResults.forEach(r => { r.mpp = { ...r.mpp, P: r.mpp.P * scale }; r.clipped = true; });
+  }
+  return mpptResults;
 }
 
 function computeAll() {
@@ -1312,6 +1875,7 @@ function updateComparisonTable(allResults) {
     const sel=res.id===highlightedConfig?' class="selected"':'';
     const pct=((res.totalP/stcMax)*100).toFixed(1);
     const pctBest=((res.totalP/maxP)*100).toFixed(1);
+    const isClipped = res.mpptResults.some(m=>m.clipped);
     const bars=res.mpptResults.map((m,i)=>{
       const h=Math.max(3,Math.round((m.mpp.P/maxMpptP)*20));
       const tip=`${m.label}: ${m.mpp.P.toFixed(0)} W @ ${m.mpp.V.toFixed(1)} V / ${m.mpp.I.toFixed(2)} A`;
@@ -1319,7 +1883,7 @@ function updateComparisonTable(allResults) {
     }).join('');
     html+=`<tr${sel} data-cfgid="${res.id}" style="--cfg-color:${res.cfgColor}">
       <td class="cfg-name"><span class="cfg-dot" style="background:${res.cfgColor}"></span>${res.short}</td>
-      <td class="${isBest?'best-val':''}">${(res.totalP/1000).toFixed(3)} kW ${isBest?'\u2605':''}</td>
+      <td class="${isBest?'best-val':''}">${(res.totalP/1000).toFixed(3)} kW ${isBest?'\u2605':''} ${isClipped?'<span style="color:#f59e0b;font-size:0.65rem">(clipped)</span>':''}</td>
       <td>${pct}%</td>
       <td>${pctBest}%</td>
       <td><div class="mini-bars">${bars}</div></td>
@@ -1441,11 +2005,16 @@ const ROW_SPACING = 1.1;  // meters between panel row centres
 const MAX_SHADOW_LEN  = 500; // cap shadow length (m) — avoids near-horizon infinities
 const MAX_SHADOW_AXIS = 400; // cap elongated shadow semi-axis (m)
 
-/** Scene (ENU) coordinates (m) of panel centre for row r, col c. Origin = array centre. */
+/** Scene (ENU) coordinates (m) of panel centre for row r, col c.
+ *  Applies arrayRotDeg (CCW) rotation and arraySceneX/Y offset.
+ *  Used by both shadow calculations and canvas rendering → simulation and display stay in sync. */
 function panelScenePos(r, c) {
+  const raw_x = COL_SPACING * (c - (COLS - 1) / 2);
+  const raw_y = ROW_SPACING * ((ROWS - 1) / 2 - r);
+  const rot   = arrayRotDeg * Math.PI / 180;
   return {
-    x: COL_SPACING * (c - (COLS - 1) / 2),
-    y: ROW_SPACING * ((ROWS - 1) / 2 - r)
+    x: raw_x * Math.cos(rot) - raw_y * Math.sin(rot) + arraySceneX,
+    y: raw_x * Math.sin(rot) + raw_y * Math.cos(rot) + arraySceneY,
   };
 }
 
@@ -1454,12 +2023,11 @@ let nextTreeId    = 0;
 let selectedTreeId = null;
 
 function addTree(x, y) {
-  const t = { id: nextTreeId++, x, y, height: 8, crownRadius: 3 };
+  const t = { id: nextTreeId++, x, y, height: 8, crownRadius: 6, hasUnderstoryFoliage: true };
   sceneTrees.push(t);
   selectTree(t.id);
   recomputeTreeShadow();
   drawSceneMap();
-  draw3DPreview();
 }
 
 function selectTree(id) {
@@ -1471,6 +2039,7 @@ function selectTree(id) {
   document.getElementById('treeHeightVal').textContent = t.height + ' m';
   document.getElementById('treeCrownSlider').value = t.crownRadius;
   document.getElementById('treeCrownVal').textContent = t.crownRadius + ' m';
+  document.getElementById('treeUnderstoryCheck').checked = t.hasUnderstoryFoliage !== false;
   updateTreeCountLabel();
 }
 
@@ -1485,33 +2054,55 @@ function updateTreeCountLabel() {
     n === 0 ? 'No trees' : n + ' tree' + (n === 1 ? '' : 's');
 }
 
-/** Returns true if point (px, py) lies within the shadow ellipse cast by tree. */
+/** Returns true if point (px, py) lies within the shadow cast by tree (crown ellipse + optional cylinder). */
 function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
   if (tan_alt < 0.01) return false;
+  const sin_alt = tan_alt / Math.sqrt(1 + tan_alt * tan_alt);
   const shadow_len = Math.min(tree.height / tan_alt, MAX_SHADOW_LEN);
-  // Shadow centre = ground position of tree-tip shadow
   const scx = tree.x - shadow_len * Math.sin(az_rad);
   const scy = tree.y - shadow_len * Math.cos(az_rad);
   const dx = px - scx, dy = py - scy;
-  // Shadow direction unit vector (away from sun)
   const ux = -Math.sin(az_rad), uy = -Math.cos(az_rad);
-  const along = dx * ux + dy * uy;               // component along shadow axis
-  const perp  = Math.abs(dx * uy - dy * ux);     // perpendicular component
-  const ra    = Math.min(tree.crownRadius / tan_alt, MAX_SHADOW_AXIS); // elongated semi-axis
-  const rp    = tree.crownRadius;                                       // lateral semi-axis
-  return (along * along) / (ra * ra) + (perp * perp) / (rp * rp) <= 1.0;
+  const along = dx * ux + dy * uy;
+  const perp  = Math.abs(dx * uy - dy * ux);
+  const ra    = Math.min(tree.crownRadius / sin_alt, MAX_SHADOW_AXIS);
+  const rp    = tree.crownRadius;
+  if ((along * along) / (ra * ra) + (perp * perp) / (rp * rp) <= 1.0) return true;
+  // Understory foliage cylinder (z=0 to height/2): stadium shadow
+  if (tree.hasUnderstoryFoliage) {
+    const L = Math.min(tree.height / 2 / tan_alt, MAX_SHADOW_LEN);
+    const abx = L * ux, aby = L * uy;
+    const apx = px - tree.x, apy = py - tree.y;
+    const t = L > 0 ? Math.max(0, Math.min(1, (apx*abx + apy*aby) / (L*L))) : 0;
+    const ex = apx - t*abx, ey = apy - t*aby;
+    if (ex*ex + ey*ey <= tree.crownRadius * tree.crownRadius) return true;
+  }
+  return false;
 }
 
 /** Recompute currentTreeShade[][] from sceneTrees + lastSunPos, then recombine. */
 function recomputeTreeShadow() {
   const treeShade = Array.from({length:ROWS}, () => Array(COLS).fill(1.0));
   if (sceneTrees.length > 0 && lastSunPos.altitude > 0.5) {
+    // Get current month's foliage factor
+    const currentDate = buildDateFromUI();
+    const currentMonth = currentDate.getMonth();
+    const foliageFactor = FOLIAGE[currentMonth];
+    const adjTrees = foliageFactor === 1.0 ? sceneTrees :
+      sceneTrees.map(t => ({ ...t, crownRadius: t.crownRadius * foliageFactor }));
+    
+    // Update foliage badge
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const foliagePct = Math.round(FOLIAGE[currentMonth] * 100);
+    const fbText = document.getElementById('foliageBadgeText');
+    if (fbText) fbText.textContent = `${monthNames[currentMonth]}: ${foliagePct}% canopy`;
+    
     const az_rad  = lastSunPos.azimuth  * Math.PI / 180;
     const tan_alt = Math.tan(lastSunPos.altitude * Math.PI / 180); // altitude already > 0.5°
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const pos = panelScenePos(r, c);
-        for (const tree of sceneTrees) {
+        for (const tree of adjTrees) {
           if (panelInTreeShadow(pos.x, pos.y, tree, az_rad, tan_alt)) {
             treeShade[r][c] = shadeLevel;
             break;
@@ -1589,7 +2180,10 @@ function drawSceneMap() {
 }
 
 function drawMapArray() {
-  SECTIONS.forEach((sec, si) => {
+  const rot   = arrayRotDeg * Math.PI / 180;
+  const cos_r = Math.cos(rot), sin_r = Math.sin(rot);
+
+  SECTIONS.forEach((sec) => {
     for (let r = sec.rowMin; r <= sec.rowMax; r++) {
       for (let c = 0; c < COLS; c++) {
         const pos = panelScenePos(r, c);
@@ -1598,80 +2192,179 @@ function drawMapArray() {
         const ph = ROW_SPACING * MAP_SCALE * 0.87;
         const G  = effectiveG(r, c);
         const panelShade = 1 - G * 0.6 - 0.2;
+        mapCtx.save();
+        mapCtx.translate(mx, my);
+        mapCtx.rotate(-rot); // canvas y-axis is flipped → CCW ENU = CW in screen coords, so negate
         mapCtx.fillStyle = blendHex(sec.color, '#0a0f0a', panelShade);
-        mapCtx.fillRect(mx - pw/2, my - ph/2, pw, ph);
+        mapCtx.fillRect(-pw/2, -ph/2, pw, ph);
         mapCtx.strokeStyle = sec.color + '55'; mapCtx.lineWidth = 0.5;
-        mapCtx.strokeRect(mx - pw/2, my - ph/2, pw, ph);
+        mapCtx.strokeRect(-pw/2, -ph/2, pw, ph);
+        mapCtx.restore();
       }
     }
   });
 
-  // Array bounding box
-  const tl = panelScenePos(0, 0), br = panelScenePos(ROWS-1, COLS-1);
-  const {mx:x1, my:y1} = sceneToMap(tl.x - COL_SPACING*0.5, tl.y + ROW_SPACING*0.5);
-  const {mx:x2, my:y2} = sceneToMap(br.x + COL_SPACING*0.5, br.y - ROW_SPACING*0.5);
+  // Bounding polygon (rotated)
+  const xHalf = COLS * COL_SPACING / 2;
+  const yTop  =  ROW_SPACING * ROWS / 2;
+  const yBot  = -ROW_SPACING * ROWS / 2;
+  const raw = [[-xHalf, yTop], [xHalf, yTop], [xHalf, yBot], [-xHalf, yBot]];
+  const pts = raw.map(([rx, ry]) => sceneToMap(
+    rx * cos_r - ry * sin_r + arraySceneX,
+    rx * sin_r + ry * cos_r + arraySceneY,
+  ));
   mapCtx.strokeStyle = '#e9456088'; mapCtx.lineWidth = 1.5; mapCtx.setLineDash([4,3]);
-  mapCtx.strokeRect(x1, y1, x2-x1, y2-y1);
-  mapCtx.setLineDash([]);
-  mapCtx.fillStyle = '#e94560'; mapCtx.font = 'bold 8px sans-serif'; mapCtx.textAlign = 'center';
-  mapCtx.fillText('PV ARRAY', (x1+x2)/2, y1 - 3);
+  mapCtx.beginPath();
+  pts.forEach(({mx, my}, i) => i ? mapCtx.lineTo(mx, my) : mapCtx.moveTo(mx, my));
+  mapCtx.closePath(); mapCtx.stroke(); mapCtx.setLineDash([]);
+
+  // Array centre move-handle (red circle with crosshair)
+  const {mx: cx, my: cy} = sceneToMap(arraySceneX, arraySceneY);
+  mapCtx.beginPath(); mapCtx.arc(cx, cy, 8, 0, 2*Math.PI);
+  mapCtx.fillStyle = '#e94560cc'; mapCtx.fill();
+  mapCtx.strokeStyle = '#fff9'; mapCtx.lineWidth = 1.5; mapCtx.stroke();
+  mapCtx.strokeStyle = '#fff'; mapCtx.lineWidth = 1;
+  mapCtx.beginPath(); mapCtx.moveTo(cx-5, cy); mapCtx.lineTo(cx+5, cy); mapCtx.stroke();
+  mapCtx.beginPath(); mapCtx.moveTo(cx, cy-5); mapCtx.lineTo(cx, cy+5); mapCtx.stroke();
+
+  // Rotate handle (blue circle at +xHalf+2m along column direction)
+  const rDist = xHalf + 2.5;
+  const rhx_e = rDist * cos_r + arraySceneX;
+  const rhy_e = rDist * sin_r + arraySceneY;
+  const {mx: rhx, my: rhy} = sceneToMap(rhx_e, rhy_e);
+  mapCtx.beginPath(); mapCtx.arc(rhx, rhy, 7, 0, 2*Math.PI);
+  mapCtx.fillStyle = '#38bdf8cc'; mapCtx.fill();
+  mapCtx.strokeStyle = '#fff9'; mapCtx.lineWidth = 1.5; mapCtx.stroke();
+  mapCtx.fillStyle = '#fff'; mapCtx.font = 'bold 8px sans-serif'; mapCtx.textAlign = 'center';
+  mapCtx.textBaseline = 'middle';
+  mapCtx.fillText('↻', rhx, rhy);
+  mapCtx.textBaseline = 'alphabetic';
 }
 
 function drawMapTreeShadows() {
   const az_rad  = lastSunPos.azimuth  * Math.PI / 180;
   const tan_alt = Math.tan(lastSunPos.altitude * Math.PI / 180); // altitude already > 0.5°
+  const sin_alt = Math.sin(lastSunPos.altitude * Math.PI / 180);
+  const foliageFactor = FOLIAGE[buildDateFromUI().getMonth()];
 
-  mapCtx.save(); mapCtx.globalAlpha = 0.35;
+  mapCtx.save(); mapCtx.globalAlpha = 0.35; mapCtx.fillStyle = '#111800';
   sceneTrees.forEach(tree => {
+    const cr = tree.crownRadius * foliageFactor;
     const shadow_len = Math.min(tree.height / tan_alt, MAX_SHADOW_LEN);
     const scx = tree.x - shadow_len * Math.sin(az_rad);
     const scy = tree.y - shadow_len * Math.cos(az_rad);
     const {mx: ex, my: ey} = sceneToMap(scx, scy);
     const {mx: tx, my: ty} = sceneToMap(tree.x, tree.y);
 
-    const rp = tree.crownRadius * MAP_SCALE;
-    const ra = Math.min(tree.crownRadius / tan_alt, MAX_SHADOW_AXIS) * MAP_SCALE;
+    // Crown ellipse shadow
+    const rp = cr * MAP_SCALE;
+    const ra = Math.min(cr / sin_alt, MAX_SHADOW_AXIS) * MAP_SCALE;
     const screenAngle = Math.atan2(ey - ty, ex - tx);
 
     mapCtx.save();
     mapCtx.translate(ex, ey);
     mapCtx.rotate(screenAngle - Math.PI/2);
     mapCtx.scale(ra/rp, 1);
-    mapCtx.fillStyle = '#111800';
     mapCtx.beginPath(); mapCtx.arc(0, 0, rp, 0, 2*Math.PI); mapCtx.fill();
     mapCtx.restore();
+
+    // Understory cylinder shadow: stadium from tree base to shadow of cylinder top
+    if (tree.hasUnderstoryFoliage !== false) {
+      const cylLen = Math.min(tree.height / 2 / tan_alt, MAX_SHADOW_LEN);
+      const bx = tree.x - cylLen * Math.sin(az_rad);
+      const by = tree.y - cylLen * Math.cos(az_rad);
+      const {mx: bxm, my: bym} = sceneToMap(bx, by);
+      mapCtx.save();
+      mapCtx.beginPath();
+      mapCtx.moveTo(tx, ty);
+      mapCtx.lineTo(bxm, bym);
+      mapCtx.lineWidth = 2 * cr * MAP_SCALE;
+      mapCtx.lineCap = 'round';
+      mapCtx.strokeStyle = '#111800';
+      mapCtx.stroke();
+      mapCtx.restore();
+    }
   });
   mapCtx.restore();
 }
 
 function drawMapTree(tree) {
   const {mx, my} = sceneToMap(tree.x, tree.y);
-  const rp = tree.crownRadius * MAP_SCALE;
+  const rx = tree.crownRadius * MAP_SCALE;    // horizontal half-width (m → px)
+  const ry = tree.height * MAP_SCALE / 2;     // half-height of full oval (= height/2 in px)
+  const cy = my - ry;                         // oval centre (at height/2 above ground)
   const isSel = tree.id === selectedTreeId;
 
-  // Dark inner
-  mapCtx.fillStyle = isSel ? '#1a4520' : '#0d2010';
-  mapCtx.beginPath(); mapCtx.arc(mx, my, rp * 0.55, 0, 2*Math.PI); mapCtx.fill();
+  if (tree.hasUnderstoryFoliage !== false) {
+    // ── Understory cylinder: rectangle from ground (my) to oval centre (cy) ──
+    mapCtx.save();
+    mapCtx.beginPath();
+    mapCtx.rect(mx - rx, cy, rx * 2, ry);    // from cy down to my
+    mapCtx.clip();
+    const grCyl = mapCtx.createLinearGradient(mx, cy, mx, my);
+    grCyl.addColorStop(0,    isSel ? '#22c55e' : '#16a34a');
+    grCyl.addColorStop(1,    isSel ? '#1a4520' : '#0a2410');
+    mapCtx.fillStyle = grCyl;
+    mapCtx.fillRect(mx - rx, cy, rx * 2, ry);
+    mapCtx.restore();
 
-  // Crown gradient
-  const gr = mapCtx.createRadialGradient(mx - rp*0.3, my - rp*0.3, 0, mx, my, rp);
-  gr.addColorStop(0, isSel ? '#86efac' : '#4ade80');
-  gr.addColorStop(0.65, isSel ? '#22c55e' : '#16a34a');
-  gr.addColorStop(1,   isSel ? '#14532d' : '#052e16');
-  mapCtx.fillStyle = gr;
-  mapCtx.beginPath(); mapCtx.arc(mx, my, rp, 0, 2*Math.PI); mapCtx.fill();
+    // ── Crown oval: clipped to top half (cy - ry  →  cy) ──
+    mapCtx.save();
+    mapCtx.beginPath();
+    mapCtx.rect(mx - rx, cy - ry, rx * 2, ry);   // upper half bounding box
+    mapCtx.clip();
+    mapCtx.beginPath();
+    mapCtx.ellipse(mx, cy, rx, ry, 0, 0, 2 * Math.PI);
+    const grCrown = mapCtx.createLinearGradient(mx, cy - ry, mx, cy);
+    grCrown.addColorStop(0,   isSel ? '#a7f3d0' : '#86efac');
+    grCrown.addColorStop(0.5, isSel ? '#22c55e' : '#16a34a');
+    grCrown.addColorStop(1,   isSel ? '#166534' : '#052e16');
+    mapCtx.fillStyle = grCrown;
+    mapCtx.fill();
+    mapCtx.restore();
 
-  if (isSel) {
-    mapCtx.strokeStyle = '#fbbf24'; mapCtx.lineWidth = 2; mapCtx.setLineDash([3,2]);
-    mapCtx.beginPath(); mapCtx.arc(mx, my, rp + 3, 0, 2*Math.PI); mapCtx.stroke();
+    // ── Outline: tombstone shape (half-ellipse top + rectangle sides + flat base) ──
+    mapCtx.strokeStyle = isSel ? '#fbbf24' : '#1a4520';
+    mapCtx.lineWidth   = isSel ? 2 : 1;
+    if (isSel) mapCtx.setLineDash([3, 2]);
+    mapCtx.beginPath();
+    mapCtx.ellipse(mx, cy, rx, ry, 0, Math.PI, 2 * Math.PI); // top arc L→R
+    mapCtx.lineTo(mx + rx, my);   // right side down to ground
+    mapCtx.lineTo(mx - rx, my);   // base
+    mapCtx.closePath();            // left side back up
+    mapCtx.stroke();
+    mapCtx.setLineDash([]);
+
+  } else {
+    // ── Full oval only (no understory) ──
+    mapCtx.save();
+    mapCtx.beginPath();
+    mapCtx.ellipse(mx, cy, rx, ry, 0, 0, 2 * Math.PI);
+    mapCtx.clip();
+    const gr = mapCtx.createLinearGradient(mx, cy - ry, mx, cy + ry);
+    gr.addColorStop(0,    isSel ? '#a7f3d0' : '#86efac');
+    gr.addColorStop(0.45, isSel ? '#22c55e' : '#16a34a');
+    gr.addColorStop(1,    isSel ? '#14532d' : '#052e16');
+    mapCtx.fillStyle = gr;
+    mapCtx.fillRect(mx - rx, cy - ry, rx * 2, ry * 2);
+    mapCtx.restore();
+
+    mapCtx.strokeStyle = isSel ? '#fbbf24' : '#052e16';
+    mapCtx.lineWidth   = isSel ? 2 : 1;
+    if (isSel) mapCtx.setLineDash([3, 2]);
+    mapCtx.beginPath();
+    mapCtx.ellipse(mx, cy, rx, ry, 0, 0, 2 * Math.PI);
+    mapCtx.stroke();
     mapCtx.setLineDash([]);
   }
 
-  // Height label
-  const fs = Math.max(8, Math.min(11, rp * 0.6));
-  mapCtx.fillStyle = '#fff'; mapCtx.font = `bold ${fs}px sans-serif`;
-  mapCtx.textAlign = 'center'; mapCtx.textBaseline = 'middle';
-  mapCtx.fillText(tree.height + 'm', mx, my);
+  // Height label at visual centre
+  const fs = Math.max(8, Math.min(11, rx * 0.65));
+  mapCtx.fillStyle = '#fff';
+  mapCtx.font = `bold ${fs}px sans-serif`;
+  mapCtx.textAlign = 'center';
+  mapCtx.textBaseline = 'middle';
+  mapCtx.fillText(tree.height + 'm', mx, cy);
   mapCtx.textBaseline = 'alphabetic';
 }
 
@@ -1708,7 +2401,16 @@ function drawMapSunArrow() {
 }
 
 // ── Map mouse / touch interactions ─────────────────────────────────────────
-let mapDragTree = null; // {tree, offX, offY}
+let mapDragTree    = null; // {tree, offX, offY}
+let mapDragArray   = null; // {offX, offY} — dragging array centre
+let mapRotateArray = null; // {angleOffset} — rotating array
+
+/** Returns ENU position of rotate handle (in scene coords). */
+function _rotHandleENU() {
+  const rot  = arrayRotDeg * Math.PI / 180;
+  const dist = COLS * COL_SPACING / 2 + 2.5;
+  return { x: dist * Math.cos(rot) + arraySceneX, y: dist * Math.sin(rot) + arraySceneY };
+}
 
 function mapCanvasPos(e) {
   const bb = mapCanvas.getBoundingClientRect();
@@ -1720,9 +2422,28 @@ function mapCanvasPos(e) {
 mapCanvas.addEventListener('mousedown', e => {
   e.preventDefault();
   const {mx, my} = mapCanvasPos(e);
+
+  // Array centre move-handle
+  const {mx: acx, my: acy} = sceneToMap(arraySceneX, arraySceneY);
+  if (Math.hypot(mx - acx, my - acy) <= 10) {
+    const {x, y} = mapToScene(mx, my);
+    mapDragArray = { offX: x - arraySceneX, offY: y - arraySceneY };
+    return;
+  }
+
+  // Array rotate handle
+  const rh = _rotHandleENU();
+  const {mx: rhx, my: rhy} = sceneToMap(rh.x, rh.y);
+  if (Math.hypot(mx - rhx, my - rhy) <= 10) {
+    const {x, y} = mapToScene(mx, my);
+    const angle = Math.atan2(y - arraySceneY, x - arraySceneX) * 180 / Math.PI;
+    mapRotateArray = { angleOffset: angle - arrayRotDeg };
+    return;
+  }
+
+  // Tree
   const hit = treeAtMapPos(mx, my);
   if (hit) {
-    // Select and prepare drag
     selectTree(hit.id);
     const {mx:tx, my:ty} = sceneToMap(hit.x, hit.y);
     mapDragTree = { tree: hit, offX: mx - tx, offY: my - ty };
@@ -1735,6 +2456,26 @@ mapCanvas.addEventListener('mousedown', e => {
 });
 
 mapCanvas.addEventListener('mousemove', e => {
+  if (mapDragArray) {
+    e.preventDefault();
+    const {mx, my} = mapCanvasPos(e);
+    const {x, y} = mapToScene(mx, my);
+    arraySceneX = x - mapDragArray.offX;
+    arraySceneY = y - mapDragArray.offY;
+    recomputeTreeShadow(); drawSceneMap(); scheduleUpdate();
+    if (leafletActive) refreshLeafletArrayGeometry();
+    return;
+  }
+  if (mapRotateArray) {
+    e.preventDefault();
+    const {mx, my} = mapCanvasPos(e);
+    const {x, y} = mapToScene(mx, my);
+    const angle = Math.atan2(y - arraySceneY, x - arraySceneX) * 180 / Math.PI;
+    arrayRotDeg = angle - mapRotateArray.angleOffset;
+    recomputeTreeShadow(); drawSceneMap(); scheduleUpdate();
+    if (leafletActive) refreshLeafletArrayGeometry();
+    return;
+  }
   if (!mapDragTree) return;
   e.preventDefault();
   const {mx, my} = mapCanvasPos(e);
@@ -1744,15 +2485,32 @@ mapCanvas.addEventListener('mousemove', e => {
   recomputeTreeShadow();
   drawSceneMap();
   scheduleUpdate();
-  draw3DPreview();
 });
 
-mapCanvas.addEventListener('mouseup',    () => { mapDragTree = null; });
-mapCanvas.addEventListener('mouseleave', () => { mapDragTree = null; });
+mapCanvas.addEventListener('mouseup',    () => { mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
+mapCanvas.addEventListener('mouseleave', () => { mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
 
 mapCanvas.addEventListener('touchstart', e => {
   e.preventDefault();
   const {mx, my} = mapCanvasPos(e);
+
+  // Array centre move-handle
+  const {mx: acx, my: acy} = sceneToMap(arraySceneX, arraySceneY);
+  if (Math.hypot(mx - acx, my - acy) <= 12) {
+    const {x, y} = mapToScene(mx, my);
+    mapDragArray = { offX: x - arraySceneX, offY: y - arraySceneY };
+    return;
+  }
+  // Array rotate handle
+  const rh = _rotHandleENU();
+  const {mx: rhx, my: rhy} = sceneToMap(rh.x, rh.y);
+  if (Math.hypot(mx - rhx, my - rhy) <= 12) {
+    const {x, y} = mapToScene(mx, my);
+    const angle = Math.atan2(y - arraySceneY, x - arraySceneX) * 180 / Math.PI;
+    mapRotateArray = { angleOffset: angle - arrayRotDeg };
+    return;
+  }
+  // Tree
   const hit = treeAtMapPos(mx, my);
   if (hit) {
     selectTree(hit.id);
@@ -1768,6 +2526,24 @@ mapCanvas.addEventListener('touchstart', e => {
 
 mapCanvas.addEventListener('touchmove', e => {
   e.preventDefault();
+  if (mapDragArray) {
+    const {mx, my} = mapCanvasPos(e);
+    const {x, y} = mapToScene(mx, my);
+    arraySceneX = x - mapDragArray.offX;
+    arraySceneY = y - mapDragArray.offY;
+    recomputeTreeShadow(); drawSceneMap(); scheduleUpdate();
+    if (leafletActive) refreshLeafletArrayGeometry();
+    return;
+  }
+  if (mapRotateArray) {
+    const {mx, my} = mapCanvasPos(e);
+    const {x, y} = mapToScene(mx, my);
+    const angle = Math.atan2(y - arraySceneY, x - arraySceneX) * 180 / Math.PI;
+    arrayRotDeg = angle - mapRotateArray.angleOffset;
+    recomputeTreeShadow(); drawSceneMap(); scheduleUpdate();
+    if (leafletActive) refreshLeafletArrayGeometry();
+    return;
+  }
   if (!mapDragTree) return;
   const {mx, my} = mapCanvasPos(e);
   const {x, y} = mapToScene(mx - mapDragTree.offX, my - mapDragTree.offY);
@@ -1776,10 +2552,9 @@ mapCanvas.addEventListener('touchmove', e => {
   recomputeTreeShadow();
   drawSceneMap();
   scheduleUpdate();
-  draw3DPreview();
 }, {passive:false});
 
-mapCanvas.addEventListener('touchend', () => { mapDragTree = null; });
+mapCanvas.addEventListener('touchend', () => { mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
 
 // ── Map canvas auto-size ────────────────────────────────────────────────────
 function resizeMapCanvas() {
@@ -1790,175 +2565,364 @@ function resizeMapCanvas() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 3D ISOMETRIC PREVIEW
+// LEAFLET / OSM MAP INTEGRATION (no API key required)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const previewCanvas = document.getElementById('previewCanvas');
-const pCtx          = previewCanvas.getContext('2d');
-const ISO_SCALE     = 7;   // pixels per metre in isometric view
-const PANEL_ELEV    = 1.5; // visual elevation (m) for panel slab
+let leafletInstance   = null;
+let leafletActive     = false;
+let leafletTreeLayers = []; // [{treeId, circle, marker}]
+let leafletArrayLayers   = []; // L.polygon layers for the two array sections
+let leafletArrayHandle   = null; // draggable move handle
+let leafletArrayRotHandle = null; // draggable rotate handle
+let leafletShadowLayers  = []; // L.polygon layers for tree shadows
 
-/** Project scene coords (X=East, Y=North, Z=Up) to canvas 2D. */
-function isoProject(X, Y, Z) {
-  const sx = (X - Y)       * 0.866 * ISO_SCALE;
-  const sy = -(X + Y)      * 0.5   * ISO_SCALE - Z * ISO_SCALE;
-  return { sx, sy };
+// Boshei 4, Neer, Netherlands — 51°15'34.6"N  5°57'26.2"E
+const BOSHEI_LAT = 51.259611;
+const BOSHEI_LNG = 5.957278;
+const EARTH_RADIUS_M = 6371000;
+
+// Mutable array origin (lat/lng of ENU reference — updated when user drags the origin)
+let arrayOriginLat = BOSHEI_LAT;
+let arrayOriginLng = BOSHEI_LNG;
+
+// Array position (ENU metres from origin) and rotation (degrees CCW from East)
+let arraySceneX = 0;    // array centre East offset (m)
+let arraySceneY = 0;    // array centre North offset (m)
+let arrayRotDeg = 45;   // 45° CCW from East
+
+function latLngToENU(lat, lng, refLat, refLng) {
+  const dLat = (lat - refLat) * Math.PI / 180;
+  const dLng = (lng - refLng) * Math.PI / 180;
+  return { x: dLng * EARTH_RADIUS_M * Math.cos(refLat * Math.PI / 180),
+           y: dLat * EARTH_RADIUS_M };
 }
-function isoToCanvas(X, Y, Z) {
-  const {sx, sy} = isoProject(X, Y, Z);
-  return { px: previewCanvas.width/2 + sx,
-           py: previewCanvas.height * 0.62 + sy };
+function enuToLatLng(x, y, refLat, refLng) {
+  return {
+    lat: refLat + (y / EARTH_RADIUS_M) * 180 / Math.PI,
+    lng: refLng + (x / (EARTH_RADIUS_M * Math.cos(refLat * Math.PI / 180))) * 180 / Math.PI
+  };
 }
 
-function draw3DPreview() {
-  const W = previewCanvas.width, H = previewCanvas.height;
-  pCtx.clearRect(0, 0, W, H);
+/**
+ * Compute Leaflet lat/lng polygon corners for the PV array footprint.
+ * Uses the SAME rotation + offset as panelScenePos() so OSM display is
+ * pixel-accurate with the canvas scene map and shadow calculations.
+ *
+ * @returns {{ sec0: [lat,lng][], sec1: [lat,lng][] }}
+ */
+function computeArrayPolygonLatLngs(originLat, originLng) {
+  const rot   = arrayRotDeg * Math.PI / 180;
+  const cos_r = Math.cos(rot), sin_r = Math.sin(rot);
 
-  // Sky gradient
-  const sky = pCtx.createLinearGradient(0, 0, 0, H * 0.6);
-  sky.addColorStop(0, '#0c1e3c'); sky.addColorStop(1, '#1a3a5c');
-  pCtx.fillStyle = sky; pCtx.fillRect(0, 0, W, H);
+  // Half-extents in raw (unrotated) local frame
+  const xHalf  = COLS * COL_SPACING / 2;
+  const yTop   =  ROW_SPACING * ROWS / 2;                              // north edge
+  const yBreak = ROW_SPACING * ((ROWS - 1) / 2 - SECTION_DIV) - ROW_SPACING / 2; // section divide
+  const yBot   = -ROW_SPACING * ROWS / 2;                              // south edge
 
-  // Ground plane
-  const gnd = pCtx.createLinearGradient(0, H * 0.5, 0, H);
-  gnd.addColorStop(0, '#0c1f0d'); gnd.addColorStop(1, '#091408');
-  pCtx.fillStyle = gnd; pCtx.fillRect(0, H * 0.5, W, H * 0.5);
-
-  // Ground grid
-  pCtx.strokeStyle = '#182818'; pCtx.lineWidth = 0.5;
-  for (let i = -12; i <= 12; i++) {
-    const a = isoToCanvas(i * 2, -12, 0), b = isoToCanvas(i * 2, 12, 0);
-    const c = isoToCanvas(-12, i * 2, 0), d = isoToCanvas(12, i * 2, 0);
-    pCtx.beginPath(); pCtx.moveTo(a.px, a.py); pCtx.lineTo(b.px, b.py); pCtx.stroke();
-    pCtx.beginPath(); pCtx.moveTo(c.px, c.py); pCtx.lineTo(d.px, d.py); pCtx.stroke();
+  /** Raw local-frame offset → rotated ENU → Leaflet [lat, lng] */
+  function ll(rx, ry) {
+    const e = rx * cos_r - ry * sin_r + arraySceneX;
+    const n = rx * sin_r + ry * cos_r + arraySceneY;
+    const p = enuToLatLng(e, n, originLat, originLng);
+    return [p.lat, p.lng];
   }
 
-  // Sun direction indicator
-  if (lastSunPos.altitude > 0.5) draw3DSun();
+  return {
+    sec0: [ ll(-xHalf, yTop),   ll(xHalf, yTop),   ll(xHalf, yBreak), ll(-xHalf, yBreak) ],
+    sec1: [ ll(-xHalf, yBreak), ll(xHalf, yBreak),  ll(xHalf, yBot),   ll(-xHalf, yBot)   ],
+  };
+}
 
-  // Draw trees (behind panels if to north/east)
-  const treesNorth = sceneTrees.filter(t => t.y > 0);
-  const treesSouth = sceneTrees.filter(t => t.y <= 0);
-  treesNorth.forEach(t => draw3DTree(t));
+/** Lightweight geometry refresh — updates polygon corners and handle positions in-place.
+ *  Call this during drag to avoid recreating the markers that are currently being dragged. */
+function refreshLeafletArrayGeometry() {
+  if (!leafletInstance || leafletArrayLayers.length < 2) return;
+  const { sec0, sec1 } = computeArrayPolygonLatLngs(arrayOriginLat, arrayOriginLng);
+  leafletArrayLayers[0].setLatLngs(sec0);
+  leafletArrayLayers[1].setLatLngs(sec1);
+  if (leafletArrayHandle) {
+    const c = enuToLatLng(arraySceneX, arraySceneY, arrayOriginLat, arrayOriginLng);
+    leafletArrayHandle.setLatLng([c.lat, c.lng]);
+  }
+  if (leafletArrayRotHandle) {
+    const rot_rad = arrayRotDeg * Math.PI / 180;
+    const rDist   = COLS * COL_SPACING / 2 + 3;
+    const rhEX    = rDist * Math.cos(rot_rad) + arraySceneX;
+    const rhEY    = rDist * Math.sin(rot_rad) + arraySceneY;
+    const rotLL   = enuToLatLng(rhEX, rhEY, arrayOriginLat, arrayOriginLng);
+    leafletArrayRotHandle.setLatLng([rotLL.lat, rotLL.lng]);
+  }
+}
 
-  // Panel array — draw back rows first (painter's algorithm)
-  for (let r = ROWS - 1; r >= 0; r--) {
-    for (let c = 0; c < COLS; c++) {
-      draw3DPanel(r, c);
+/** (Re-)draw the PV array footprint polygons, move handle and rotate handle on the Leaflet map. */
+function updateLeafletArrayPolygon() {
+  if (!leafletInstance) return;
+
+  // Remove stale layers
+  leafletArrayLayers.forEach(l => l.remove());
+  leafletArrayLayers = [];
+  if (leafletArrayHandle)    { leafletArrayHandle.remove();    leafletArrayHandle = null; }
+  if (leafletArrayRotHandle) { leafletArrayRotHandle.remove(); leafletArrayRotHandle = null; }
+
+  const { sec0, sec1 } = computeArrayPolygonLatLngs(arrayOriginLat, arrayOriginLng);
+
+  // Section 0 — top (blue, tilt +30°)
+  const poly0 = L.polygon(sec0, {
+    color: '#60a5fa', weight: 2, fillColor: '#60a5fa', fillOpacity: 0.18, interactive: false,
+  }).addTo(leafletInstance);
+
+  // Section 1 — bottom (orange, tilt −20°)
+  const poly1 = L.polygon(sec1, {
+    color: '#f97316', weight: 2, fillColor: '#f97316', fillOpacity: 0.18, interactive: false,
+  }).addTo(leafletInstance);
+
+  leafletArrayLayers.push(poly0, poly1);
+
+  // Move handle at array centre
+  const centerLL = enuToLatLng(arraySceneX, arraySceneY, arrayOriginLat, arrayOriginLng);
+  const moveIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:22px;height:22px;background:#e94560;border:2px solid #fff;border-radius:50%;' +
+          'margin:-11px 0 0 -11px;cursor:move;display:flex;align-items:center;justify-content:center;' +
+          'font-size:12px;color:#fff;user-select:none">✥</div>',
+    iconSize: [0, 0],
+  });
+  const moveHandle = L.marker([centerLL.lat, centerLL.lng], {
+    draggable: true, icon: moveIcon, zIndexOffset: 1000,
+  }).addTo(leafletInstance);
+  moveHandle.on('drag', function () {
+    const ll = moveHandle.getLatLng();
+    const enu = latLngToENU(ll.lat, ll.lng, arrayOriginLat, arrayOriginLng);
+    arraySceneX = enu.x; arraySceneY = enu.y;
+    recomputeTreeShadow();
+    refreshLeafletArrayGeometry();
+    updateLeafletShadows();
+    scheduleUpdate();
+  });
+  leafletArrayHandle = moveHandle;
+
+  // Rotate handle — offset along column direction from array centre
+  const rot_rad = arrayRotDeg * Math.PI / 180;
+  const rDist   = COLS * COL_SPACING / 2 + 3;
+  const rhEX    = rDist * Math.cos(rot_rad) + arraySceneX;
+  const rhEY    = rDist * Math.sin(rot_rad) + arraySceneY;
+  const rotLL   = enuToLatLng(rhEX, rhEY, arrayOriginLat, arrayOriginLng);
+  const rotIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:20px;height:20px;background:#38bdf8;border:2px solid #fff;border-radius:50%;' +
+          'margin:-10px 0 0 -10px;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
+          'font-size:11px;color:#fff;font-weight:bold;user-select:none">↻</div>',
+    iconSize: [0, 0],
+  });
+  const rotHandle = L.marker([rotLL.lat, rotLL.lng], {
+    draggable: true, icon: rotIcon, zIndexOffset: 1001,
+  }).addTo(leafletInstance);
+  rotHandle.on('drag', function () {
+    const ll = rotHandle.getLatLng();
+    const pos = latLngToENU(ll.lat, ll.lng, arrayOriginLat, arrayOriginLng);
+    arrayRotDeg = Math.atan2(pos.y - arraySceneY, pos.x - arraySceneX) * 180 / Math.PI;
+    recomputeTreeShadow();
+    refreshLeafletArrayGeometry();
+    updateLeafletShadows();
+    scheduleUpdate();
+  });
+  leafletArrayRotHandle = rotHandle;
+}
+
+function toggleOSMMap() {
+  leafletActive = !leafletActive;
+  const btn       = document.getElementById('toggleGoogleMapBtn');
+  const leafDiv   = document.getElementById('leafletMap');
+  const canv      = document.getElementById('mapCanvas');
+  const centerBtn = document.getElementById('centerBosheiBtn');
+  const scaleLabel = document.getElementById('mapScaleLabel');
+  if (leafletActive) {
+    canv.style.display    = 'none';
+    leafDiv.style.display = 'block';
+    if (centerBtn)  centerBtn.style.display  = 'inline-block';
+    if (scaleLabel) scaleLabel.style.display = 'none';
+    btn.textContent = '🗺 Canvas Map';
+    if (!leafletInstance) initLeafletMap();
+    else { leafletInstance.invalidateSize(); syncTreeLayersToLeaflet(); }
+  } else {
+    canv.style.display    = 'block';
+    leafDiv.style.display = 'none';
+    if (centerBtn)  centerBtn.style.display  = 'none';
+    if (scaleLabel) scaleLabel.style.display = '';
+    btn.textContent = '🗺 Use OSM Map';
+    drawSceneMap();
+  }
+}
+
+function initLeafletMap() {
+  const mapDiv = document.getElementById('leafletMap');
+  leafletInstance = L.map(mapDiv, { zoomControl: true, attributionControl: true })
+    .setView([arrayOriginLat, arrayOriginLng], 19);
+
+  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 21,
+  });
+  const satLayer = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { attribution: '&copy; Esri &mdash; Source: Esri, USGS, AeroGRID, IGN', maxZoom: 21 }
+  );
+  satLayer.addTo(leafletInstance);
+  L.control.layers({ 'Satellite (Esri)': satLayer, 'OSM Road': osmLayer }, {}, { position: 'topright' })
+    .addTo(leafletInstance);
+
+  // PV array footprint: two section polygons (rotated + tilt-projected) + draggable handle
+  updateLeafletArrayPolygon();
+
+  // Click on map to add tree
+  leafletInstance.on('click', function(e) {
+    const pos = latLngToENU(e.latlng.lat, e.latlng.lng, arrayOriginLat, arrayOriginLng);
+    addTree(pos.x, pos.y);
+    syncTreeLayersToLeaflet();
+  });
+
+  syncTreeLayersToLeaflet();
+}
+
+function syncTreeLayersToLeaflet() {
+  if (!leafletInstance) return;
+  // Remove stale layers
+  leafletTreeLayers.forEach(({ circle, marker }) => {
+    circle.remove(); marker.remove();
+  });
+  leafletTreeLayers = [];
+
+  sceneTrees.forEach(tree => {
+    const pos = enuToLatLng(tree.x, tree.y, arrayOriginLat, arrayOriginLng);
+    const isSel = tree.id === selectedTreeId;
+
+    // Visible crown circle
+    const circle = L.circle([pos.lat, pos.lng], {
+      radius: tree.crownRadius,
+      color: isSel ? '#fbbf24' : '#16a34a',
+      weight: isSel ? 2.5 : 1.5,
+      fillColor: '#4ade80', fillOpacity: 0.45,
+    }).addTo(leafletInstance);
+
+    // Invisible draggable marker at tree centre
+    const dragIcon = L.divIcon({
+      className: '',
+      html: `<div style="width:14px;height:14px;background:#4ade80;border:2px solid #fff;border-radius:50%;margin:-7px 0 0 -7px;display:flex;align-items:center;justify-content:center;font-size:8px;color:#000;font-weight:bold">${tree.height}</div>`,
+      iconSize: [0, 0],
+    });
+    const marker = L.marker([pos.lat, pos.lng], { draggable: true, icon: dragIcon })
+      .addTo(leafletInstance);
+
+    marker.on('click', () => { selectTree(tree.id); syncTreeLayersToLeaflet(); });
+    circle.on('click', () => { selectTree(tree.id); syncTreeLayersToLeaflet(); });
+    marker.on('drag', function() {
+      const ll = marker.getLatLng();
+      circle.setLatLng(ll);
+      const np = latLngToENU(ll.lat, ll.lng, arrayOriginLat, arrayOriginLng);
+      tree.x = np.x; tree.y = np.y;
+      recomputeTreeShadow(); scheduleUpdate();
+    });
+
+    leafletTreeLayers.push({ treeId: tree.id, circle, marker });
+  });
+
+  // Update shadows whenever the tree layers are refreshed
+  updateLeafletShadows();
+}
+
+/** Draw tree-shadow ellipses on the Leaflet map (same calculation as the canvas shadow preview). */
+function updateLeafletShadows() {
+  if (!leafletInstance) return;
+
+  // Remove stale shadow layers
+  leafletShadowLayers.forEach(l => l.remove());
+  leafletShadowLayers = [];
+
+  const foliageFactor = FOLIAGE[buildDateFromUI().getMonth()];
+
+  // Sync canopy circle radii to current foliage factor so they always match the shadow size
+  leafletTreeLayers.forEach(({ treeId, circle }) => {
+    const tree = sceneTrees.find(t => t.id === treeId);
+    if (tree) circle.setRadius(tree.crownRadius * foliageFactor);
+  });
+
+  if (sceneTrees.length === 0 || lastSunPos.altitude <= 0.5) return;
+
+  const az_rad  = lastSunPos.azimuth  * Math.PI / 180;
+  const tan_alt = Math.tan(lastSunPos.altitude * Math.PI / 180);
+  const sin_alt = Math.sin(lastSunPos.altitude * Math.PI / 180);
+
+  // Shadow direction unit vectors (ENU: x=East, y=North)
+  const ux = -Math.sin(az_rad); // along shadow, East component
+  const uy = -Math.cos(az_rad); // along shadow, North component
+  // Perpendicular to shadow
+  const vx = -uy;
+  const vy =  ux;
+
+  sceneTrees.forEach(tree => {
+    const cr = tree.crownRadius * foliageFactor;
+    const shadow_len = Math.min(tree.height / tan_alt, MAX_SHADOW_LEN);
+    // Shadow-ellipse centre (ENU)
+    const scx = tree.x - shadow_len * Math.sin(az_rad);
+    const scy = tree.y - shadow_len * Math.cos(az_rad);
+    const ra = Math.min(cr / sin_alt, MAX_SHADOW_AXIS); // elongated semi-axis
+    const rp = cr;                                       // lateral semi-axis
+
+    // Approximate ellipse with 24-point polygon
+    const N = 24;
+    const pts = [];
+    for (let i = 0; i < N; i++) {
+      const θ = 2 * Math.PI * i / N;
+      const ex = scx + ra * Math.cos(θ) * ux + rp * Math.sin(θ) * vx;
+      const ey = scy + ra * Math.cos(θ) * uy + rp * Math.sin(θ) * vy;
+      const ll = enuToLatLng(ex, ey, arrayOriginLat, arrayOriginLng);
+      pts.push([ll.lat, ll.lng]);
     }
-  }
 
-  treesSouth.forEach(t => draw3DTree(t));
-}
+    const shadowPoly = L.polygon(pts, {
+      color: 'transparent',
+      fillColor: '#000',
+      fillOpacity: 0.35,
+      interactive: false,
+    }).addTo(leafletInstance);
 
-function draw3DPanel(r, c) {
-  const pos  = panelScenePos(r, c);
-  const si   = sectionOf(r);
-  const sect = SECTIONS[si];
-  const G    = effectiveG(r, c);
-  const baseColor = sect.color;
+    leafletShadowLayers.push(shadowPoly);
 
-  // Panel is a flat horizontal rectangle at PANEL_ELEV, tilted slightly by section
-  // Determine tilt for visual: top section slopes up toward back, bottom slopes down
-  const tiltZ = si === 0 ? 0.18 * (r - 2) * ROW_SPACING : -0.1 * (r - 5) * ROW_SPACING;
-
-  const hw = COL_SPACING * 0.43, hh = ROW_SPACING * 0.43;
-  // 4 corners of panel: NW, NE, SE, SW in scene
-  const corners = [
-    [-hw, +hh, PANEL_ELEV + tiltZ + 0.1],
-    [+hw, +hh, PANEL_ELEV + tiltZ + 0.1],
-    [+hw, -hh, PANEL_ELEV + tiltZ],
-    [-hw, -hh, PANEL_ELEV + tiltZ],
-  ].map(([dx, dy, dz]) => isoToCanvas(pos.x + dx, pos.y + dy, dz));
-
-  pCtx.beginPath();
-  pCtx.moveTo(corners[0].px, corners[0].py);
-  corners.slice(1).forEach(p => pCtx.lineTo(p.px, p.py));
-  pCtx.closePath();
-
-  const shadeAmt = 1 - G * 0.75 - 0.15;
-  pCtx.fillStyle = blendHex(baseColor, '#0a0a0a', shadeAmt);
-  pCtx.fill();
-  pCtx.strokeStyle = baseColor + '44'; pCtx.lineWidth = 0.5;
-  pCtx.stroke();
-
-  // Cell lines
-  if (G > 0.1) {
-    pCtx.strokeStyle = `rgba(255,255,255,${0.06 + G * 0.08})`; pCtx.lineWidth = 0.4;
-    const m01 = midPt(corners[0], corners[1]), m23 = midPt(corners[2], corners[3]);
-    pCtx.beginPath(); pCtx.moveTo(m01.px, m01.py); pCtx.lineTo(m23.px, m23.py); pCtx.stroke();
-    const m12 = midPt(corners[1], corners[2]), m30 = midPt(corners[3], corners[0]);
-    pCtx.beginPath(); pCtx.moveTo(m12.px, m12.py); pCtx.lineTo(m30.px, m30.py); pCtx.stroke();
-  }
-}
-
-function midPt(a, b) { return { px:(a.px+b.px)/2, py:(a.py+b.py)/2 }; }
-
-function draw3DTree(tree) {
-  const trunkH = tree.height * 0.55;
-  const crownH = tree.height - trunkH;
-
-  // Trunk: vertical line
-  const base  = isoToCanvas(tree.x, tree.y, 0);
-  const trunk = isoToCanvas(tree.x, tree.y, trunkH);
-  pCtx.strokeStyle = '#713f12'; pCtx.lineWidth = Math.max(1.5, tree.crownRadius * 1.2);
-  pCtx.beginPath(); pCtx.moveTo(base.px, base.py); pCtx.lineTo(trunk.px, trunk.py); pCtx.stroke();
-
-  // Crown: ellipse-like blob using arc (projected circle)
-  const topC = isoToCanvas(tree.x, tree.y, trunkH + crownH * 0.5);
-  const r3d  = tree.crownRadius * ISO_SCALE;
-  // In isometric, a horizontal circle projects to an ellipse with X:Y ratio = cos(30°):sin(30°) = 0.866:0.5
-  const rx = r3d * 0.866 * 1.6, ry = r3d * 0.5 * 1.6;
-
-  const isSel = tree.id === selectedTreeId;
-  const gr = pCtx.createRadialGradient(topC.px - rx*0.3, topC.py - ry*0.4, 0,
-                                       topC.px, topC.py, Math.max(rx, ry));
-  gr.addColorStop(0, isSel ? '#86efac' : '#4ade80');
-  gr.addColorStop(0.7, isSel ? '#16a34a' : '#15803d');
-  gr.addColorStop(1, '#052e16');
-  pCtx.fillStyle = gr;
-  pCtx.beginPath(); pCtx.ellipse(topC.px, topC.py, rx, ry, 0, 0, 2*Math.PI); pCtx.fill();
-
-  if (isSel) {
-    pCtx.strokeStyle = '#fbbf24'; pCtx.lineWidth = 1.5;
-    pCtx.beginPath(); pCtx.ellipse(topC.px, topC.py, rx + 3, ry + 2, 0, 0, 2*Math.PI); pCtx.stroke();
-  }
-}
-
-function draw3DSun() {
-  const altR = lastSunPos.altitude * Math.PI / 180;
-  const azR  = lastSunPos.azimuth  * Math.PI / 180;
-  const dist = 18; // scene metres out in sun direction for indicator
-  const sX = dist * Math.sin(azR), sY = dist * Math.cos(azR);
-  const sZ = dist * Math.tan(altR);
-  const sp = isoToCanvas(sX, sY, Math.min(sZ, 20));
-
-  // Rays
-  pCtx.strokeStyle = '#fbbf2488'; pCtx.lineWidth = 0.8;
-  for (let i = 0; i < 8; i++) {
-    const a = i * Math.PI / 4;
-    pCtx.beginPath();
-    pCtx.moveTo(sp.px + Math.cos(a) * 8, sp.py + Math.sin(a) * 8);
-    pCtx.lineTo(sp.px + Math.cos(a) * 14, sp.py + Math.sin(a) * 14);
-    pCtx.stroke();
-  }
-  // Sun disc
-  pCtx.fillStyle = '#fbbf24';
-  pCtx.beginPath(); pCtx.arc(sp.px, sp.py, 7, 0, 2*Math.PI); pCtx.fill();
-
-  // Direction line from array to sun
-  const orig = isoToCanvas(0, 0, PANEL_ELEV);
-  pCtx.strokeStyle = '#fbbf2422'; pCtx.lineWidth = 1;
-  pCtx.setLineDash([4,4]);
-  pCtx.beginPath(); pCtx.moveTo(orig.px, orig.py); pCtx.lineTo(sp.px, sp.py); pCtx.stroke();
-  pCtx.setLineDash([]);
-}
-
-function resizePreviewCanvas() {
-  const W = Math.min(previewCanvas.parentElement.clientWidth - 28, 900);
-  previewCanvas.width  = W;
-  previewCanvas.height = Math.round(W * 0.38);
-  draw3DPreview();
+    // Understory cylinder shadow: stadium polygon from tree base to shadow of cylinder top
+    if (tree.hasUnderstoryFoliage !== false) {
+      const cylLen = Math.min(tree.height / 2 / tan_alt, MAX_SHADOW_LEN);
+      // Near end centre (tree base) and far end centre (cylinder top shadow)
+      const ax = tree.x, ay = tree.y;
+      const bx = tree.x + cylLen * ux, by = tree.y + cylLen * uy;
+      // Build stadium polygon: far semicircle + near semicircle
+      // Far cap (0→π): bump points outward in shadow direction (away from tree).
+      // Near cap (π→2π): bump points anti-shadow (toward sun).
+      const Nh = 12;
+      const cylPts = [];
+      for (let i = 0; i <= Nh; i++) {
+        const a = (i / Nh) * Math.PI;             // far end: angles 0..π
+        const px = bx + cr * Math.cos(a) * vx + cr * Math.sin(a) * ux;
+        const py = by + cr * Math.cos(a) * vy + cr * Math.sin(a) * uy;
+        const ll = enuToLatLng(px, py, arrayOriginLat, arrayOriginLng);
+        cylPts.push([ll.lat, ll.lng]);
+      }
+      for (let i = 0; i <= Nh; i++) {
+        const a = Math.PI + (i / Nh) * Math.PI;   // near end: angles π..2π
+        const px = ax + cr * Math.cos(a) * vx + cr * Math.sin(a) * ux;
+        const py = ay + cr * Math.cos(a) * vy + cr * Math.sin(a) * uy;
+        const ll = enuToLatLng(px, py, arrayOriginLat, arrayOriginLng);
+        cylPts.push([ll.lat, ll.lng]);
+      }
+      const cylPoly = L.polygon(cylPts, {
+        color: 'transparent',
+        fillColor: '#000',
+        fillOpacity: 0.35,
+        interactive: false,
+      }).addTo(leafletInstance);
+      leafletShadowLayers.push(cylPoly);
+    }
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1966,12 +2930,13 @@ function resizePreviewCanvas() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 let simWorker = null; // non-null while simulation is running
+let _simWorkers = []; // array of workers for multi-worker mode
 
 /**
- * Run the yearly simulation in a dedicated Web Worker.
+ * Run the yearly simulation in dedicated Web Workers.
  *
  * Performance improvements over the previous single-threaded approach:
- *   1. Web Worker  — runs on a separate CPU thread; UI stays perfectly responsive.
+ *   1. Multi-Worker parallelism — distributes DOY range across multiple CPU threads.
  *   2. G-memoisation — cachedPanelIV() caches panelIV by quantised G key.
  *      Per-timestep there are only 2–4 unique G values (2 section fracs ×
  *      blocked/unblocked shade), so ~340 Newton-iteration calls collapse to ≤4.
@@ -1984,6 +2949,8 @@ function runYearlySimulation() {
   if (simWorker) return; // already running
 
   const useWeather = document.getElementById('weatherToggle').checked;
+  const nWorkers = Math.min(navigator.hardwareConcurrency || 4, 32);
+  console.info(`Sim: using ${nWorkers} worker(s) (${navigator.hardwareConcurrency} logical cores)`);
 
   const runBtn   = document.getElementById('runSimBtn');
   const abortBtn = document.getElementById('abortSimBtn');
@@ -1996,7 +2963,7 @@ function runYearlySimulation() {
   document.getElementById('simProgressFill').style.width   = '0%';
   document.getElementById('simStatusLabel').textContent    = 'Initialising…';
   document.getElementById('simModeLabel').textContent =
-    useWeather ? '☁ weather-adjusted' : '☀ clear-sky only';
+    useWeather ? `☁ weather-adjusted · ${nWorkers} worker${nWorkers>1?'s':''}` : `☀ clear-sky only · ${nWorkers} worker${nWorkers>1?'s':''}`;
 
   // Precompute DOY → month (0-11) lookup for 2024 reference year
   const DOY_TO_MONTH = new Array(365);
@@ -2010,54 +2977,120 @@ function runYearlySimulation() {
       PANEL_POS.push(panelScenePos(r, c));
 
   // Slim CONFIGS copy — strip UI-only properties (colors, labels) to reduce transfer size
-  const CONFIGS_slim = CONFIGS.map(cfg => ({
-    id: cfg.id,
-    blocks: cfg.blocks.map(b => ({ r0:b.r0, r1:b.r1, c0:b.c0, c1:b.c1, topo:b.topo })),
-  }));
-
-  // Spawn worker from inline <script type="text/x-worker"> source block
-  const src     = document.getElementById('simWorkerSrc').textContent;
-  const blobUrl = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
-  simWorker = new Worker(blobUrl);
-  URL.revokeObjectURL(blobUrl); // safe to revoke once Worker is created
-
-  simWorker.onerror = (err) => {
-    console.error('Sim worker error:', err);
-    _cleanupSimWorker();
-    document.getElementById('simStatusLabel').textContent = 'Worker error — see console.';
-  };
-
-  simWorker.onmessage = (e) => {
-    const msg = e.data;
-    if (msg.type === 'progress') {
-      document.getElementById('simProgressFill').style.width = msg.pct + '%';
-      document.getElementById('simStatusLabel').textContent  =
-        `Day ${msg.doy}/365 (${msg.pct}%)…`;
-    } else if (msg.type === 'done') {
-      _cleanupSimWorker();
-      document.getElementById('simStatusLabel').textContent = 'Complete ✓';
-      displaySimResults(msg.monthlyEnergy, useWeather);
-    }
-  };
-
-  // Send all needed data to the worker (structured-clone transfer)
-  simWorker.postMessage({
-    type: 'run',
-    ROWS, COLS, SECTION_DIV, STC_IRRAD, BYPASS_VD, NEER_LAT,
-    PNL: { ...PNL },
-    SECTIONS: SECTIONS.map(s => ({ tilt: s.tilt, azimuth: s.azimuth })),
-    CONFIGS:  CONFIGS_slim,
-    MONTHLY_KC: [...MONTHLY_KC],
-    MAX_SHADOW_LEN, MAX_SHADOW_AXIS,
-    sceneTrees: sceneTrees.map(t => ({ x:t.x, y:t.y, height:t.height, crownRadius:t.crownRadius })),
-    shadeLevel, useWeather,
-    DOY_TO_MONTH, PANEL_POS,
+  const CONFIGS_slim = CONFIGS.map(cfg => {
+    const spec = INVERTER_SPECS[cfg.id] || null;
+    return {
+      id: cfg.id,
+      blocks: cfg.blocks.map(b => ({
+        r0:b.r0, r1:b.r1, c0:b.c0, c1:b.c1, topo:b.topo,
+        ...(b.cells ? {cells: b.cells} : {}),
+      })),
+      totalPowerW: spec?.totalPowerW ?? null,
+    };
   });
+
+  // Multi-worker setup
+  const chunk = Math.ceil(365 / nWorkers);
+  const aggEnergy = {};
+  const aggNoShade = {};
+  CONFIGS.forEach(cfg => { aggEnergy[cfg.id] = new Float64Array(12); aggNoShade[cfg.id] = new Float64Array(12); });
+  const aggPanelEnergy = new Float64Array(12 * ROWS * COLS);
+  const aggNoShadePanelEnergy = new Float64Array(12 * ROWS * COLS);
+  const aggRevenueDynamic = {};
+  const aggNoShadeRevenueDynamic = {};
+  CONFIGS.forEach(cfg => {
+    aggRevenueDynamic[cfg.id] = new Float64Array(12);
+    aggNoShadeRevenueDynamic[cfg.id] = new Float64Array(12);
+  });
+  let doneWorkers = 0;
+  const completedDoys = new Array(nWorkers).fill(0);
+
+  const src = document.getElementById('simWorkerSrc').textContent;
+  const blobUrl = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
+
+  for (let w = 0; w < nWorkers; w++) {
+    const doyStart = w * chunk + 1;
+    const doyEnd = Math.min((w + 1) * chunk, 365);
+    
+    const worker = new Worker(blobUrl);
+    _simWorkers.push(worker);
+
+    worker.onerror = (err) => {
+      console.error(`Sim worker ${w} error:`, err);
+      _cleanupAllSimWorkers();
+      document.getElementById('simStatusLabel').textContent = 'Worker error — see console.';
+    };
+
+    worker.onmessage = (e) => {
+      const msg = e.data;
+      if (msg.type === 'progress') {
+        completedDoys[w] = msg.doy - doyStart + 1;
+        const totalDone = completedDoys.reduce((s,v)=>s+v,0);
+        const pct = Math.floor(totalDone / 365 * 100);
+        document.getElementById('simProgressFill').style.width = pct + '%';
+        document.getElementById('simStatusLabel').textContent = `Day ${totalDone}/365 (${pct}%)…`;
+      } else if (msg.type === 'done') {
+        // Accumulate energy
+        CONFIGS.forEach(cfg => {
+          for (let m = 0; m < 12; m++) {
+            aggEnergy[cfg.id][m] += msg.monthlyEnergy[cfg.id][m];
+            aggNoShade[cfg.id][m] += msg.noShadeEnergy[cfg.id][m];
+          }
+        });
+        for (let i = 0; i < 12 * ROWS * COLS; i++) {
+          aggPanelEnergy[i] += msg.panelEnergyByMonth[i];
+          aggNoShadePanelEnergy[i] += msg.noShadePanelEnergyByMonth[i];
+        }
+        CONFIGS.forEach(cfg => {
+          for (let m = 0; m < 12; m++) {
+            aggRevenueDynamic[cfg.id][m] += msg.configRevenueDynamic[cfg.id][m] || 0;
+            aggNoShadeRevenueDynamic[cfg.id][m] += msg.noShadeRevenueDynamic[cfg.id][m] || 0;
+          }
+        });
+        doneWorkers++;
+        if (doneWorkers === nWorkers) {
+          _cleanupAllSimWorkers();
+          URL.revokeObjectURL(blobUrl);
+          document.getElementById('simStatusLabel').textContent = 'Complete ✓';
+          const result = {}, noShadeResult = {};
+          CONFIGS.forEach(cfg => {
+            result[cfg.id] = Array.from(aggEnergy[cfg.id]);
+            noShadeResult[cfg.id] = Array.from(aggNoShade[cfg.id]);
+          });
+          displaySimResults(result, noShadeResult, useWeather,
+            Array.from(aggPanelEnergy), Array.from(aggNoShadePanelEnergy),
+            Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggRevenueDynamic[cfg.id])])),
+            Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggNoShadeRevenueDynamic[cfg.id])])));
+        }
+      }
+    };
+
+    // Send all needed data to the worker (structured-clone transfer)
+    worker.postMessage({
+      type: 'run',
+      ROWS, COLS, SECTION_DIV, STC_IRRAD, BYPASS_VD, NEER_LAT,
+      PNL: { ...PNL },
+      SECTIONS: SECTIONS.map(s => ({ tilt: s.tilt, azimuth: s.azimuth })),
+      CONFIGS:  CONFIGS_slim,
+      MONTHLY_KC: [...MONTHLY_KC],
+      FOLIAGE: [...FOLIAGE],
+      MAX_SHADOW_LEN, MAX_SHADOW_AXIS,
+      DYNAMIC_PRICES: Float64Array.from({length:12*24}, (_,i) => HOURLY_APX_PRICE_2025[Math.floor(i/24)][i%24]),
+      sceneTrees: sceneTrees.map(t => ({ x:t.x, y:t.y, height:t.height, crownRadius:t.crownRadius, hasUnderstoryFoliage:t.hasUnderstoryFoliage !== false })),
+      shadeLevel, useWeather,
+      DOY_TO_MONTH, PANEL_POS,
+      INVERTER_SPECS: { ...INVERTER_SPECS },
+      doyStart, doyEnd,
+    });
+  }
+  simWorker = _simWorkers[0]; // keep reference for abort
 }
 
-/** Terminate the worker and reset simulation-UI state. */
-function _cleanupSimWorker() {
-  if (simWorker) { simWorker.terminate(); simWorker = null; }
+/** Terminate all workers and reset simulation-UI state. */
+function _cleanupAllSimWorkers() {
+  _simWorkers.forEach(w => w.terminate());
+  _simWorkers = [];
+  simWorker = null;
   document.getElementById('simProgressWrap').style.display = 'none';
   document.getElementById('abortSimBtn').style.display     = 'none';
   const runBtn = document.getElementById('runSimBtn');
@@ -2065,7 +3098,31 @@ function _cleanupSimWorker() {
   runBtn.textContent = '↺ Re-run Yearly Sim';
 }
 
-function displaySimResults(monthlyEnergy, weatherMode) {
+function formatROI(cost, annualProfit) {
+  if (!cost || annualProfit <= 0) return '—';
+  const yrs = cost / annualProfit;
+  return yrs.toFixed(1) + ' yrs';
+}
+
+function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
+    panelEnergyFlat, noShadePanelEnergyFlat, revenueDynamic, noShadeRevenueDynamic) {
+  lastSimResults = monthlyEnergy;
+  lastSimNoShade = noShadeEnergy;
+  lastSimWeather = weatherMode;
+  // Cache new fields for saldering-toggle re-render
+  if (panelEnergyFlat !== undefined) {
+    lastSimPanelEnergy = panelEnergyFlat;
+    lastSimNoShadePanelEnergy = noShadePanelEnergyFlat;
+    lastSimRevenueDynamic = revenueDynamic;
+    lastSimNoShadeRevenueDynamic = noShadeRevenueDynamic;
+  } else {
+    // Called from saldering toggle — reuse cached values
+    panelEnergyFlat = lastSimPanelEnergy;
+    noShadePanelEnergyFlat = lastSimNoShadePanelEnergy;
+    revenueDynamic = lastSimRevenueDynamic;
+    noShadeRevenueDynamic = lastSimNoShadeRevenueDynamic;
+  }
+  
   // ── Badge ──────────────────────────────────────────────────────────────
   const badge = document.getElementById('simWeatherBadge');
   badge.style.display = weatherMode ? 'block' : 'none';
@@ -2076,18 +3133,57 @@ function displaySimResults(monthlyEnergy, weatherMode) {
     yearlyTotals[cfg.id] = monthlyEnergy[cfg.id].reduce((a, b) => a + b, 0);
   });
   const maxYearly = Math.max(...Object.values(yearlyTotals));
+  
+  const useSaldering = document.getElementById('salderingToggle')?.checked ?? true;
+  
+  // Compute yearly revenues per config — always use dynamic APX 2025 hourly prices
+  // Saldering ON  → full APX rate (offset consumption at spot price)
+  // Saldering OFF → APX × FEED_IN_FACTOR (lower wholesale feed-in tariff)
+  const yearlyRevenue = {};
+  CONFIGS.forEach(cfg => {
+    const dynRev = revenueDynamic && revenueDynamic[cfg.id]
+      ? revenueDynamic[cfg.id].reduce((a,b)=>a+b,0)
+      : yearlyTotals[cfg.id] * PRICE_SALDERING; // fallback if worker result missing
+    yearlyRevenue[cfg.id] = useSaldering ? dynRev : dynRev * FEED_IN_FACTOR;
+  });
+
+  // Yearly no-shade revenues per config — same dynamic pricing logic
+  const yearlyNSRevenue = {};
+  CONFIGS.forEach(cfg => {
+    const dynNSRev = noShadeRevenueDynamic && noShadeRevenueDynamic[cfg.id]
+      ? noShadeRevenueDynamic[cfg.id].reduce((a,b)=>a+b,0)
+      : (noShadeEnergy ? noShadeEnergy[cfg.id].reduce((a,b)=>a+b,0) : yearlyTotals[cfg.id]) * PRICE_SALDERING;
+    yearlyNSRevenue[cfg.id] = useSaldering ? dynNSRev : dynNSRev * FEED_IN_FACTOR;
+  });
+  
+  const maxRevenue = Math.max(...Object.values(yearlyRevenue));
 
   let html = '';
   CONFIGS.forEach(cfg => {
     const tot   = yearlyTotals[cfg.id];
+    const noShade = noShadeEnergy ? noShadeEnergy[cfg.id].reduce((a,b)=>a+b,0) : tot;
+    const pctNSNum = noShade > 0 ? (tot/noShade)*100 : 100;
+    const pctNS = pctNSNum.toFixed(1);
+    const nsColor = pctNSNum>=95?'#4ade80':pctNSNum>=85?'#fbbf24':'#ef4444';
     const pct   = ((tot / maxYearly) * 100).toFixed(1);
     const daily = (tot / 365).toFixed(2);
     const best  = tot / maxYearly >= 0.9999;
+    const rev   = yearlyRevenue[cfg.id];
+    const deltaVsBest = rev - maxRevenue;
+    const deltaVsNS   = rev - yearlyNSRevenue[cfg.id];
+    const deltaVsBestStr = deltaVsBest < -0.5 ? `<span style="color:#ef4444">−€${Math.abs(deltaVsBest).toFixed(0)}</span>` : '<span style="color:#4ade80">best</span>';
+    const deltaVsNSStr   = deltaVsNS  < -0.5  ? `<span style="color:#f97316">−€${Math.abs(deltaVsNS).toFixed(0)}</span>`  : '<span style="color:#4ade80">≈NS</span>';
+    const roiStr = formatROI(CONFIG_COST[cfg.id], rev);
     html += `<tr>
       <td class="cfg-name"><span class="cfg-dot" style="background:${cfg.cfgColor}"></span>${cfg.short}</td>
       <td class="${best ? 'best-val' : ''}">${tot.toFixed(0)} ${best ? '★' : ''}</td>
       <td>${pct}%</td>
+      <td style="color:${nsColor}">${pctNS}%</td>
       <td>${daily}</td>
+      <td style="color:#4ade80">€${rev.toFixed(0)}</td>
+      <td>${deltaVsBestStr}</td>
+      <td>${deltaVsNSStr}</td>
+      <td style="color:#fb923c">${roiStr}</td>
     </tr>`;
   });
   document.getElementById('yearlyTableBody').innerHTML = html;
@@ -2183,17 +3279,122 @@ function displaySimResults(monthlyEnergy, weatherMode) {
   const note = document.getElementById('simNoteText');
   if (weatherMode) {
     note.textContent =
-      'Weather-adjusted estimate: PVGIS SARAH-3 / KNMI monthly cloud-correction Kc applied ' +
+      'Weather-adjusted estimate: PVGIS SARAH-3 / KNMI monthly cloud-correction Kc applied with beam/diffuse split ' +
       '(365 days × 1-hour steps). Further losses (inverter, wiring, soiling ~15–20%) ' +
-      'not included. Tree shade from current scene is applied.';
+      'not included. Tree shade (with foliage seasonality) from current scene is applied. ' +
+      'Revenue uses dynamic APX/EPEX hourly prices 2025 — saldering: full APX rate; feed-in: APX × 0.70.';
   } else {
     note.textContent =
       'Clear-sky estimate (no cloud losses, 365 days × 1-hour steps). ' +
       'Enable "Weather-adjusted" for a realistic yield estimate. ' +
-      'Tree shade from current scene is applied.';
+      'Tree shade from current scene is applied. ' +
+      'Revenue uses dynamic APX/EPEX hourly prices 2025 — saldering: full APX rate; feed-in: APX × 0.70.';
   }
 
+  // Show and draw heatmap
+  const hmSection = document.getElementById('heatmapSection');
+  if (hmSection) hmSection.style.display = 'block';
+  setTimeout(drawHeatmap, 0);
+
   document.getElementById('simResultsDiv').style.display = 'block';
+}
+
+// ── Panel production heatmap ───────────────────────────────────────────────
+function heatColor(t) {
+  // t in [0,1]: 0=dark blue, 0.5=yellow, 1=bright green
+  t = Math.max(0, Math.min(1, t));
+  if (t < 0.5) {
+    const s = t * 2;
+    return `rgb(${Math.round(20+s*235)},${Math.round(20+s*210)},${Math.round(80-s*60)})`;
+  } else {
+    const s = (t - 0.5) * 2;
+    return `rgb(${Math.round(255-s*100)},${Math.round(230-s*40)},${Math.round(20)})`;
+  }
+}
+
+function drawHeatmap() {
+  const section = document.getElementById('heatmapSection');
+  if (!section || section.style.display === 'none') return;
+  if (!lastSimPanelEnergy) return;
+
+  const metric = document.getElementById('heatmapMetric').value;
+  const monthSel = parseInt(document.getElementById('heatmapMonth').value);
+  const useSald = document.getElementById('salderingToggle')?.checked ?? true;
+
+  // Gather per-panel values
+  const vals = new Float64Array(ROWS * COLS);
+  if (monthSel === -1) {
+    // All year
+    for (let m = 0; m < 12; m++) {
+      for (let i = 0; i < ROWS * COLS; i++) {
+        vals[i] += lastSimPanelEnergy[m * ROWS * COLS + i];
+      }
+    }
+  } else {
+    for (let i = 0; i < ROWS * COLS; i++) {
+      vals[i] = lastSimPanelEnergy[monthSel * ROWS * COLS + i];
+    }
+  }
+
+  // Convert to € if needed — use average APX price as proxy for per-panel value
+  if (metric === 'eur') {
+    // Average of all monthly-hourly APX prices
+    const avgApx = HOURLY_APX_PRICE_2025.reduce((s,row)=>s+row.reduce((a,b)=>a+b,0),0) / (12*24);
+    const price = useSald ? avgApx : avgApx * FEED_IN_FACTOR;
+    for (let i = 0; i < ROWS * COLS; i++) vals[i] *= price;
+  }
+
+  const maxVal = Math.max(...vals, 0.001);
+  const minVal = Math.min(...vals);
+  const range  = maxVal - minVal;
+  const unit   = metric === 'kwh' ? 'kWh' : '€';
+  const decimals = metric === 'kwh' ? 1 : 2;
+
+  document.getElementById('heatmapRangeLabel').textContent =
+    `${minVal.toFixed(decimals)} – ${maxVal.toFixed(decimals)} ${unit}/panel`;
+
+  // Draw on heatmap canvas (same coordinate system as arrayCanvas)
+  const hc = document.getElementById('heatmapCanvas');
+  hc.width  = canvas.width;
+  hc.height = canvas.height;
+  const hx  = hc.getContext('2d');
+
+  hx.fillStyle = '#0d1117'; hx.fillRect(0, 0, hc.width, hc.height);
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const i   = r * COLS + c;
+      const t   = range > 0.0001 ? (vals[i] - minVal) / range : 0.5;
+      const rct = panelRect(r, c);
+      hx.fillStyle = heatColor(t);
+      drawRoundRect(hx, rct.x, rct.y, rct.w, rct.h, 3); hx.fill();
+      // Text: white with dark stroke for readability on any background
+      const label = vals[i].toFixed(decimals);
+      hx.font = '9px sans-serif'; hx.textAlign = 'center';
+      hx.strokeStyle = 'rgba(0,0,0,0.85)'; hx.lineWidth = 2.5;
+      hx.strokeText(label, rct.x+rct.w/2, rct.y+rct.h/2+3);
+      hx.fillStyle = '#ffffff'; hx.fillText(label, rct.x+rct.w/2, rct.y+rct.h/2+3);
+    }
+  }
+
+  // Row/col labels (reuse same style as arrayCanvas)
+  hx.fillStyle = '#6b7280'; hx.font = '10px sans-serif'; hx.textAlign = 'right';
+  for (let r = 0; r < ROWS; r++) {
+    const rct = panelRect(r, 0);
+    hx.fillText(`R${r+1}`, rct.x - 4, rct.y + rct.h/2 + 3);
+  }
+  hx.fillStyle = '#6b7280'; hx.font = '10px sans-serif'; hx.textAlign = 'center';
+  for (let c = 0; c < COLS; c++) {
+    const rct = panelRect(0, c);
+    hx.fillText(c+1, rct.x + rct.w/2, rct.y - 4);
+  }
+
+  // Legend bar with min/max labels
+  const lc = document.getElementById('heatmapLegendCanvas');
+  const lx = lc.getContext('2d');
+  const grad = lx.createLinearGradient(0, 0, 180, 0);
+  for (let s = 0; s <= 10; s++) grad.addColorStop(s/10, heatColor(s/10));
+  lx.fillStyle = grad; lx.fillRect(0, 0, 180, 14);
 }
 
 // ── Update cycle ───────────────────────────────────────────────────────────
@@ -2210,7 +3411,7 @@ function heavyUpdate(){
   updatePowerDetail(hlRes.mpptResults);
   updateChart(hlRes.mpptResults);
   drawSceneMap();
-  draw3DPreview();
+  if (leafletActive) updateLeafletShadows();
 }
 function fullUpdate(){drawArray();heavyUpdate();}
 
@@ -2274,7 +3475,7 @@ document.getElementById('clearTreesBtn').addEventListener('click', () => {
   updateTreeCountLabel();
   recomputeTreeShadow();
   drawSceneMap();
-  draw3DPreview();
+  syncTreeLayersToLeaflet();
   fullUpdate();
 });
 
@@ -2286,7 +3487,7 @@ document.getElementById('deleteTreeBtn').addEventListener('click', () => {
   updateTreeCountLabel();
   recomputeTreeShadow();
   drawSceneMap();
-  draw3DPreview();
+  syncTreeLayersToLeaflet();
   fullUpdate();
 });
 
@@ -2298,7 +3499,7 @@ document.getElementById('treeHeightSlider').addEventListener('input', function (
   document.getElementById('treeHeightVal').textContent = t.height + ' m';
   recomputeTreeShadow();
   drawSceneMap();
-  draw3DPreview();
+  syncTreeLayersToLeaflet();
   scheduleUpdate();
 });
 
@@ -2310,7 +3511,18 @@ document.getElementById('treeCrownSlider').addEventListener('input', function ()
   document.getElementById('treeCrownVal').textContent = t.crownRadius + ' m';
   recomputeTreeShadow();
   drawSceneMap();
-  draw3DPreview();
+  syncTreeLayersToLeaflet();
+  scheduleUpdate();
+});
+
+// Understory foliage toggle
+document.getElementById('treeUnderstoryCheck').addEventListener('change', function () {
+  const t = sceneTrees.find(tr => tr.id === selectedTreeId);
+  if (!t) return;
+  t.hasUnderstoryFoliage = this.checked;
+  recomputeTreeShadow();
+  drawSceneMap();
+  if (leafletActive) updateLeafletShadows();
   scheduleUpdate();
 });
 
@@ -2322,14 +3534,30 @@ document.getElementById('runSimBtn').addEventListener('click', () => {
 // Abort simulation button
 document.getElementById('abortSimBtn').addEventListener('click', () => {
   if (!simWorker) return;
-  _cleanupSimWorker();
+  _cleanupAllSimWorkers();
   document.getElementById('simStatusLabel').textContent = 'Aborted.';
+});
+
+// Saldering toggle
+const salEl = document.getElementById('salderingToggle');
+if (salEl) salEl.addEventListener('change', () => {
+  if (lastSimResults) displaySimResults(lastSimResults, lastSimNoShade, lastSimWeather);
+  else drawHeatmap();
+});
+document.getElementById('heatmapMetric')?.addEventListener('change', drawHeatmap);
+document.getElementById('heatmapMonth')?.addEventListener('change', drawHeatmap);
+
+// Google Maps buttons
+document.getElementById('toggleGoogleMapBtn').addEventListener('click', toggleOSMMap);
+document.getElementById('centerBosheiBtn').addEventListener('click', () => {
+  if (!leafletInstance) return;
+  const center = enuToLatLng(arraySceneX, arraySceneY, arrayOriginLat, arrayOriginLng);
+  leafletInstance.setView([center.lat, center.lng], 19);
 });
 
 // Resize canvases on window resize
 window.addEventListener('resize', () => {
   resizeMapCanvas();
-  resizePreviewCanvas();
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────
@@ -2349,10 +3577,15 @@ window.addEventListener('resize', () => {
 
   // Size and draw new canvases
   resizeMapCanvas();
-  resizePreviewCanvas();
 
   fullUpdate();
+
+  // Auto-open OSM map once Leaflet is loaded (window.load fires after all scripts execute)
+  window.addEventListener('load', function () {
+    if (!leafletActive) toggleOSMMap();
+  });
 })();
 </script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 </body>
 </html>
