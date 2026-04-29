@@ -218,6 +218,8 @@
         <button class="btn map-mode-btn" id="toggleGoogleMapBtn">🗺 Use OSM Map</button>
         <button class="btn" id="centerBosheiBtn" style="display:none">📍 Boshei 4</button>
         <button class="btn" id="clearTreesBtn">&#127795; Clear Trees</button>
+        <button class="btn" id="saveTreesBtn" title="Save tree positions to browser storage">&#128190; Save Trees</button>
+        <button class="btn" id="loadTreesBtn" title="Load previously saved tree positions">&#128194; Load Trees</button>
         <span id="treeCountLabel" style="color:#6b7280;font-size:0.75rem">No trees</span>
         <span style="flex:1"></span>
         <span id="mapScaleLabel" style="font-size:0.71rem;color:#4b5563">&#9632; = 10 m</span>
@@ -2157,6 +2159,7 @@ function addTree(x, y) {
   selectTree(t.id);
   recomputeTreeShadow();
   drawSceneMap();
+  saveTreesToStorage();
 }
 
 function selectTree(id) {
@@ -2181,6 +2184,43 @@ function updateTreeCountLabel() {
   const n = sceneTrees.length;
   document.getElementById('treeCountLabel').textContent =
     n === 0 ? 'No trees' : n + ' tree' + (n === 1 ? '' : 's');
+}
+
+const TREES_STORAGE_KEY = 'shadeAnalyserTrees';
+
+/** Persist the current tree list to localStorage. */
+function saveTreesToStorage() {
+  try {
+    localStorage.setItem(TREES_STORAGE_KEY, JSON.stringify(sceneTrees));
+  } catch (e) { /* quota exceeded or private-browsing — silently ignore */ }
+}
+
+/**
+ * Restore trees from localStorage.
+ * @returns {boolean} true if trees were restored
+ */
+function loadTreesFromStorage() {
+  try {
+    const raw = localStorage.getItem(TREES_STORAGE_KEY);
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    if (!Array.isArray(saved) || saved.length === 0) return false;
+    sceneTrees = saved.map(t => ({
+      id: t.id,
+      x: t.x,
+      y: t.y,
+      height: t.height ?? 8,
+      crownRadius: t.crownRadius ?? 6,
+      hasUnderstoryFoliage: t.hasUnderstoryFoliage !== false,
+    }));
+    nextTreeId = Math.max(...sceneTrees.map(t => t.id)) + 1;
+    updateTreeCountLabel();
+    recomputeTreeShadow();
+    drawSceneMap();
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 /** Returns true if point (px, py) lies within the shadow cast by tree (crown ellipse + optional cylinder). */
@@ -2616,8 +2656,8 @@ mapCanvas.addEventListener('mousemove', e => {
   scheduleUpdate();
 });
 
-mapCanvas.addEventListener('mouseup',    () => { mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
-mapCanvas.addEventListener('mouseleave', () => { mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
+mapCanvas.addEventListener('mouseup',    () => { if (mapDragTree) saveTreesToStorage(); mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
+mapCanvas.addEventListener('mouseleave', () => { if (mapDragTree) saveTreesToStorage(); mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
 
 mapCanvas.addEventListener('touchstart', e => {
   e.preventDefault();
@@ -2683,7 +2723,7 @@ mapCanvas.addEventListener('touchmove', e => {
   scheduleUpdate();
 }, {passive:false});
 
-mapCanvas.addEventListener('touchend', () => { mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
+mapCanvas.addEventListener('touchend', () => { if (mapDragTree) saveTreesToStorage(); mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
 
 // ── Map canvas auto-size ────────────────────────────────────────────────────
 function resizeMapCanvas() {
@@ -4276,6 +4316,26 @@ document.getElementById('timeSlider').addEventListener('input', onDateTimeChange
 
 // ── New UI controls: scene map & simulation ────────────────────────────────
 
+// Save trees button (explicit manual save to localStorage)
+document.getElementById('saveTreesBtn').addEventListener('click', () => {
+  saveTreesToStorage();
+  const btn = document.getElementById('saveTreesBtn');
+  const orig = btn.textContent;
+  btn.textContent = '✓ Saved';
+  setTimeout(() => { btn.textContent = orig; }, 1200);
+});
+
+// Load trees button (explicit restore from localStorage)
+document.getElementById('loadTreesBtn').addEventListener('click', () => {
+  const restored = loadTreesFromStorage();
+  if (restored) {
+    syncTreeLayersToLeaflet();
+    fullUpdate();
+  } else {
+    alert('No saved tree data found.');
+  }
+});
+
 // Clear all trees
 document.getElementById('clearTreesBtn').addEventListener('click', () => {
   sceneTrees = [];
@@ -4284,6 +4344,7 @@ document.getElementById('clearTreesBtn').addEventListener('click', () => {
   recomputeTreeShadow();
   drawSceneMap();
   syncTreeLayersToLeaflet();
+  saveTreesToStorage();
   fullUpdate();
 });
 
@@ -4296,6 +4357,7 @@ document.getElementById('deleteTreeBtn').addEventListener('click', () => {
   recomputeTreeShadow();
   drawSceneMap();
   syncTreeLayersToLeaflet();
+  saveTreesToStorage();
   fullUpdate();
 });
 
@@ -4308,6 +4370,7 @@ document.getElementById('treeHeightSlider').addEventListener('input', function (
   recomputeTreeShadow();
   drawSceneMap();
   syncTreeLayersToLeaflet();
+  saveTreesToStorage();
   scheduleUpdate();
 });
 
@@ -4320,6 +4383,7 @@ document.getElementById('treeCrownSlider').addEventListener('input', function ()
   recomputeTreeShadow();
   drawSceneMap();
   syncTreeLayersToLeaflet();
+  saveTreesToStorage();
   scheduleUpdate();
 });
 
@@ -4331,6 +4395,7 @@ document.getElementById('treeUnderstoryCheck').addEventListener('change', functi
   recomputeTreeShadow();
   drawSceneMap();
   if (leafletActive) updateLeafletShadows();
+  saveTreesToStorage();
   scheduleUpdate();
 });
 
@@ -4427,6 +4492,9 @@ document.getElementById('econBatSizeSelect').addEventListener('change', () => {
 
   // Size and draw new canvases
   resizeMapCanvas();
+
+  // Restore any previously saved trees from localStorage
+  loadTreesFromStorage();
 
   fullUpdate();
 
