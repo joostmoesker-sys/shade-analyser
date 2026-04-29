@@ -3713,7 +3713,7 @@ function precomputeDailyStats(pvKwh, loadKwh, tariffs) {
     // Sort hours by value descending — used for priority allocation
     hourValues.sort((a, b) => b.value - a.value);
 
-    // Expected deficit over next 48 h (next 2 days)
+    // Expected deficit over the next 2 days (days d+1 and d+2, i.e. next 48 h)
     let deficit48 = 0;
     for (let i = 1; i <= 2; i++) {
       const nextD = (d + i) % days;
@@ -3729,7 +3729,8 @@ function precomputeDailyStats(pvKwh, loadKwh, tariffs) {
       minPrice,
       priorityHours:   hourValues,
       expectedDeficit48h: deficit48,
-      nextDayDeficit:  Math.max(0, dailyLoad - dailyPv),
+      // Deficit for today (used to decide if pre-charge is worth it for today's supply)
+      currentDayDeficit: Math.max(0, dailyLoad - dailyPv),
     });
   }
   return daily;
@@ -3766,7 +3767,7 @@ function allocateDailyEnergy(dailyStats, day, availableEnergy) {
   const sorted = dailyStats[day].priorityHours; // already sorted descending by value
   for (const slot of sorted) {
     if (remaining <= 0.01) break;
-    const canUse = Math.min(remaining, 4.0); // 4 kWh max per priority slot
+    const canUse = Math.min(remaining, 4.0); // 4 kWh cap per slot: spreads energy across multiple high-value hours
     allocation[slot.hour] = canUse;
     remaining -= canUse;
   }
@@ -3828,12 +3829,14 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
     let dischargedSelf = 0, dischargedExport = 0, chargedPv = 0, gridCharge = 0;
 
     // ── Optional grid pre-charge (v2: only when economically profitable) ──────
-    if (usePrecharge && useBattery && dailyStats[day].nextDayDeficit > 5) {
+    // Trigger if today's own deficit exceeds 5 kWh (worth pre-charging for tomorrow)
+    if (usePrecharge && useBattery && dailyStats[day].currentDayDeficit > 5) {
       // Only pre-charge if round-trip cost + min spread < expected next-day max price
       const expectedMax = dailyStats[(day + 1) % 365].maxPrice;
       if ((buyPrice / GRID_ROUNDTRIP_EFF) + batteryParams.minProfitSpread < expectedMax) {
         const maxThisSlot = Math.min(8, (BATTERY_CAPACITY_KWH - soc) / GRID_ROUNDTRIP_EFF);
-        const needed = dailyStats[day].nextDayDeficit / (4 * GRID_ROUNDTRIP_EFF);
+        // Spread pre-charge over ~4 low-price hours to stay within power limits
+        const needed = dailyStats[day].currentDayDeficit / (4 * GRID_ROUNDTRIP_EFF);
         gridCharge = Math.min(maxThisSlot, needed);
         if (gridCharge > 1e-4) {
           soc += gridCharge * GRID_ROUNDTRIP_EFF;
@@ -3885,10 +3888,11 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
     }
 
     // ── v2 Priority Export: sell battery at high prices after covering self-use ──
-    // Only in v2 mode and only when sell price is significantly above threshold
+    // Only in v2 mode and only when sell price is significantly above threshold.
+    // Limit to 60% of max inverter power so the remaining capacity is available for
+    // unexpected self-use demand in the same hour (conservative export cap).
     if (useV2 && available > 1 &&
         sellPrice > (buyPrice * 0.9 + batteryParams.minProfitSpread)) {
-      // Sell at most 60% of max power to leave headroom for self-use
       const extra = Math.min(available * DISCHARGE_EFF, MAX_BATTERY_POWER_KW * 0.6);
       if (extra > 0.1) {
         dischargedExport = extra;
@@ -4695,13 +4699,14 @@ function initBatteryV2UI() {
       ctx.fillText((i / 4 * maxSoc).toFixed(0) + ' kWh', 2, y - 2);
     }
 
-    // Day separators
+    // Day separators — label each divider with the day number within the sample week
     ctx.strokeStyle = '#374151'; ctx.lineWidth = 0.5;
     for (let d = 1; d < 7; d++) {
       const x = (d * 24 / n) * w;
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
       ctx.fillStyle = '#6b7280'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('Day ' + (d + 1), x, h - 4);
+      // d goes 1–6 representing the transition into days 2–7 of the sample week
+      ctx.fillText('Day ' + d, x, h - 4);
     }
 
     // Charge bars (green, upward from midline)
