@@ -289,16 +289,61 @@
       </div>
     </div>
 
-    <!-- Panel specs -->
+    <!-- Panel specs — editable single-diode model parameters -->
     <div class="card">
-      <h3>Panel &mdash; Lucksolar LS-M120-340W</h3>
-      <div class="specs-grid">
-        <span>Pmax: <b style="color:#e5e7eb">340 W</b></span>
-        <span>Vmp: <b style="color:#e5e7eb">34.52 V</b></span>
-        <span>Imp: <b style="color:#e5e7eb">9.85 A</b></span>
-        <span>Voc: <b style="color:#e5e7eb">40.98 V</b></span>
-        <span>Isc: <b style="color:#e5e7eb">10.28 A</b></span>
-        <span>Bypass: <b style="color:#e5e7eb">3&times;0.5 V</b></span>
+      <h3>&#9711; Panel Parameters
+        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">&nbsp;STC conditions &middot; single-diode model</span>
+      </h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:0.78rem;margin-bottom:8px">
+        <label>Pmax (W)
+          <input type="number" id="pnlPmax" min="1" max="1000" step="5" value="340"
+                 style="width:68px;margin-left:6px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+        </label>
+        <label>Vmp (V)
+          <input type="number" id="pnlVmp" min="1" max="200" step="0.1" value="34.52"
+                 style="width:68px;margin-left:6px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+        </label>
+        <label>Imp (A)
+          <input type="number" id="pnlImp" min="0.1" max="50" step="0.01" value="9.85"
+                 style="width:68px;margin-left:6px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+        </label>
+        <label>Voc (V)
+          <input type="number" id="pnlVoc" min="1" max="300" step="0.1" value="40.98"
+                 style="width:68px;margin-left:6px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+        </label>
+        <label>Isc (A)
+          <input type="number" id="pnlIsc" min="0.1" max="50" step="0.01" value="10.28"
+                 style="width:68px;margin-left:6px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+        </label>
+        <label title="Number of cells in series within one panel">Ns (cells)
+          <input type="number" id="pnlNs" min="1" max="200" step="1" value="60"
+                 style="width:68px;margin-left:6px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+        </label>
+        <label title="Diode ideality factor (0.5–2)">n (ideality)
+          <input type="number" id="pnlN" min="0.1" max="5" step="0.05" value="1.2"
+                 style="width:68px;margin-left:6px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+        </label>
+        <label title="Series resistance per cell (Ω)">Rs (Ω)
+          <input type="number" id="pnlRs" min="0" max="5" step="0.01" value="0.28"
+                 style="width:68px;margin-left:6px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+        </label>
+        <label title="Shunt / parallel resistance (Ω)">Rsh (Ω)
+          <input type="number" id="pnlRsh" min="10" max="10000" step="10" value="350"
+                 style="width:68px;margin-left:6px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+        </label>
+        <label title="Bypass diode forward voltage drop (V)">Bypass Vd (V)
+          <input type="number" id="pnlBypassVd" min="0.1" max="1.5" step="0.05" value="0.5"
+                 style="width:68px;margin-left:6px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+        </label>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="applyPanelBtn" style="border-color:#4ade80;color:#4ade80">
+          &#10003; Apply Panel
+        </button>
+        <button class="btn" id="resetPanelBtn" style="font-size:0.72rem" title="Reset to Lucksolar LS-M120-340W">
+          &#8635; Lucksolar 340W
+        </button>
+        <span id="pnlI0Label" style="font-size:0.72rem;color:#6b7280"></span>
       </div>
     </div>
   </div>
@@ -1156,12 +1201,17 @@ self.onmessage = function(e) {
 
 // ── Panel & array constants ─────────────────────────────────────────────────
 let ROWS = 8, COLS = 9;
-const BYPASS_VD = 0.5, VT_25 = 0.025693;
+let BYPASS_VD = 0.5, VT_25 = 0.025693;
 const STC_IRRAD = 1000; // W/m²
 
-const PNL = { Pmax:340, Vmp:34.52, Imp:9.85, Voc:40.98, Isc:10.28, Ns:60, n:1.2, Rs:0.28, Rsh:350 };
-PNL.nNsVt = PNL.n * PNL.Ns * VT_25;
-PNL.I0 = (PNL.Isc - PNL.Voc / PNL.Rsh) / (Math.exp(PNL.Voc / PNL.nNsVt) - 1);
+let PNL = { Pmax:340, Vmp:34.52, Imp:9.85, Voc:40.98, Isc:10.28, Ns:60, n:1.2, Rs:0.28, Rsh:350 };
+
+/** Recompute the derived single-diode model parameters (nNsVt, I0) from the current PNL values. */
+function recomputePanelDerivedParams() {
+  PNL.nNsVt = PNL.n * PNL.Ns * VT_25;
+  PNL.I0 = (PNL.Isc - PNL.Voc / PNL.Rsh) / (Math.exp(PNL.Voc / PNL.nNsVt) - 1);
+}
+recomputePanelDerivedParams();
 
 // ── Location (Neer, Netherlands) ───────────────────────────────────────────
 const NEER = { lat: 51.27, lon: 5.99 };   // degrees
@@ -1263,11 +1313,9 @@ const JK_BLOCKS_8x9   = COL_GROUPS5_8x9.map(([c0,c1]) => ({r0:0, r1:7, c0, c1}))
 
 /**
  * Build ordered cell list for a row-wise snake.
- * rows, cols, nStrings, panelsPerString default to global values for the 8×9 / 6-string case.
  * Returns null if the panel count doesn't divide evenly.
  */
-function buildSnakeRowCells(rows, cols, nStrings, panelsPerString) {
-  if (rows === undefined) { rows = ROWS; cols = COLS; nStrings = 6; panelsPerString = 12; }
+function buildSnakeRowCells(rows = ROWS, cols = COLS, nStrings = 6, panelsPerString = 12) {
   if (rows * cols !== nStrings * panelsPerString) return null;
   const strings = Array.from({length: nStrings}, () => []);
   let idx = 0;
@@ -1283,8 +1331,7 @@ function buildSnakeRowCells(rows, cols, nStrings, panelsPerString) {
 }
 
 /** Build ordered cell list for a column-wise snake (same parameterization as above). */
-function buildSnakeColCells(rows, cols, nStrings, panelsPerString) {
-  if (rows === undefined) { rows = ROWS; cols = COLS; nStrings = 6; panelsPerString = 12; }
+function buildSnakeColCells(rows = ROWS, cols = COLS, nStrings = 6, panelsPerString = 12) {
   if (rows * cols !== nStrings * panelsPerString) return null;
   const strings = Array.from({length: nStrings}, () => []);
   let idx = 0;
@@ -2753,7 +2800,7 @@ function snapshotProject(meta = {}) {
 
     site: { lat: NEER.lat, lon: NEER.lon, name: 'Neer, Netherlands' },
 
-    panel: { ...PNL },
+    panel: { ...PNL, bypassVd: BYPASS_VD },
 
     array: {
       rows: ROWS,
@@ -2872,8 +2919,11 @@ function applyProject(p) {
       // We call it first so subsequent field assignments write into correctly-sized arrays.
       reinitArrayDimensions(newRows, newCols, newSecs, newSecDiv, newColSp, newRowSp);
     } else if (p.array.sections) {
-      // Same dims but sections may have changed tilt/azimuth
+      // Same dims but sections may have changed tilt/azimuth — update and recalculate irradiance.
       SECTIONS = newSecs;
+      const d = buildDateFromUI();
+      updateIrradiance(d);
+      combineShadeMaps();
     }
   }
 
@@ -2886,6 +2936,21 @@ function applyProject(p) {
     if (Number.isFinite(p.array.sceneX)) arraySceneX = p.array.sceneX;
     if (Number.isFinite(p.array.sceneY)) arraySceneY = p.array.sceneY;
     if (Number.isFinite(p.array.rotDeg)) arrayRotDeg = p.array.rotDeg;
+  }
+
+  // ── Panel parameters ─
+  if (p.panel && typeof p.panel === 'object') {
+    const pp = p.panel;
+    const panelFields = ['Pmax','Vmp','Imp','Voc','Isc','Ns','n','Rs','Rsh'];
+    let panelChanged = false;
+    for (const f of panelFields) {
+      if (Number.isFinite(pp[f])) { PNL[f] = pp[f]; panelChanged = true; }
+    }
+    if (Number.isFinite(pp.bypassVd)) { BYPASS_VD = pp.bypassVd; panelChanged = true; }
+    if (panelChanged) {
+      recomputePanelDerivedParams();
+      _syncPanelEditorUI();
+    }
   }
 
   // ── Inverter/MPPT specs (mutate in place to preserve referenced object) ─
@@ -5417,13 +5482,75 @@ document.getElementById('loadTreesBtn').addEventListener('click', () => {
   }
 });
 
+// ── Panel Parameters editor ───────────────────────────────────────────────
+
+const LUCKSOLAR_340W = { Pmax:340, Vmp:34.52, Imp:9.85, Voc:40.98, Isc:10.28, Ns:60, n:1.2, Rs:0.28, Rsh:350 };
+const LUCKSOLAR_BYPASS_VD = 0.5;
+
+/** Push current PNL + BYPASS_VD values into the panel editor inputs. */
+function _syncPanelEditorUI() {
+  const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  setV('pnlPmax',     PNL.Pmax);
+  setV('pnlVmp',      PNL.Vmp);
+  setV('pnlImp',      PNL.Imp);
+  setV('pnlVoc',      PNL.Voc);
+  setV('pnlIsc',      PNL.Isc);
+  setV('pnlNs',       PNL.Ns);
+  setV('pnlN',        PNL.n);
+  setV('pnlRs',       PNL.Rs);
+  setV('pnlRsh',      PNL.Rsh);
+  setV('pnlBypassVd', BYPASS_VD);
+  const i0El = document.getElementById('pnlI0Label');
+  if (i0El) i0El.textContent = `I₀ = ${PNL.I0.toExponential(3)} A`;
+}
+
+/** Read panel editor inputs, validate, update PNL and BYPASS_VD, recompute, fullUpdate. */
+function _applyPanelFromUI() {
+  const getN = id => parseFloat(document.getElementById(id).value);
+  const pmax = getN('pnlPmax'), vmp = getN('pnlVmp'), imp = getN('pnlImp');
+  const voc  = getN('pnlVoc'),  isc = getN('pnlIsc'), ns  = parseInt(document.getElementById('pnlNs').value);
+  const n    = getN('pnlN'),    rs  = getN('pnlRs'),   rsh = getN('pnlRsh');
+  const bvd  = getN('pnlBypassVd');
+
+  // Basic sanity
+  if ([pmax,vmp,imp,voc,isc,ns,n,rs,rsh,bvd].some(v => !Number.isFinite(v) || v <= 0)) {
+    alert('All panel parameters must be positive numbers.');
+    return;
+  }
+  if (voc <= vmp) { alert('Voc must be greater than Vmp.'); return; }
+  if (isc <= imp) { alert('Isc must be greater than Imp.'); return; }
+
+  PNL.Pmax = pmax; PNL.Vmp = vmp; PNL.Imp = imp;
+  PNL.Voc  = voc;  PNL.Isc = isc;
+  PNL.Ns   = ns;   PNL.n   = n; PNL.Rs = rs; PNL.Rsh = rsh;
+  BYPASS_VD = bvd;
+  recomputePanelDerivedParams();
+  _syncPanelEditorUI();
+  // Wiring config panel updates the STC ref label
+  _renderWiringConfigsPanel();
+  fullUpdate();
+  scheduleSaveProject();
+}
+
+document.getElementById('applyPanelBtn').addEventListener('click', _applyPanelFromUI);
+
+document.getElementById('resetPanelBtn').addEventListener('click', () => {
+  Object.assign(PNL, LUCKSOLAR_340W);
+  BYPASS_VD = LUCKSOLAR_BYPASS_VD;
+  recomputePanelDerivedParams();
+  _syncPanelEditorUI();
+  _renderWiringConfigsPanel();
+  fullUpdate();
+  scheduleSaveProject();
+});
+
 // ── Array Dimensions panel ────────────────────────────────────────────────
 
 // Live-update labels while sliders are dragged (no reinit until Apply is clicked)
 document.getElementById('dimRows').addEventListener('input', function () {
   document.getElementById('dimRowsVal').textContent = this.value;
   const secDiv = document.getElementById('dimSectionDiv');
-  secDiv.max = Math.max(0, parseInt(this.value) - 2);
+  secDiv.max = Math.max(0, parseInt(this.value) - 1);
   if (parseInt(secDiv.value) > parseInt(secDiv.max)) secDiv.value = secDiv.max;
   document.getElementById('dimSectionDivVal').textContent = `after row ${parseInt(secDiv.value) + 1}`;
   document.getElementById('dimInfoLabel').textContent =
@@ -5455,30 +5582,27 @@ document.getElementById('applyDimsBtn').addEventListener('click', () => {
     return;
   }
 
-  // Read section tilt/azimuth from the dynamic section rows
+  // Read section tilt/azimuth from the dynamic section rows (preserving user edits).
+  // We always build exactly 2 sections since the current UI supports a single divider.
   const sectionRows = document.querySelectorAll('#dimSectionsContainer .dim-section-row');
-  let newSections;
-  if (sectionRows.length === SECTIONS.length) {
-    newSections = Array.from(sectionRows).map((row, i) => ({
-      ...SECTIONS[i],
-      tilt:    parseFloat(row.querySelector('.dim-sec-tilt').value) || 0,
-      azimuth: parseFloat(row.querySelector('.dim-sec-az').value)  || 180,
-    }));
-  } else {
-    // Default two sections if the container wasn't rendered yet
-    const boundary = secDiv;
-    newSections = [
-      { name:'Top',    rowMin:0,          rowMax:boundary,  tilt:+30, azimuth:225, color:'#60a5fa' },
-      { name:'Bottom', rowMin:boundary+1, rowMax:rows-1,    tilt:-20, azimuth:225, color:'#f97316' },
-    ];
+  let sec0 = { name:'Top',    tilt:+30, azimuth:225, color:'#60a5fa' };
+  let sec1 = { name:'Bottom', tilt:-20, azimuth:225, color:'#f97316' };
+  if (sectionRows.length >= 1) {
+    sec0 = { ...SECTIONS[0],
+      tilt:    parseFloat(sectionRows[0].querySelector('.dim-sec-tilt').value) || sec0.tilt,
+      azimuth: parseFloat(sectionRows[0].querySelector('.dim-sec-az').value)  || sec0.azimuth,
+    };
   }
-
-  // Update section row bounds to fit within new row count
-  newSections = newSections.map((sec, i) => ({
-    ...sec,
-    rowMin: i === 0 ? 0 : secDiv + 1,
-    rowMax: i === 0 ? secDiv : rows - 1,
-  })).slice(0, 2); // currently support 2 sections
+  if (sectionRows.length >= 2) {
+    sec1 = { ...SECTIONS[1],
+      tilt:    parseFloat(sectionRows[1].querySelector('.dim-sec-tilt').value) || sec1.tilt,
+      azimuth: parseFloat(sectionRows[1].querySelector('.dim-sec-az').value)  || sec1.azimuth,
+    };
+  }
+  const newSections = [
+    { ...sec0, rowMin: 0,        rowMax: secDiv   },
+    { ...sec1, rowMin: secDiv+1, rowMax: rows - 1 },
+  ];
 
   const infoLabel = document.getElementById('dimInfoLabel');
   infoLabel.style.color = '#4ade80';
@@ -5813,9 +5937,10 @@ document.getElementById('econBatSizeSelect').addEventListener('change', () => {
   // automatic migration from the legacy trees-only key when needed.
   loadProjectFromStorage();
 
-  // Initialise the Array Dimensions UI and Wiring Configs panel.
+  // Initialise the Array Dimensions UI, Wiring Configs panel, and Panel editor.
   _syncArrayDimsUI();
   _renderWiringConfigsPanel();
+  _syncPanelEditorUI();
 
   fullUpdate();
 
