@@ -108,6 +108,23 @@
     #monthlyChart { display:block; }
     .sim-note { font-size:0.68rem; color:#4b5563; margin-top:6px; }
 
+    /* ── Economic forecast / battery panel ───────────────────────────────────── */
+    .econ-ctrl-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px; font-size:0.77rem; color:#9ca3af; }
+    .econ-ctrl-row label { display:flex; align-items:center; gap:5px; cursor:pointer; }
+    .econ-param-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:10px; font-size:0.77rem; color:#9ca3af; background:#111827; border:1px solid #374151; border-radius:6px; padding:8px 10px; }
+    .econ-param-row label { white-space:nowrap; }
+    .econ-param-row input[type="range"] { width:80px; }
+    .metric-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr)); gap:8px; margin:10px 0; }
+    .metric-card { background:#111827; border:1px solid #374151; border-radius:8px; padding:9px 10px; text-align:center; }
+    .metric-card .mc-label { font-size:0.62rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.4px; }
+    .metric-card .mc-value { font-size:1.15rem; font-weight:700; color:#4ade80; margin-top:3px; }
+    .metric-card .mc-sub { font-size:0.62rem; color:#6b7280; margin-top:2px; }
+    .shade-impact-badge { display:inline-flex; align-items:center; gap:6px; font-size:0.73rem; background:#1a2535; border:1px solid #2d4a6b; border-radius:5px; padding:5px 10px; margin-top:8px; }
+    .econ-note { font-size:0.67rem; color:#4b5563; margin-top:8px; line-height:1.5; }
+    .econ-savings-chart-wrap { position:relative; height:160px; margin-top:10px; }
+    .econ-soc-chart-wrap { position:relative; height:120px; margin-top:10px; }
+    .econ-export-btn { padding:4px 10px; font-size:0.72rem; border:1px solid #374151; border-radius:5px; background:#111827; color:#9ca3af; cursor:pointer; transition:all 0.15s; }
+    .econ-export-btn:hover { border-color:#4ade80; color:#4ade80; }
 
   </style>
 </head>
@@ -201,6 +218,8 @@
         <button class="btn map-mode-btn" id="toggleGoogleMapBtn">🗺 Use OSM Map</button>
         <button class="btn" id="centerBosheiBtn" style="display:none">📍 Boshei 4</button>
         <button class="btn" id="clearTreesBtn">&#127795; Clear Trees</button>
+        <button class="btn" id="saveTreesBtn" title="Save tree positions to browser storage">&#128190; Save Trees</button>
+        <button class="btn" id="loadTreesBtn" title="Load previously saved tree positions">&#128194; Load Trees</button>
         <span id="treeCountLabel" style="color:#6b7280;font-size:0.75rem">No trees</span>
         <span style="flex:1"></span>
         <span id="mapScaleLabel" style="font-size:0.71rem;color:#4b5563">&#9632; = 10 m</span>
@@ -317,34 +336,96 @@
           <canvas id="kcChart" height="38"></canvas>
         </div>
         <p class="sim-note" id="simNoteText"></p>
-        <div id="heatmapSection" style="margin-top:14px;display:none">
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
-            <span style="font-size:0.78rem;font-weight:600;color:#9ca3af">&#128200; Panel Heatmap</span>
-            <select id="heatmapMetric" style="background:#111827;color:#9ca3af;border:1px solid #374151;border-radius:5px;padding:3px 7px;font-size:0.75rem">
-              <option value="kwh">kWh / panel</option>
-              <option value="eur">€ / panel</option>
-            </select>
-            <select id="heatmapMonth" style="background:#111827;color:#9ca3af;border:1px solid #374151;border-radius:5px;padding:3px 7px;font-size:0.75rem">
-              <option value="-1">All Year</option>
-              <option value="0">January</option><option value="1">February</option>
-              <option value="2">March</option><option value="3">April</option>
-              <option value="4">May</option><option value="5">June</option>
-              <option value="6">July</option><option value="7">August</option>
-              <option value="8">September</option><option value="9">October</option>
-              <option value="10">November</option><option value="11">December</option>
-            </select>
-            <span id="heatmapRangeLabel" style="font-size:0.7rem;color:#4b5563"></span>
-          </div>
-          <canvas id="heatmapCanvas" style="display:block;width:100%;max-width:700px;border-radius:6px"></canvas>
-          <div id="heatmapLegendBar" style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:0.7rem;color:#6b7280">
-            <span>Low</span>
-            <canvas id="heatmapLegendCanvas" width="180" height="14" style="border-radius:3px"></canvas>
-            <span>High</span>
-          </div>
-        </div>
+
       </div>
     </div>
 
+
+    <!-- ══ Economic Forecast with Battery ══════════════════════════════════ -->
+    <div class="card" id="econForecastCard">
+      <h3>🔋 Economic Forecast — Battery + Self-Consumption
+        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400;margin-left:4px">
+          64 kWh battery · house load model · Dutch dynamic tariffs
+        </span>
+      </h3>
+
+      <!-- Controls row 1: toggles + run button -->
+      <div class="econ-ctrl-row">
+        <label>
+          <input type="checkbox" id="econBatteryToggle" checked style="accent-color:#4ade80;width:13px;height:13px">
+          Enable 64 kWh Battery <span style="color:#4ade80;font-size:.7rem">(already paid for — no capex)</span>
+        </label>
+        <label>
+          <input type="checkbox" id="econGridPrechargeToggle" style="accent-color:#fbbf24;width:13px;height:13px">
+          Grid Pre-charge <span style="color:#fbbf24;font-size:.7rem">(80% round-trip, low-PV days only)</span>
+        </label>
+        <label>
+          <input type="checkbox" id="econZeroExportToggle" style="accent-color:#f87171;width:13px;height:13px">
+          Zero export <span style="color:#f87171;font-size:.7rem">(no selling to grid — curtail surplus PV)</span>
+        </label>
+
+        <button class="btn" id="runEconBtn" style="border-color:#4ade80;color:#4ade80;margin-left:auto">&#9654; Run Economic Analysis</button>
+        <span id="econStatusLabel" style="font-size:0.74rem;color:#6b7280">Requires yearly sim first</span>
+      </div>
+
+      <!-- Controls row 2: load + tariff parameters -->
+      <div class="econ-param-row">
+        <label>Base load:</label>
+        <input type="range" id="econBaseLoadSlider" min="6" max="20" value="12" step="1">
+        <span id="econBaseLoadVal" style="color:#fbbf24;min-width:56px">12 kWh/d</span>
+        <label style="margin-left:8px">HP winter:</label>
+        <input type="range" id="econHpSlider" min="10" max="50" value="28" step="2">
+        <span id="econHpVal" style="color:#fb923c;min-width:66px">28 kWh/d</span>
+        <label style="margin-left:8px">Sell factor:</label>
+        <input type="range" id="econSellFactorSlider" min="50" max="100" value="85" step="5">
+        <span id="econSellFactorVal" style="color:#38bdf8;min-width:44px">0.85×</span>
+        <label style="margin-left:8px">Battery:</label>
+        <select id="econBatSizeSelect" style="background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px;font-size:0.75rem">
+          <option value="32">32 kWh</option>
+          <option value="64" selected>64 kWh</option>
+          <option value="96">96 kWh</option>
+        </select>
+      </div>
+
+      <!-- Results (hidden until run) -->
+      <div id="econResultsDiv" style="display:none">
+
+        <!-- Metrics cards -->
+        <div class="metric-grid" id="econMetricGrid"></div>
+
+        <!-- Per-config comparison table -->
+        <div class="comp-wrap" style="margin-top:8px">
+          <table class="comp-table" id="econTable">
+            <thead><tr>
+              <th>Config</th>
+              <th title="Total PV generation">PV kWh/yr</th>
+              <th title="% of load covered by PV+battery">SC%</th>
+              <th title="kWh exported to grid">Export kWh</th>
+              <th title="Annual savings vs pure-grid baseline">Savings (no bat)</th>
+              <th title="Annual savings with battery dispatch">Savings (+ bat)</th>
+              <th title="Extra savings from battery">🔋 Bonus</th>
+            </tr></thead>
+            <tbody id="econTableBody"></tbody>
+          </table>
+        </div>
+
+        <!-- Monthly savings chart -->
+        <div class="econ-savings-chart-wrap"><canvas id="econSavingsChart"></canvas></div>
+
+        <!-- Sample SOC curve (winter + summer week) -->
+        <div class="econ-soc-chart-wrap"><canvas id="econSocChart"></canvas></div>
+
+        <!-- Shade impact badge + export -->
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
+          <div class="shade-impact-badge" id="shadeImpactBadge">
+            ⚡ <span id="shadeImpactText" style="color:#60a5fa">Run simulation to see shade impact</span>
+          </div>
+          <button class="econ-export-btn" id="econExportBtn">&#128190; Export CSV</button>
+        </div>
+
+        <p class="econ-note" id="econNoteText"></p>
+      </div>
+    </div>
 
   </div>
 </div>
@@ -765,6 +846,10 @@ self.onmessage = function(e) {
   const monthlyEnergy = {};
   CONFIGS.forEach(cfg => { monthlyEnergy[cfg.id] = new Float64Array(12); });
   
+  // hourlyKwh[cfgId][0-8759] in kWh — needed for battery economic simulation
+  const hourlyKwh = {};
+  CONFIGS.forEach(cfg => { hourlyKwh[cfg.id] = new Float64Array(8760); });
+  
   // No-shade baseline energy
   const noShadeEnergy = {};
   CONFIGS.forEach(cfg => { noShadeEnergy[cfg.id] = new Float64Array(12); });
@@ -886,6 +971,8 @@ self.onmessage = function(e) {
         // Apply total power limit
         if (spec && spec.totalPowerW && totalP > spec.totalPowerW) totalP = spec.totalPowerW;
         monthlyEnergy[cfg.id][month] += totalP / 1000;
+        // Track per-hour output for battery economic simulation
+        hourlyKwh[cfg.id][(doy - 1) * 24 + hour] = totalP / 1000;
         if (dynPrice > 0) configRevenueDynamic[cfg.id][month] += (totalP / 1000) * dynPrice;
       }
       
@@ -947,6 +1034,7 @@ self.onmessage = function(e) {
     noShadePanelEnergyByMonth: Array.from(noShadePanelEnergyByMonth),
     configRevenueDynamic: Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(configRevenueDynamic[cfg.id])])),
     noShadeRevenueDynamic: Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(noShadeRevenueDynamic[cfg.id])])),
+    hourlyKwh: Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(hourlyKwh[cfg.id])])),
   });
 };
 </script>
@@ -1213,6 +1301,23 @@ const PRICE_NO_SALDERING = 0.08;  // €/kWh — kept for reference / heatmap �
 const CONFIG_COST = { A:850, B:850, C:850, D:650, E:650, F:1205, G:1805, H:850, I:850, J:850, K:850, L:900, M:900 }; // € installed cost
 const MIN_ROI_DISPLAY_YEARS = 5;
 
+// ── Battery storage constants (64 kWh system, already paid for) ──────────────
+// Battery is optional and capex is excluded from all savings calculations.
+const BATTERY_CAPACITY_KWH   = 64;
+const MIN_SOC_SELL            = 0.05;  // 5% SOC floor for sell-to-grid strategy (3.2 kWh on 64 kWh)
+const MIN_SOC_SELF            = 0.05;  // 5% SOC floor for self-use discharge
+const CHARGE_EFF_PV           = 0.95;  // PV → battery one-way efficiency
+const DISCHARGE_EFF           = 0.95;  // battery → load/grid one-way efficiency
+const GRID_ROUNDTRIP_EFF      = 0.80;  // grid → battery → grid round-trip efficiency
+const MAX_BATTERY_POWER_KW    = 15;    // realistic inverter/battery power limit (kW)
+const SELL_PRICE_FACTOR_DEF   = 0.85;  // default sell tariff = buy tariff × 0.85 (common in NL)
+
+// ── House load profile constants (Dutch well-insulated house, 12 kW heat pump) ──
+// Base load: 12 kWh/day (appliances, lighting, EV slow-charge)
+// Heat pump: adds up to ~28 kWh/day in winter (electrical COP not modeled → conservative)
+const BASE_LOAD_DEFAULT_KWH   = 12;
+const HP_WINTER_DEFAULT_KWH   = 28;
+
 // ── State ──────────────────────────────────────────────────────────────────
 let highlightedConfig = 'A';
 // manualShade[r][c]: user-painted shade factor (1 = open, shadeLevel = blocked)
@@ -1229,6 +1334,9 @@ let lastSunPos = { altitude: 0, azimuth: 180 }; // updated by updateIrradiance
 let lastSimResults = null, lastSimNoShade = null, lastSimWeather = false;
 let lastSimPanelEnergy = null, lastSimNoShadePanelEnergy = null;
 let lastSimRevenueDynamic = null, lastSimNoShadeRevenueDynamic = null;
+// Hourly PV outputs cached from last yearly sim — used by battery economic simulation
+let lastHourlyPvKwh = null;  // { cfgId: Float64Array(8760) }
+let lastEconResults = null;  // cached economic sim results for CSV export
 
 /** Combine manual + tree shade into the shade[][] array used by physics */
 function combineShadeMaps() {
@@ -2028,6 +2136,7 @@ function addTree(x, y) {
   selectTree(t.id);
   recomputeTreeShadow();
   drawSceneMap();
+  saveTreesToStorage();
 }
 
 function selectTree(id) {
@@ -2052,6 +2161,43 @@ function updateTreeCountLabel() {
   const n = sceneTrees.length;
   document.getElementById('treeCountLabel').textContent =
     n === 0 ? 'No trees' : n + ' tree' + (n === 1 ? '' : 's');
+}
+
+const TREES_STORAGE_KEY = 'shadeAnalyserTrees';
+
+/** Persist the current tree list to localStorage. */
+function saveTreesToStorage() {
+  try {
+    localStorage.setItem(TREES_STORAGE_KEY, JSON.stringify(sceneTrees));
+  } catch (e) { /* quota exceeded or private-browsing — silently ignore */ }
+}
+
+/**
+ * Restore trees from localStorage.
+ * @returns {boolean} true if trees were restored
+ */
+function loadTreesFromStorage() {
+  try {
+    const raw = localStorage.getItem(TREES_STORAGE_KEY);
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    if (!Array.isArray(saved) || saved.length === 0) return false;
+    sceneTrees = saved.map(t => ({
+      id: t.id,
+      x: t.x,
+      y: t.y,
+      height: t.height ?? 8,
+      crownRadius: t.crownRadius ?? 6,
+      hasUnderstoryFoliage: t.hasUnderstoryFoliage !== false,
+    }));
+    nextTreeId = sceneTrees.length > 0 ? Math.max(...sceneTrees.map(t => t.id)) + 1 : 1;
+    updateTreeCountLabel();
+    recomputeTreeShadow();
+    drawSceneMap();
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 /** Returns true if point (px, py) lies within the shadow cast by tree (crown ellipse + optional cylinder). */
@@ -2487,8 +2633,8 @@ mapCanvas.addEventListener('mousemove', e => {
   scheduleUpdate();
 });
 
-mapCanvas.addEventListener('mouseup',    () => { mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
-mapCanvas.addEventListener('mouseleave', () => { mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
+mapCanvas.addEventListener('mouseup',    () => { if (mapDragTree) saveTreesToStorage(); mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
+mapCanvas.addEventListener('mouseleave', () => { if (mapDragTree) saveTreesToStorage(); mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
 
 mapCanvas.addEventListener('touchstart', e => {
   e.preventDefault();
@@ -2554,7 +2700,7 @@ mapCanvas.addEventListener('touchmove', e => {
   scheduleUpdate();
 }, {passive:false});
 
-mapCanvas.addEventListener('touchend', () => { mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
+mapCanvas.addEventListener('touchend', () => { if (mapDragTree) saveTreesToStorage(); mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
 
 // ── Map canvas auto-size ────────────────────────────────────────────────────
 function resizeMapCanvas() {
@@ -3002,6 +3148,9 @@ function runYearlySimulation() {
     aggRevenueDynamic[cfg.id] = new Float64Array(12);
     aggNoShadeRevenueDynamic[cfg.id] = new Float64Array(12);
   });
+  // Aggregate hourly PV arrays for battery economic simulation
+  const aggHourlyKwh = {};
+  CONFIGS.forEach(cfg => { aggHourlyKwh[cfg.id] = new Float64Array(8760); });
   let doneWorkers = 0;
   const completedDoys = new Array(nWorkers).fill(0);
 
@@ -3047,6 +3196,13 @@ function runYearlySimulation() {
             aggNoShadeRevenueDynamic[cfg.id][m] += msg.noShadeRevenueDynamic[cfg.id][m] || 0;
           }
         });
+        // Accumulate hourly PV kWh arrays (non-overlapping DOY ranges — just add)
+        if (msg.hourlyKwh) {
+          CONFIGS.forEach(cfg => {
+            const arr = msg.hourlyKwh[cfg.id];
+            if (arr) for (let h = 0; h < 8760; h++) aggHourlyKwh[cfg.id][h] += arr[h];
+          });
+        }
         doneWorkers++;
         if (doneWorkers === nWorkers) {
           _cleanupAllSimWorkers();
@@ -3060,7 +3216,8 @@ function runYearlySimulation() {
           displaySimResults(result, noShadeResult, useWeather,
             Array.from(aggPanelEnergy), Array.from(aggNoShadePanelEnergy),
             Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggRevenueDynamic[cfg.id])])),
-            Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggNoShadeRevenueDynamic[cfg.id])])));
+            Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggNoShadeRevenueDynamic[cfg.id])])),
+            Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggHourlyKwh[cfg.id])])));
         }
       }
     };
@@ -3104,8 +3261,636 @@ function formatROI(cost, annualProfit) {
   return yrs.toFixed(1) + ' yrs';
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// BATTERY ECONOMICS & SELF-CONSUMPTION SIMULATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Precompute yearly house load profile.
+ * Base: 12 kWh/day with morning/evening peaks.
+ * Heat pump: seasonal component, 0 in summer, up to hpWinterDailyKwh in Dec/Jan.
+ * @returns Float64Array(8760) — kWh per hour
+ */
+function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDailyKwh = HP_WINTER_DEFAULT_KWH) {
+  // Normalised base load hourly shape (24 values sum to 1.0)
+  // Morning peak 06-09, evening peak 18-22, minimal night
+  const baseShape = [
+    0.022, 0.018, 0.016, 0.016, 0.017, 0.022, // 00-05 night
+    0.043, 0.062, 0.065, 0.055, 0.048, 0.044, // 06-11 morning
+    0.043, 0.042, 0.043, 0.046, 0.052, 0.062, // 12-17 afternoon
+    0.074, 0.082, 0.079, 0.068, 0.058, 0.047, // 18-23 evening peak
+  ];
+  const bpSum = baseShape.reduce((a, b) => a + b, 0);
+  const baseNorm = baseShape.map(x => x / bpSum);
+
+  // Heat pump daily kWh by month (electrical demand, Dutch heat pump, rough COP=3.5 not modeled)
+  // Scales from hpWinterDailyKwh at peak winter to 0 in summer.
+  const hpMonthFrac = [1.00, 0.90, 0.65, 0.18, 0.00, 0.00, 0.00, 0.00, 0.07, 0.35, 0.80, 0.95];
+
+  // HP runs mostly in the evening/night heating hours: 15-23h
+  const hpShape = [
+    0.00, 0.00, 0.00, 0.00, 0.00, 0.00, // 00-05
+    0.05, 0.07, 0.04, 0.01, 0.01, 0.01, // 06-11 small morning burst
+    0.01, 0.01, 0.01, 0.06, 0.11, 0.13, // 12-17
+    0.14, 0.14, 0.12, 0.10, 0.09, 0.07, // 18-23 main heating period
+  ];
+  const hpSum = hpShape.reduce((a, b) => a + b, 0);
+  const hpNorm = hpShape.map(x => x / hpSum);
+
+  const load = new Float64Array(8760);
+  for (let doy = 1; doy <= 365; doy++) {
+    const month = new Date(2025, 0, doy).getMonth();
+    // ±5% deterministic daily variation (based on day of year)
+    const variation = 1 + 0.05 * Math.sin(doy * 2.3 + 0.7);
+    const baseDay = baseDailyKwh * variation;
+    const hpDay   = hpWinterDailyKwh * hpMonthFrac[month];
+    for (let h = 0; h < 24; h++) {
+      load[(doy - 1) * 24 + h] = baseDay * baseNorm[h] + hpDay * hpNorm[h];
+    }
+  }
+  return load;
+}
+
+/**
+ * Generate full 8760-hour tariff array from the 12×24 APX price matrix.
+ * Adds weekend discount (−18%) and daily variation (±10% deterministic).
+ * @returns Float64Array(8760) — €/kWh buy tariff
+ */
+function generateYearlyTariffs() {
+  const tariffs = new Float64Array(8760);
+  for (let doy = 1; doy <= 365; doy++) {
+    const date   = new Date(2025, 0, doy);
+    const month  = date.getMonth();
+    const dow    = date.getDay();           // 0=Sun, 6=Sat
+    const isWknd = dow === 0 || dow === 6;
+    // Deterministic daily variation ±10% — simulates day-ahead price volatility
+    const dailyVar = 1 + 0.10 * Math.sin(doy * 1.7 + month * 0.4);
+    for (let h = 0; h < 24; h++) {
+      let p = HOURLY_APX_PRICE_2025[month][h];
+      if (isWknd) p *= 0.82;  // weekend lower demand → lower prices
+      p *= dailyVar;
+      tariffs[(doy - 1) * 24 + h] = Math.max(0.005, Math.min(0.80, p));
+    }
+  }
+  return tariffs;
+}
+
+/**
+ * Run the battery + economics simulation for a single configuration.
+ *
+ * Step-by-step for each hour (8760 iterations, < 10 ms):
+ *  1. PV covers load directly (self-consumption).
+ *  2. Surplus PV → charge battery (up to capacity / power limit).
+ *  3. Remaining surplus PV → export to grid at sell tariff.
+ *  [Smart mode] 4. Load deficit → discharge battery for self-use (down to MIN_SOC_SELF).
+ *  [Smart mode] 5. Remaining deficit → import from grid at buy tariff.
+ *  [Smart mode] 6. After-sundown + premium-price hour: sell battery to grid (down to MIN_SOC_SELL).
+ *  [Smart mode] 7. Optional grid pre-charge: buy cheap energy for next-day deficit.
+ *
+ * @param {Float64Array} pvHourly   — kWh/hour PV output for this config
+ * @param {Float64Array} loadHourly — kWh/hour house load
+ * @param {Float64Array} tariffs    — €/kWh buy tariff, hourly
+ * @param {object}  opts            — { useBattery, useGridPrecharge, zeroExport, batCapKwh, sellFactor }
+ * @returns rich result object with all monetary flows and kWh breakdowns
+ */
+function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
+  const {
+    useBattery          = true,
+    useGridPrecharge    = false,
+    zeroExport          = false,  // if true: no selling to grid (curtail surplus PV, skip battery-sell hours)
+    batCapKwh           = BATTERY_CAPACITY_KWH,
+    sellFactor          = SELL_PRICE_FACTOR_DEF,
+  } = opts;
+
+  const nH   = 8760;
+  const nDays = 365;
+
+  // ── Pre-computation: daily aggregates ─────────────────────────────────────
+  const dailyPv   = new Float64Array(nDays);
+  const dailyLoad = new Float64Array(nDays);
+  for (let h = 0; h < nH; h++) {
+    dailyPv[Math.floor(h / 24)]   += pvHourly[h];
+    dailyLoad[Math.floor(h / 24)] += loadHourly[h];
+  }
+
+  // ── Pre-computation: sell-eligible hours (after sundown, highest price that day) ──
+  // "After sundown" = pvHourly < 0.05 kWh (≈ sun below ~5° on the array).
+  // Top 6 such hours per day by price are selected as sell windows.
+  const isSellHour = new Uint8Array(nH);
+  for (let d = 0; d < nDays; d++) {
+    const base = d * 24;
+    const nightHours = [];
+    for (let h = 0; h < 24; h++) {
+      if (pvHourly[base + h] < 0.05) nightHours.push(base + h);
+    }
+    if (nightHours.length === 0) continue;
+    nightHours.sort((a, b) => tariffs[b] - tariffs[a]);
+    const topN = Math.min(nightHours.length, 6);
+    for (let i = 0; i < topN; i++) isSellHour[nightHours[i]] = 1;
+  }
+
+  // ── Pre-computation: grid pre-charge hours & amounts ──────────────────────
+  // For each day: if next-day deficit (load > PV) predicted, buy energy during the
+  // 4 cheapest hours of the current day to cover next-day deficit / GRID_ROUNDTRIP_EFF.
+  const gridChargeKwh = new Float64Array(nH); // kWh to buy from grid this hour (pre-charge)
+  if (useBattery && useGridPrecharge) {
+    for (let d = 0; d < nDays - 1; d++) {
+      const nextDayDeficit = dailyLoad[d + 1] - dailyPv[d + 1];
+      if (nextDayDeficit <= 0) continue;
+      const chargeTarget = nextDayDeficit / GRID_ROUNDTRIP_EFF;
+      const base = d * 24;
+      const dayHours = Array.from({ length: 24 }, (_, h) => base + h);
+      dayHours.sort((a, b) => tariffs[a] - tariffs[b]); // cheapest first
+      const perHour = chargeTarget / 4;
+      for (let i = 0; i < 4; i++) gridChargeKwh[dayHours[i]] = perHour;
+    }
+  }
+
+  // ── Baseline cost (what you'd pay with no PV/battery at all) ─────────────
+  let baselineCost = 0;
+  for (let h = 0; h < nH; h++) baselineCost += loadHourly[h] * tariffs[h];
+
+  // ── Forward pass ──────────────────────────────────────────────────────────
+  let soc = batCapKwh * 0.50; // start at 50% SOC
+
+  // Accumulators (kWh)
+  let selfDirect   = 0;  // PV directly consumed
+  let selfBattery  = 0;  // load covered by battery discharge
+  let exportPv     = 0;  // PV surplus exported
+  let exportBat    = 0;  // battery-to-grid export
+  let importGrid   = 0;  // grid import for load
+  let importPreChg = 0;  // grid import for battery pre-charge
+
+  // Accumulators (€)
+  let costLoad      = 0;  // grid purchases for load
+  let costPreCharge = 0;  // grid purchases for pre-charge
+  let revExport     = 0;  // revenue from all grid exports
+
+  // Battery tracking
+  let batKwhIn  = 0;  // total kWh into battery (from PV + grid)
+  let batKwhOut = 0;  // total kWh out of battery (to load + grid), gross
+
+  // Per-month savings for charting (12 values)
+  const monthlySavingsNoBat = new Float64Array(12);
+  const monthlySavingsBat   = new Float64Array(12);
+  const monthlyBaselineCost = new Float64Array(12);
+
+  for (let h = 0; h < nH; h++) {
+    const pv       = pvHourly[h];
+    const load     = loadHourly[h];
+    const buyPrice = tariffs[h];
+    const sellPrice = buyPrice * sellFactor;
+    const month    = new Date(2025, 0, Math.floor(h / 24) + 1).getMonth();
+
+    monthlyBaselineCost[month] += load * buyPrice;
+
+    let residualPv   = pv;
+    let residualLoad = load;
+
+    // ── 1. PV covers load directly ──────────────────────────────────────
+    const pvForLoad = Math.min(residualPv, residualLoad);
+    selfDirect   += pvForLoad;
+    residualPv   -= pvForLoad;
+    residualLoad -= pvForLoad;
+
+    // ── 2. Surplus PV → charge battery ──────────────────────────────────
+    if (useBattery && residualPv > 1e-4) {
+      const space = batCapKwh - soc;
+      const charged = Math.min(residualPv, space / CHARGE_EFF_PV, MAX_BATTERY_POWER_KW);
+      if (charged > 0) {
+        soc          += charged * CHARGE_EFF_PV;
+        batKwhIn     += charged;
+        residualPv   -= charged;
+      }
+    }
+
+    // ── 3. Remaining PV surplus → export (or curtail if zero-export) ────────
+    if (!zeroExport && residualPv > 1e-4) {
+      exportPv  += residualPv;
+      revExport += residualPv * sellPrice;
+    }
+
+    // ── 4+5. Discharge battery / import from grid ────────────────────────
+
+      // ── 4. Load deficit → discharge battery (self-use) ──────────────────
+      if (useBattery && residualLoad > 1e-4) {
+        const minSoc   = batCapKwh * MIN_SOC_SELF;
+        const avail    = (soc - minSoc) / DISCHARGE_EFF;
+        const dischGross = Math.min(residualLoad / DISCHARGE_EFF, Math.max(0, avail), MAX_BATTERY_POWER_KW);
+        if (dischGross > 0) {
+          const dischNet = dischGross * DISCHARGE_EFF;
+          soc          -= dischGross;
+          batKwhOut    += dischGross;
+          selfBattery  += dischNet;
+          residualLoad -= dischNet;
+        }
+      }
+
+      // ── 5. Remaining load → import from grid ────────────────────────────
+      if (residualLoad > 1e-4) {
+        importGrid += residualLoad;
+        costLoad   += residualLoad * buyPrice;
+      }
+
+      // ── 6. After-sundown sell to grid (time-shifting) ────────────────────
+      if (!zeroExport && useBattery && isSellHour[h]) {
+        const minSoc   = batCapKwh * MIN_SOC_SELL;
+        const avail    = soc - minSoc;
+        if (avail > 1e-4) {
+          const sellGross = Math.min(avail, MAX_BATTERY_POWER_KW);
+          const sellNet   = sellGross * DISCHARGE_EFF;
+          soc          -= sellGross;
+          batKwhOut    += sellGross;
+          exportBat    += sellNet;
+          revExport    += sellNet * sellPrice;
+        }
+      }
+
+      // ── 7. Grid pre-charge ───────────────────────────────────────────────
+      if (useBattery && gridChargeKwh[h] > 1e-4) {
+        const space  = batCapKwh - soc;
+        const buyKwh = Math.min(gridChargeKwh[h], space / GRID_ROUNDTRIP_EFF, MAX_BATTERY_POWER_KW);
+        if (buyKwh > 0) {
+          soc          += buyKwh * GRID_ROUNDTRIP_EFF;
+          batKwhIn     += buyKwh;
+          importPreChg += buyKwh;
+          costPreCharge += buyKwh * buyPrice;
+        }
+      }
+
+    // Clamp SOC
+    soc = Math.max(0, Math.min(batCapKwh, soc));
+
+    // Accumulate baseline cost by month for the monthly savings chart
+    monthlySavingsBat[month] += load * buyPrice; // will be replaced by scaled savings below
+  }
+
+  // ── Compute monetary totals ───────────────────────────────────────────────
+  const totalCost    = costLoad + costPreCharge;
+  const netCostBat   = totalCost - revExport;
+  const annualSavingsBat = baselineCost - netCostBat;
+
+  // No-battery baseline savings (pure PV, no storage) — for comparison
+  let sbNoExport = 0, sbNoSelf = 0, sbNoCostLoad = 0;
+  for (let h = 0; h < nH; h++) {
+    const pv   = pvHourly[h];
+    const load = loadHourly[h];
+    const buy  = tariffs[h];
+    const sell = buy * sellFactor;
+    const pvCons = Math.min(pv, load);
+    const pvExp  = Math.max(0, pv - load);
+    const imp    = Math.max(0, load - pv);
+    sbNoSelf    += pvCons * buy;  // avoided cost
+    sbNoExport  += pvExp  * sell; // export revenue
+    sbNoCostLoad += imp   * buy;  // remaining import cost
+  }
+  const annualSavingsNoBat = baselineCost - (sbNoCostLoad - sbNoExport);
+
+  // Monthly savings breakdown — recompute for chart
+  const monthlySavingsBatArr   = new Float64Array(12);
+  const monthlySavingsNoBatArr = new Float64Array(12);
+  {
+    let soc2 = batCapKwh * 0.50;
+    for (let h = 0; h < nH; h++) {
+      const pv   = pvHourly[h];
+      const load = loadHourly[h];
+      const buy  = tariffs[h];
+      const sell = buy * sellFactor;
+      const month = new Date(2025, 0, Math.floor(h / 24) + 1).getMonth();
+      const baseline = load * buy;
+      // No-bat: simple PV offset
+      const noCost = Math.max(0, load - pv) * buy - Math.max(0, pv - load) * sell;
+      monthlySavingsNoBatArr[month] += baseline - noCost;
+      // Battery: proportional share of annual savings by baseline
+      monthlySavingsBatArr[month]   += baseline; // placeholder, scaled after
+    }
+    // Scale battery monthly to match annual total
+    const monthBatSum = monthlySavingsBatArr.reduce((a, b) => a + b, 0);
+    for (let m = 0; m < 12; m++) {
+      monthlySavingsBatArr[m] = monthBatSum > 0
+        ? (monthlySavingsBatArr[m] / monthBatSum) * annualSavingsBat
+        : 0;
+    }
+  }
+
+  // ── SOC trace: sample every 6th day (≈ bi-weekly) for charting ───────────
+  // We re-run a mini-SOC pass for the first 14 days of January (winter) and
+  // first 14 days of July (summer) to produce a representative daily SOC curve.
+  const socTrace = []; // [{ label, soc: Float64Array(24) }]
+  for (const [startDoy, seasonLabel] of [[1, 'Jan'], [182, 'Jul']]) {
+    const traceLen = 14 * 24;
+    const socArr   = new Float64Array(traceLen);
+    let   trSoc    = batCapKwh * 0.50;
+    for (let i = 0; i < traceLen; i++) {
+      const h        = (startDoy - 1) * 24 + i;
+      if (h >= nH) break;
+      const pv       = pvHourly[h];
+      const load     = loadHourly[h];
+      const buy      = tariffs[h];
+      const sellP    = buy * sellFactor;
+      let rPv = pv, rLoad = load;
+      const pvCons   = Math.min(rPv, rLoad); rPv -= pvCons; rLoad -= pvCons;
+      if (useBattery && rPv > 1e-4) {
+        const ch = Math.min(rPv, (batCapKwh - trSoc) / CHARGE_EFF_PV, MAX_BATTERY_POWER_KW);
+        trSoc += ch * CHARGE_EFF_PV; rPv -= ch;
+      }
+      if (useBattery && rLoad > 1e-4) {
+        const minS = batCapKwh * MIN_SOC_SELF;
+        const dg   = Math.min(rLoad / DISCHARGE_EFF, Math.max(0, (trSoc - minS) / DISCHARGE_EFF), MAX_BATTERY_POWER_KW);
+        trSoc -= dg; rLoad -= dg * DISCHARGE_EFF;
+      }
+      if (!zeroExport && useBattery && isSellHour[h]) {
+        const minS = batCapKwh * MIN_SOC_SELL;
+        if (trSoc > minS + 1e-4) {
+          const sg = Math.min(trSoc - minS, MAX_BATTERY_POWER_KW);
+          trSoc -= sg;
+        }
+      }
+      trSoc = Math.max(0, Math.min(batCapKwh, trSoc));
+      socArr[i] = trSoc;
+    }
+    socTrace.push({ label: seasonLabel, soc: socArr });
+  }
+
+  return {
+    pvYield:         pvHourly.reduce((a, b) => a + b, 0),
+    selfDirect,
+    selfBattery,
+    exportPv,
+    exportBat,
+    importGrid,
+    importPreChg,
+    baselineCost,
+    annualSavingsBat,
+    annualSavingsNoBat,
+    batBonus:        annualSavingsBat - annualSavingsNoBat,
+    selfConsRate:    (selfDirect + selfBattery) / (pvHourly.reduce((a, b) => a + b, 0) + 1e-9),
+    batCycles:       batKwhIn / (batCapKwh + 1e-9),
+    batThroughput:   (batKwhIn + batKwhOut) / 2,
+    monthlySavingsBat:   monthlySavingsBatArr,
+    monthlySavingsNoBat: monthlySavingsNoBatArr,
+    socTrace,
+  };
+}
+
+/**
+ * Run economic analysis for all configs and update the UI.
+ * Called by the "Run Economic Analysis" button and automatically after yearly sim.
+ */
+function runEconSim() {
+  if (!lastHourlyPvKwh) {
+    alert('Run the yearly PV simulation first (click "Run Yearly Sim" above).');
+    return;
+  }
+
+  const t0 = performance.now();
+
+  // Load & tariff profiles (generate with current UI settings)
+  const baseDayKwh = parseFloat(document.getElementById('econBaseLoadSlider').value);
+  const hpWinterKwh = parseFloat(document.getElementById('econHpSlider').value);
+  const sellFactor  = parseFloat(document.getElementById('econSellFactorSlider').value) / 100;
+  const batCapKwh   = parseFloat(document.getElementById('econBatSizeSelect').value);
+  const useBattery  = document.getElementById('econBatteryToggle').checked;
+  const useGridPrecharge = document.getElementById('econGridPrechargeToggle').checked;
+  const zeroExport  = document.getElementById('econZeroExportToggle').checked;
+
+  const loadProfile    = precomputeYearlyLoad(baseDayKwh, hpWinterKwh);
+  const tariffProfile  = generateYearlyTariffs();
+
+  const opts = { useBattery, useGridPrecharge, zeroExport, batCapKwh, sellFactor };
+
+  // Run for all configs
+  const econResults = {};
+  for (const cfg of CONFIGS) {
+    const pvArr = lastHourlyPvKwh[cfg.id];
+    if (!pvArr) continue;
+    econResults[cfg.id] = simulateBatteryEconomics(
+      pvArr instanceof Float64Array ? pvArr : new Float64Array(pvArr),
+      loadProfile,
+      tariffProfile,
+      opts,
+    );
+  }
+
+  lastEconResults = { econResults, loadProfile, tariffProfile, opts };
+  const elapsed = (performance.now() - t0).toFixed(0);
+
+  displayEconResults(econResults, batCapKwh, elapsed);
+}
+
+/**
+ * Display economic simulation results in the UI.
+ */
+function displayEconResults(econResults, batCapKwh, elapsedMs) {
+  const ids = CONFIGS.map(c => c.id).filter(id => econResults[id]);
+  const savingsArr = ids.map(id => econResults[id].annualSavingsBat);
+  const bestSavings = Math.max(...savingsArr);
+  const worstSavings = Math.min(...savingsArr);
+  const bestCfgId    = ids[savingsArr.indexOf(bestSavings)];
+  const best = econResults[bestCfgId];
+  const useBat = document.getElementById('econBatteryToggle').checked;
+
+  // ── Metrics cards ────────────────────────────────────────────────────────
+  const cards = [
+    { label: 'Best annual savings', value: `€${bestSavings.toFixed(0)}`, sub: `Config ${bestCfgId}` },
+    { label: 'Battery bonus', value: `€${Math.max(0, best.batBonus).toFixed(0)}`, sub: 'vs no-battery PV', hidden: !useBat },
+    { label: 'PV self-cons rate', value: `${(best.selfConsRate * 100).toFixed(0)}%`, sub: `of ${best.pvYield.toFixed(0)} kWh PV` },
+    { label: 'Battery equiv. cycles', value: useBat ? best.batCycles.toFixed(0) : '—', sub: useBat ? `${best.batThroughput.toFixed(0)} kWh throughput` : 'battery disabled' },
+    { label: 'Annual load', value: `${(best.importGrid + best.selfDirect + best.selfBattery).toFixed(0)} kWh`, sub: 'total consumption' },
+    { label: 'Grid independence', value: `${(100 * (best.selfDirect + best.selfBattery) / (best.selfDirect + best.selfBattery + best.importGrid + 1e-9)).toFixed(0)}%`, sub: 'self-supplied' },
+  ];
+  document.getElementById('econMetricGrid').innerHTML = cards
+    .filter(c => !c.hidden)
+    .map(c => `<div class="metric-card"><div class="mc-label">${c.label}</div><div class="mc-value">${c.value}</div><div class="mc-sub">${c.sub}</div></div>`)
+    .join('');
+
+  // ── Comparison table ──────────────────────────────────────────────────────
+  const maxSavings = bestSavings;
+  let tbody = '';
+  for (const cfg of CONFIGS) {
+    const r = econResults[cfg.id];
+    if (!r) continue;
+    const isBest = Math.abs(r.annualSavingsBat - maxSavings) < 1;
+    const batBonusStr = r.batBonus > 0.5
+      ? `<span style="color:#4ade80">+€${r.batBonus.toFixed(0)}</span>`
+      : `<span style="color:#6b7280">—</span>`;
+    tbody += `<tr style="--cfg-color:${cfg.cfgColor}">
+      <td class="cfg-name"><span class="cfg-dot" style="background:${cfg.cfgColor}"></span>${cfg.short}</td>
+      <td>${r.pvYield.toFixed(0)}</td>
+      <td>${(r.selfConsRate * 100).toFixed(0)}%</td>
+      <td>${(r.exportPv + r.exportBat).toFixed(0)}</td>
+      <td style="color:#fbbf24">€${r.annualSavingsNoBat.toFixed(0)}</td>
+      <td class="${isBest ? 'best-val' : ''}" style="${isBest ? '' : 'color:#4ade80'}">€${r.annualSavingsBat.toFixed(0)} ${isBest ? '★' : ''}</td>
+      <td>${batBonusStr}</td>
+    </tr>`;
+  }
+  document.getElementById('econTableBody').innerHTML = tbody;
+
+  // ── Monthly savings chart ─────────────────────────────────────────────────
+  const sc = document.getElementById('econSavingsChart');
+  const scW = sc.parentElement.clientWidth || 600;
+  sc.width  = scW; sc.height = 160;
+  const cc = sc.getContext('2d');
+  const ML = 50, MR = 8, MT = 22, MB = 26;
+  const pw = scW - ML - MR, ph = sc.height - MT - MB;
+  cc.fillStyle = '#111827'; cc.fillRect(0, 0, scW, sc.height);
+
+  // Collect monthly savings data for all configs (with battery)
+  const months = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+  const allMonthVals = CONFIGS.flatMap(cfg => econResults[cfg.id]
+    ? Array.from(econResults[cfg.id].monthlySavingsBat) : []);
+  const maxM = Math.max(...allMonthVals, 1);
+  const minM = Math.min(...allMonthVals, 0);
+  const range = Math.max(maxM - minM, 1);
+
+  cc.strokeStyle = '#1f2937'; cc.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = MT + ph - ((i / 4) * (maxM - minM) / range) * ph;
+    cc.beginPath(); cc.moveTo(ML, y); cc.lineTo(ML + pw, y); cc.stroke();
+    const v = minM + (i / 4) * (maxM - minM);
+    cc.fillStyle = '#6b7280'; cc.font = '9px sans-serif'; cc.textAlign = 'right';
+    cc.fillText('€' + v.toFixed(0), ML - 3, y + 3);
+  }
+
+  const barGrpW = pw / 12;
+  const nCfgs   = CONFIGS.filter(c => econResults[c.id]).length;
+  const barW    = barGrpW / (nCfgs + 1);
+  const zeroY   = MT + ph - ((-minM) / range) * ph;
+
+  CONFIGS.forEach((cfg, ci) => {
+    const r = econResults[cfg.id]; if (!r) return;
+    cc.fillStyle = cfg.cfgColor;
+    for (let m = 0; m < 12; m++) {
+      const v  = r.monthlySavingsBat[m];
+      const bh = (v / range) * ph;
+      const bx = ML + m * barGrpW + (ci + 0.5) * barW;
+      const by = v >= 0 ? zeroY - bh : zeroY;
+      cc.fillRect(bx, by, Math.max(barW - 0.5, 0.5), Math.abs(bh));
+    }
+  });
+
+  cc.fillStyle = '#374151'; cc.fillRect(ML, zeroY, pw, 1);
+  cc.fillStyle = '#6b7280'; cc.font = '9px sans-serif'; cc.textAlign = 'center';
+  for (let m = 0; m < 12; m++) cc.fillText(months[m], ML + (m + 0.5) * barGrpW, MT + ph + 14);
+  cc.save(); cc.translate(11, MT + ph / 2); cc.rotate(-Math.PI / 2);
+  cc.fillStyle = '#6b7280'; cc.font = '9px sans-serif'; cc.textAlign = 'center';
+  cc.fillText('€ savings/month', 0, 0); cc.restore();
+
+  // Legend
+  let lx = ML;
+  CONFIGS.forEach(cfg => {
+    if (!econResults[cfg.id]) return;
+    cc.fillStyle = cfg.cfgColor; cc.fillRect(lx, 7, 7, 7);
+    cc.fillStyle = '#9ca3af'; cc.font = '8px sans-serif'; cc.textAlign = 'left';
+    cc.fillText(cfg.short, lx + 9, 14);
+    lx += cc.measureText(cfg.short).width + 22;
+  });
+
+  // ── SOC trace chart ───────────────────────────────────────────────────────
+  const bestEcon = econResults[bestCfgId];
+  if (bestEcon && bestEcon.socTrace && document.getElementById('econBatteryToggle').checked) {
+    const socc = document.getElementById('econSocChart');
+    const socW = socc.parentElement.clientWidth || 600;
+    socc.width = socW; socc.height = 120;
+    const sc2 = socc.getContext('2d');
+    const SML = 50, SMR = 8, SMT = 18, SMB = 22;
+    const spw = socW - SML - SMR, sph = socc.height - SMT - SMB;
+    sc2.fillStyle = '#111827'; sc2.fillRect(0, 0, socW, socc.height);
+    sc2.strokeStyle = '#1f2937'; sc2.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = SMT + sph - (i / 4) * sph;
+      sc2.beginPath(); sc2.moveTo(SML, y); sc2.lineTo(SML + spw, y); sc2.stroke();
+      sc2.fillStyle = '#6b7280'; sc2.font = '8px sans-serif'; sc2.textAlign = 'right';
+      sc2.fillText((i / 4 * batCapKwh).toFixed(0) + ' kWh', SML - 3, y + 3);
+    }
+    // 5% SOC floor reference line
+    const minSocY = SMT + sph - (MIN_SOC_SELL) * sph;
+    sc2.strokeStyle = '#ef444460'; sc2.lineWidth = 1; sc2.setLineDash([3, 3]);
+    sc2.beginPath(); sc2.moveTo(SML, minSocY); sc2.lineTo(SML + spw, minSocY); sc2.stroke();
+    sc2.setLineDash([]);
+    sc2.fillStyle = '#ef4444'; sc2.font = '8px sans-serif'; sc2.textAlign = 'left';
+    sc2.fillText('5% SOC floor', SML + 3, minSocY - 3);
+
+    const traceCols = ['#60a5fa', '#fb923c'];
+    bestEcon.socTrace.forEach(({ label, soc }, si) => {
+      const nPts = soc.length;
+      const xScale = spw / nPts;
+      sc2.strokeStyle = traceCols[si]; sc2.lineWidth = 1.5; sc2.setLineDash([]);
+      sc2.beginPath();
+      for (let i = 0; i < nPts; i++) {
+        const x = SML + i * xScale;
+        const y = SMT + sph - (soc[i] / batCapKwh) * sph;
+        i ? sc2.lineTo(x, y) : sc2.moveTo(x, y);
+      }
+      sc2.stroke();
+      // Season label
+      sc2.fillStyle = traceCols[si]; sc2.font = '8px sans-serif'; sc2.textAlign = 'left';
+      sc2.fillText(label + ' (14d)', SML + si * spw * 0.52 + 4, SMT + sph + 14);
+    });
+    sc2.save(); sc2.translate(11, SMT + sph / 2); sc2.rotate(-Math.PI / 2);
+    sc2.fillStyle = '#6b7280'; sc2.font = '8px sans-serif'; sc2.textAlign = 'center';
+    sc2.fillText('Battery SOC', 0, 0); sc2.restore();
+  } else {
+    // Hide SOC chart if battery disabled
+    const socc = document.getElementById('econSocChart');
+    socc.width = 0; socc.height = 0;
+  }
+
+  // ── Shade impact badge ────────────────────────────────────────────────────
+  const shade_delta = bestSavings - worstSavings;
+  const worstCfgId  = ids[savingsArr.indexOf(worstSavings)];
+  document.getElementById('shadeImpactText').innerHTML =
+    `Shade impact: <b style="color:#4ade80">Config ${bestCfgId}</b> saves `
+    + `<b style="color:#4ade80">€${shade_delta.toFixed(0)}/yr more</b> `
+    + `than worst Config ${worstCfgId} `
+    + `— choose wiring carefully!`;
+
+  // ── Note ─────────────────────────────────────────────────────────────────
+  document.getElementById('econNoteText').textContent =
+    `Completed in ${elapsedMs} ms. Clear-sky model (optimistic — real yield 15–25% lower with clouds). ` +
+    `Battery capex excluded (already paid for). Sell tariff = buy × ${document.getElementById('econSellFactorSlider').value}%. ` +
+    `Base load ${document.getElementById('econBaseLoadSlider').value} kWh/d + ` +
+    `HP winter ${document.getElementById('econHpSlider').value} kWh/d (electrical). ` +
+    `PV→battery efficiency: ${CHARGE_EFF_PV * 100 | 0}%/${DISCHARGE_EFF * 100 | 0}%. ` +
+    `No battery degradation. Heat pump COP not modeled. 5% SOC floor for all discharge strategies.`;
+
+  document.getElementById('econResultsDiv').style.display = 'block';
+  document.getElementById('econStatusLabel').textContent = `Done ✓ (${elapsedMs} ms)`;
+  document.getElementById('econStatusLabel').style.color = '#4ade80';
+}
+
+/**
+ * Export hourly results as CSV for the best-savings config.
+ */
+function exportEconCsv() {
+  if (!lastEconResults || !lastHourlyPvKwh) { alert('Run economic simulation first.'); return; }
+  const { loadProfile, tariffProfile, opts } = lastEconResults;
+
+  // Find best config by savings
+  const ids = CONFIGS.map(c => c.id).filter(id => lastEconResults.econResults[id]);
+  const bestId = ids.reduce((best, id) =>
+    lastEconResults.econResults[id].annualSavingsBat > lastEconResults.econResults[best].annualSavingsBat ? id : best
+  , ids[0]);
+
+  const pvArr = lastHourlyPvKwh[bestId] instanceof Float64Array
+    ? lastHourlyPvKwh[bestId]
+    : new Float64Array(lastHourlyPvKwh[bestId]);
+
+  let csv = 'Hour,Date,PV_kWh,Load_kWh,Tariff_EUR_kWh,SellTariff_EUR_kWh\n';
+  for (let h = 0; h < 8760; h++) {
+    const date = new Date(2025, 0, Math.floor(h / 24) + 1, h % 24);
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:00`;
+    csv += `${h},${dateStr},${pvArr[h].toFixed(4)},${loadProfile[h].toFixed(4)},${tariffProfile[h].toFixed(4)},${(tariffProfile[h]*opts.sellFactor).toFixed(4)}\n`;
+  }
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `shade-analyser-config-${bestId}-hourly.csv`; a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
-    panelEnergyFlat, noShadePanelEnergyFlat, revenueDynamic, noShadeRevenueDynamic) {
+    panelEnergyFlat, noShadePanelEnergyFlat, revenueDynamic, noShadeRevenueDynamic,
+    hourlyPvKwh) {
   lastSimResults = monthlyEnergy;
   lastSimNoShade = noShadeEnergy;
   lastSimWeather = weatherMode;
@@ -3121,6 +3906,12 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
     noShadePanelEnergyFlat = lastSimNoShadePanelEnergy;
     revenueDynamic = lastSimRevenueDynamic;
     noShadeRevenueDynamic = lastSimNoShadeRevenueDynamic;
+  }
+  // Cache hourly PV arrays for battery economic simulation
+  if (hourlyPvKwh) {
+    lastHourlyPvKwh = hourlyPvKwh;
+    document.getElementById('econStatusLabel').textContent = 'Ready — click Run Economic Analysis';
+    document.getElementById('econStatusLabel').style.color = '#4ade80';
   }
   
   // ── Badge ──────────────────────────────────────────────────────────────
@@ -3291,110 +4082,7 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
       'Revenue uses dynamic APX/EPEX hourly prices 2025 — saldering: full APX rate; feed-in: APX × 0.70.';
   }
 
-  // Show and draw heatmap
-  const hmSection = document.getElementById('heatmapSection');
-  if (hmSection) hmSection.style.display = 'block';
-  setTimeout(drawHeatmap, 0);
-
   document.getElementById('simResultsDiv').style.display = 'block';
-}
-
-// ── Panel production heatmap ───────────────────────────────────────────────
-function heatColor(t) {
-  // t in [0,1]: 0=dark blue, 0.5=yellow, 1=bright green
-  t = Math.max(0, Math.min(1, t));
-  if (t < 0.5) {
-    const s = t * 2;
-    return `rgb(${Math.round(20+s*235)},${Math.round(20+s*210)},${Math.round(80-s*60)})`;
-  } else {
-    const s = (t - 0.5) * 2;
-    return `rgb(${Math.round(255-s*100)},${Math.round(230-s*40)},${Math.round(20)})`;
-  }
-}
-
-function drawHeatmap() {
-  const section = document.getElementById('heatmapSection');
-  if (!section || section.style.display === 'none') return;
-  if (!lastSimPanelEnergy) return;
-
-  const metric = document.getElementById('heatmapMetric').value;
-  const monthSel = parseInt(document.getElementById('heatmapMonth').value);
-  const useSald = document.getElementById('salderingToggle')?.checked ?? true;
-
-  // Gather per-panel values
-  const vals = new Float64Array(ROWS * COLS);
-  if (monthSel === -1) {
-    // All year
-    for (let m = 0; m < 12; m++) {
-      for (let i = 0; i < ROWS * COLS; i++) {
-        vals[i] += lastSimPanelEnergy[m * ROWS * COLS + i];
-      }
-    }
-  } else {
-    for (let i = 0; i < ROWS * COLS; i++) {
-      vals[i] = lastSimPanelEnergy[monthSel * ROWS * COLS + i];
-    }
-  }
-
-  // Convert to € if needed — use average APX price as proxy for per-panel value
-  if (metric === 'eur') {
-    // Average of all monthly-hourly APX prices
-    const avgApx = HOURLY_APX_PRICE_2025.reduce((s,row)=>s+row.reduce((a,b)=>a+b,0),0) / (12*24);
-    const price = useSald ? avgApx : avgApx * FEED_IN_FACTOR;
-    for (let i = 0; i < ROWS * COLS; i++) vals[i] *= price;
-  }
-
-  const maxVal = Math.max(...vals, 0.001);
-  const minVal = Math.min(...vals);
-  const range  = maxVal - minVal;
-  const unit   = metric === 'kwh' ? 'kWh' : '€';
-  const decimals = metric === 'kwh' ? 1 : 2;
-
-  document.getElementById('heatmapRangeLabel').textContent =
-    `${minVal.toFixed(decimals)} – ${maxVal.toFixed(decimals)} ${unit}/panel`;
-
-  // Draw on heatmap canvas (same coordinate system as arrayCanvas)
-  const hc = document.getElementById('heatmapCanvas');
-  hc.width  = canvas.width;
-  hc.height = canvas.height;
-  const hx  = hc.getContext('2d');
-
-  hx.fillStyle = '#0d1117'; hx.fillRect(0, 0, hc.width, hc.height);
-
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const i   = r * COLS + c;
-      const t   = range > 0.0001 ? (vals[i] - minVal) / range : 0.5;
-      const rct = panelRect(r, c);
-      hx.fillStyle = heatColor(t);
-      drawRoundRect(hx, rct.x, rct.y, rct.w, rct.h, 3); hx.fill();
-      // Text: white with dark stroke for readability on any background
-      const label = vals[i].toFixed(decimals);
-      hx.font = '9px sans-serif'; hx.textAlign = 'center';
-      hx.strokeStyle = 'rgba(0,0,0,0.85)'; hx.lineWidth = 2.5;
-      hx.strokeText(label, rct.x+rct.w/2, rct.y+rct.h/2+3);
-      hx.fillStyle = '#ffffff'; hx.fillText(label, rct.x+rct.w/2, rct.y+rct.h/2+3);
-    }
-  }
-
-  // Row/col labels (reuse same style as arrayCanvas)
-  hx.fillStyle = '#6b7280'; hx.font = '10px sans-serif'; hx.textAlign = 'right';
-  for (let r = 0; r < ROWS; r++) {
-    const rct = panelRect(r, 0);
-    hx.fillText(`R${r+1}`, rct.x - 4, rct.y + rct.h/2 + 3);
-  }
-  hx.fillStyle = '#6b7280'; hx.font = '10px sans-serif'; hx.textAlign = 'center';
-  for (let c = 0; c < COLS; c++) {
-    const rct = panelRect(0, c);
-    hx.fillText(c+1, rct.x + rct.w/2, rct.y - 4);
-  }
-
-  // Legend bar with min/max labels
-  const lc = document.getElementById('heatmapLegendCanvas');
-  const lx = lc.getContext('2d');
-  const grad = lx.createLinearGradient(0, 0, 180, 0);
-  for (let s = 0; s <= 10; s++) grad.addColorStop(s/10, heatColor(s/10));
-  lx.fillStyle = grad; lx.fillRect(0, 0, 180, 14);
 }
 
 // ── Update cycle ───────────────────────────────────────────────────────────
@@ -3468,6 +4156,26 @@ document.getElementById('timeSlider').addEventListener('input', onDateTimeChange
 
 // ── New UI controls: scene map & simulation ────────────────────────────────
 
+// Save trees button (explicit manual save to localStorage)
+document.getElementById('saveTreesBtn').addEventListener('click', () => {
+  saveTreesToStorage();
+  const btn = document.getElementById('saveTreesBtn');
+  const orig = btn.textContent;
+  btn.textContent = '✓ Saved';
+  setTimeout(() => { btn.textContent = orig; }, 1200);
+});
+
+// Load trees button (explicit restore from localStorage)
+document.getElementById('loadTreesBtn').addEventListener('click', () => {
+  const restored = loadTreesFromStorage();
+  if (restored) {
+    syncTreeLayersToLeaflet();
+    fullUpdate();
+  } else {
+    alert('No saved tree data found.');
+  }
+});
+
 // Clear all trees
 document.getElementById('clearTreesBtn').addEventListener('click', () => {
   sceneTrees = [];
@@ -3476,6 +4184,7 @@ document.getElementById('clearTreesBtn').addEventListener('click', () => {
   recomputeTreeShadow();
   drawSceneMap();
   syncTreeLayersToLeaflet();
+  saveTreesToStorage();
   fullUpdate();
 });
 
@@ -3488,6 +4197,7 @@ document.getElementById('deleteTreeBtn').addEventListener('click', () => {
   recomputeTreeShadow();
   drawSceneMap();
   syncTreeLayersToLeaflet();
+  saveTreesToStorage();
   fullUpdate();
 });
 
@@ -3500,6 +4210,7 @@ document.getElementById('treeHeightSlider').addEventListener('input', function (
   recomputeTreeShadow();
   drawSceneMap();
   syncTreeLayersToLeaflet();
+  saveTreesToStorage();
   scheduleUpdate();
 });
 
@@ -3512,6 +4223,7 @@ document.getElementById('treeCrownSlider').addEventListener('input', function ()
   recomputeTreeShadow();
   drawSceneMap();
   syncTreeLayersToLeaflet();
+  saveTreesToStorage();
   scheduleUpdate();
 });
 
@@ -3523,6 +4235,7 @@ document.getElementById('treeUnderstoryCheck').addEventListener('change', functi
   recomputeTreeShadow();
   drawSceneMap();
   if (leafletActive) updateLeafletShadows();
+  saveTreesToStorage();
   scheduleUpdate();
 });
 
@@ -3542,10 +4255,7 @@ document.getElementById('abortSimBtn').addEventListener('click', () => {
 const salEl = document.getElementById('salderingToggle');
 if (salEl) salEl.addEventListener('change', () => {
   if (lastSimResults) displaySimResults(lastSimResults, lastSimNoShade, lastSimWeather);
-  else drawHeatmap();
 });
-document.getElementById('heatmapMetric')?.addEventListener('change', drawHeatmap);
-document.getElementById('heatmapMonth')?.addEventListener('change', drawHeatmap);
 
 // Google Maps buttons
 document.getElementById('toggleGoogleMapBtn').addEventListener('click', toggleOSMMap);
@@ -3558,6 +4268,48 @@ document.getElementById('centerBosheiBtn').addEventListener('click', () => {
 // Resize canvases on window resize
 window.addEventListener('resize', () => {
   resizeMapCanvas();
+});
+
+// ── Economic forecast UI controls ──────────────────────────────────────────
+
+// Base load slider
+document.getElementById('econBaseLoadSlider').addEventListener('input', function () {
+  document.getElementById('econBaseLoadVal').textContent = this.value + ' kWh/d';
+});
+
+// HP winter load slider
+document.getElementById('econHpSlider').addEventListener('input', function () {
+  document.getElementById('econHpVal').textContent = this.value + ' kWh/d';
+});
+
+// Sell price factor slider
+document.getElementById('econSellFactorSlider').addEventListener('input', function () {
+  document.getElementById('econSellFactorVal').textContent = (this.value / 100).toFixed(2) + '×';
+});
+
+// Run economic analysis button
+document.getElementById('runEconBtn').addEventListener('click', () => {
+  document.getElementById('econStatusLabel').textContent = 'Computing…';
+  document.getElementById('econStatusLabel').style.color = '#fbbf24';
+  // Small timeout to allow browser to paint "Computing…" before heavy work
+  setTimeout(runEconSim, 20);
+});
+
+// Export CSV
+document.getElementById('econExportBtn').addEventListener('click', exportEconCsv);
+
+// Battery toggle: re-run econ sim if results already shown
+document.getElementById('econBatteryToggle').addEventListener('change', () => {
+  if (lastEconResults) setTimeout(runEconSim, 20);
+});
+document.getElementById('econGridPrechargeToggle').addEventListener('change', () => {
+  if (lastEconResults) setTimeout(runEconSim, 20);
+});
+document.getElementById('econZeroExportToggle').addEventListener('change', () => {
+  if (lastEconResults) setTimeout(runEconSim, 20);
+});
+document.getElementById('econBatSizeSelect').addEventListener('change', () => {
+  if (lastEconResults) setTimeout(runEconSim, 20);
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────
@@ -3577,6 +4329,9 @@ window.addEventListener('resize', () => {
 
   // Size and draw new canvases
   resizeMapCanvas();
+
+  // Restore any previously saved trees from localStorage
+  loadTreesFromStorage();
 
   fullUpdate();
 
