@@ -220,6 +220,9 @@
         <button class="btn" id="clearTreesBtn">&#127795; Clear Trees</button>
         <button class="btn" id="saveTreesBtn" title="Save tree positions to browser storage">&#128190; Save Trees</button>
         <button class="btn" id="loadTreesBtn" title="Load previously saved tree positions">&#128194; Load Trees</button>
+        <button class="btn" id="saveProjectBtn" aria-label="Save project as JSON file" title="Download the entire project (arrays, shade, trees, inverters, UI, economic settings) as a JSON file">&#11015; Save Project</button>
+        <button class="btn" id="loadProjectBtn" aria-label="Load project from JSON file" title="Load a previously exported project JSON file">&#11014; Load Project</button>
+        <input type="file" id="loadProjectFile" accept="application/json,.json" style="display:none">
         <span id="treeCountLabel" style="color:#6b7280;font-size:0.75rem">No trees</span>
         <span style="flex:1"></span>
         <span id="mapScaleLabel" style="font-size:0.71rem;color:#4b5563">&#9632; = 10 m</span>
@@ -2240,6 +2243,350 @@ function loadTreesFromStorage() {
   } catch (e) {
     return false;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Project model — versioned snapshot/apply/persist for the entire app state.
+// This is the foundation for evolving the app into a general-purpose PV layout
+// & scenario tool. The schema captures *all* state needed to reproduce a
+// configuration (site, panel, array geometry, inverters, manual shade, scene
+// transform, trees, UI date/time/toggles, economic settings). Structural
+// constants (ROWS, COLS, PNL fields, NEER, SECTIONS) are captured as well so
+// future versions of the app can restore them once they become mutable; the
+// current build accepts them on load only when they match the running build.
+// ─────────────────────────────────────────────────────────────────────────────
+const PROJECT_SCHEMA_VERSION = 1;
+const PROJECT_STORAGE_KEY    = 'shadeAnalyserProject';
+
+/** Build a JSON-serializable snapshot of the current project state. */
+function snapshotProject(meta = {}) {
+  const $ = id => document.getElementById(id);
+  const val = id => { const el = $(id); return el ? el.value : null; };
+  const checked = id => { const el = $(id); return el ? !!el.checked : null; };
+
+  return {
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    app: 'shade-analyser',
+    savedAt: new Date().toISOString(),
+    name: meta.name || 'Untitled project',
+
+    site: { lat: NEER.lat, lon: NEER.lon, name: 'Neer, Netherlands' },
+
+    panel: { ...PNL },
+
+    array: {
+      rows: ROWS,
+      cols: COLS,
+      colSpacing: COL_SPACING,
+      rowSpacing: ROW_SPACING,
+      sceneX: arraySceneX,
+      sceneY: arraySceneY,
+      rotDeg: arrayRotDeg,
+      sections: SECTIONS.map(s => ({ ...s })),
+      sectionDiv: SECTION_DIV,
+    },
+
+    // Inverters / MPPT specs keyed by config id (A..M).
+    inverters: Object.fromEntries(
+      Object.entries(INVERTER_SPECS).map(([k, v]) => [k, { ...v }])
+    ),
+
+    // Shade overlays
+    manualShade: manualShade.map(row => row.slice()),
+    shadeLevel: shadeLevel,
+
+    // Physical obstructions
+    obstructions: {
+      trees: sceneTrees.map(t => ({
+        id: t.id, x: t.x, y: t.y,
+        height: t.height, crownRadius: t.crownRadius,
+        hasUnderstoryFoliage: t.hasUnderstoryFoliage !== false,
+      })),
+    },
+
+    ui: {
+      date: val('dateInput'),
+      timeMins: val('timeSlider') !== null ? Number(val('timeSlider')) : null,
+      weatherToggle: checked('weatherToggle'),
+      salderingToggle: checked('salderingToggle'),
+      highlightedConfig: highlightedConfig,
+    },
+
+    economic: {
+      baseLoadKwhDay: val('econBaseLoadSlider') !== null ? Number(val('econBaseLoadSlider')) : null,
+      hpWinterKwhDay: val('econHpSlider') !== null ? Number(val('econHpSlider')) : null,
+      sellFactorPct:  val('econSellFactorSlider') !== null ? Number(val('econSellFactorSlider')) : null,
+      batSizeKwh:     val('econBatSizeSelect') !== null ? Number(val('econBatSizeSelect')) : null,
+      batteryEnabled: checked('econBatteryToggle'),
+      gridPrecharge:  checked('econGridPrechargeToggle'),
+      zeroExport:     checked('econZeroExportToggle'),
+      v2Enabled:      checked('useAdvancedStrategy'),
+      v2MinSpread:    val('minSpread') !== null ? Number(val('minSpread')) : null,
+      v2SelfMultiplier: val('selfMultiplier') !== null ? Number(val('selfMultiplier')) : null,
+    },
+  };
+}
+
+/**
+ * Migrate an older project object up to the current schema version.
+ * Returns { ok, project, warnings[] }.
+ */
+function migrateProject(raw) {
+  const warnings = [];
+  if (!raw || typeof raw !== 'object') {
+    return { ok: false, project: null, warnings: ['Project file is empty or not an object.'] };
+  }
+  if (raw.app && raw.app !== 'shade-analyser') {
+    warnings.push(`Project file 'app' is "${raw.app}" — expected "shade-analyser".`);
+  }
+  let v = Number.isFinite(raw.schemaVersion) ? raw.schemaVersion : 1;
+  // Future migrations would chain here: v1 -> v2 -> v3 ...
+  if (v > PROJECT_SCHEMA_VERSION) {
+    warnings.push(`Project schema v${v} is newer than this app (v${PROJECT_SCHEMA_VERSION}); some fields may be ignored.`);
+  }
+  // Currently no in-place upgrades needed — schema is at v1.
+  return { ok: true, project: raw, warnings };
+}
+
+/**
+ * Apply a project snapshot to the running app.
+ * Structural fields (ROWS/COLS, panel single-diode parameters, sections) that
+ * are immutable in this build are validated and warned-on if they differ.
+ * Returns { ok, warnings[] }.
+ */
+function applyProject(p) {
+  const warnings = [];
+  const $ = id => document.getElementById(id);
+
+  // ── Structural validation (fields that are still hardcoded in this build) ─
+  if (p.array) {
+    if (Number.isFinite(p.array.rows) && p.array.rows !== ROWS)
+      warnings.push(`Project rows (${p.array.rows}) differ from app rows (${ROWS}); structural change ignored.`);
+    if (Number.isFinite(p.array.cols) && p.array.cols !== COLS)
+      warnings.push(`Project cols (${p.array.cols}) differ from app cols (${COLS}); structural change ignored.`);
+  }
+  if (p.site && (p.site.lat !== NEER.lat || p.site.lon !== NEER.lon)) {
+    warnings.push(`Project site (${p.site.lat},${p.site.lon}) differs from app site; site change ignored in this build.`);
+  }
+
+  // ── Array transform (mutable today) ─
+  if (p.array) {
+    if (Number.isFinite(p.array.sceneX)) arraySceneX = p.array.sceneX;
+    if (Number.isFinite(p.array.sceneY)) arraySceneY = p.array.sceneY;
+    if (Number.isFinite(p.array.rotDeg)) arrayRotDeg = p.array.rotDeg;
+  }
+
+  // ── Inverter/MPPT specs (mutate in place to preserve referenced object) ─
+  if (p.inverters && typeof p.inverters === 'object') {
+    for (const [id, spec] of Object.entries(p.inverters)) {
+      if (INVERTER_SPECS[id] && spec && typeof spec === 'object') {
+        Object.assign(INVERTER_SPECS[id], spec);
+      } else if (!INVERTER_SPECS[id]) {
+        warnings.push(`Inverter spec for unknown config "${id}" ignored.`);
+      }
+    }
+  }
+
+  // ── Manual shade overlay ─
+  if (Array.isArray(p.manualShade) && p.manualShade.length === ROWS) {
+    for (let r = 0; r < ROWS; r++) {
+      const row = p.manualShade[r];
+      if (Array.isArray(row) && row.length === COLS) {
+        for (let c = 0; c < COLS; c++) {
+          const v = Number(row[c]);
+          if (Number.isFinite(v)) manualShade[r][c] = Math.max(0, Math.min(1, v));
+        }
+      }
+    }
+  } else if (p.manualShade !== undefined) {
+    warnings.push('Manual shade dimensions do not match this build; ignored.');
+  }
+  if (Number.isFinite(p.shadeLevel)) {
+    shadeLevel = Math.max(0, Math.min(1, p.shadeLevel));
+    const sl = $('shadeSlider'), slv = $('shadeVal');
+    if (sl) sl.value = Math.round((1 - shadeLevel) * 100);
+    if (slv && sl) slv.textContent = sl.value + '%';
+  }
+
+  // ── Trees / obstructions ─
+  if (p.obstructions && Array.isArray(p.obstructions.trees)) {
+    sceneTrees = p.obstructions.trees.map(t => ({
+      id: Number.isFinite(t.id) ? t.id : 0,
+      x: Number(t.x) || 0,
+      y: Number(t.y) || 0,
+      height: Number.isFinite(t.height) ? t.height : 8,
+      crownRadius: Number.isFinite(t.crownRadius) ? t.crownRadius : 6,
+      hasUnderstoryFoliage: t.hasUnderstoryFoliage !== false,
+    }));
+    nextTreeId = sceneTrees.length > 0
+      ? Math.max(...sceneTrees.map(t => t.id || 0)) + 1
+      : 0;
+    deselectTree();
+    updateTreeCountLabel();
+  }
+
+  // ── UI controls (date/time/toggles) ─
+  if (p.ui) {
+    if (typeof p.ui.date === 'string' && $('dateInput')) $('dateInput').value = p.ui.date;
+    if (Number.isFinite(p.ui.timeMins) && $('timeSlider')) {
+      $('timeSlider').value = p.ui.timeMins;
+      const td = $('timeDisplay');
+      if (td) {
+        const hh = Math.floor(p.ui.timeMins / 60), mm = p.ui.timeMins % 60;
+        td.textContent = String(hh).padStart(2,'0') + ':' + String(mm).padStart(2,'0');
+      }
+    }
+    if (typeof p.ui.weatherToggle === 'boolean' && $('weatherToggle'))
+      $('weatherToggle').checked = p.ui.weatherToggle;
+    if (typeof p.ui.salderingToggle === 'boolean' && $('salderingToggle'))
+      $('salderingToggle').checked = p.ui.salderingToggle;
+    if (typeof p.ui.highlightedConfig === 'string' &&
+        CONFIGS.some(c => c.id === p.ui.highlightedConfig)) {
+      highlightedConfig = p.ui.highlightedConfig;
+    }
+  }
+
+  // ── Economic / battery settings ─
+  if (p.economic) {
+    const e = p.economic;
+    const setSlider = (id, valId, suffix, val) => {
+      const el = $(id), lab = $(valId);
+      if (el && Number.isFinite(val)) {
+        el.value = val;
+        if (lab) lab.textContent = (typeof suffix === 'function') ? suffix(val) : (val + suffix);
+      }
+    };
+    setSlider('econBaseLoadSlider', 'econBaseLoadVal', ' kWh/d', e.baseLoadKwhDay);
+    setSlider('econHpSlider',       'econHpVal',       ' kWh/d', e.hpWinterKwhDay);
+    setSlider('econSellFactorSlider','econSellFactorVal',
+      v => (v / 100).toFixed(2) + '×', e.sellFactorPct);
+    if ($('econBatSizeSelect') && Number.isFinite(e.batSizeKwh))
+      $('econBatSizeSelect').value = String(e.batSizeKwh);
+    if (typeof e.batteryEnabled === 'boolean' && $('econBatteryToggle'))
+      $('econBatteryToggle').checked = e.batteryEnabled;
+    if (typeof e.gridPrecharge === 'boolean' && $('econGridPrechargeToggle'))
+      $('econGridPrechargeToggle').checked = e.gridPrecharge;
+    if (typeof e.zeroExport === 'boolean' && $('econZeroExportToggle'))
+      $('econZeroExportToggle').checked = e.zeroExport;
+    if (typeof e.v2Enabled === 'boolean' && $('useAdvancedStrategy'))
+      $('useAdvancedStrategy').checked = e.v2Enabled;
+    setSlider('minSpread',     'spreadVal',     v => v.toFixed(2),         e.v2MinSpread);
+    setSlider('selfMultiplier','multiplierVal', v => v.toFixed(2),         e.v2SelfMultiplier);
+  }
+
+  // ── Refresh derived state and redraw everything ─
+  combineShadeMaps();
+  try { recomputeTreeShadow(); } catch (_) { /* sun pos may not be set yet */ }
+  try { syncTreeLayersToLeaflet(); } catch (_) { /* leaflet may not be active */ }
+  try {
+    const d = buildDateFromUI();
+    updateIrradiance(d);
+  } catch (_) { /* tolerated during early init */ }
+  try { drawSceneMap(); } catch (_) {}
+  try { fullUpdate(); } catch (_) {}
+
+  return { ok: true, warnings };
+}
+
+/** Persist current project to localStorage. Safe to call frequently. */
+function saveProjectToStorage() {
+  try {
+    localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(snapshotProject()));
+  } catch (e) { /* quota / private mode — silently ignore */ }
+}
+
+let _saveProjectTimer = null;
+/** Debounced auto-save (default 600 ms) — used from frequent UI handlers. */
+function scheduleSaveProject(delay = 600) {
+  if (_saveProjectTimer) clearTimeout(_saveProjectTimer);
+  _saveProjectTimer = setTimeout(() => { _saveProjectTimer = null; saveProjectToStorage(); }, delay);
+}
+
+/**
+ * Restore project from localStorage, migrating from the legacy trees-only
+ * key (`shadeAnalyserTrees`) when no full project is present.
+ * Returns true if any state was restored.
+ */
+function loadProjectFromStorage() {
+  try {
+    const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+    if (raw) {
+      const obj = JSON.parse(raw);
+      const m = migrateProject(obj);
+      if (!m.ok) return false;
+      applyProject(m.project);
+      return true;
+    }
+  } catch (e) {
+    // Corrupted JSON or localStorage error — fall through to legacy migration
+    // but surface the cause so users can diagnose lost state.
+    console.warn('shade-analyser: failed to read project from localStorage:', e);
+  }
+
+  // Legacy: only trees were ever persisted. Wrap them as a v1 project.
+  try {
+    const rawTrees = localStorage.getItem(TREES_STORAGE_KEY);
+    if (!rawTrees) return false;
+    const trees = JSON.parse(rawTrees);
+    if (!Array.isArray(trees) || trees.length === 0) return false;
+    const project = {
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      app: 'shade-analyser',
+      savedAt: new Date().toISOString(),
+      name: 'Migrated from legacy trees',
+      obstructions: { trees },
+    };
+    applyProject(project);
+    saveProjectToStorage(); // upgrade in-place
+    return true;
+  } catch (e) {
+    console.warn('shade-analyser: failed to migrate legacy tree data:', e);
+    return false;
+  }
+}
+
+/** Trigger a browser download of the current project as a JSON file. */
+function downloadProjectFile() {
+  const proj = snapshotProject();
+  const blob = new Blob([JSON.stringify(proj, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href     = url;
+  a.download = `shade-analyser-project-${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Read a user-selected JSON file and apply it as the project. */
+function loadProjectFile(file, done) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const obj = JSON.parse(reader.result);
+      const m   = migrateProject(obj);
+      if (!m.ok) {
+        alert('Could not load project:\n' + m.warnings.join('\n'));
+        if (done) done(false);
+        return;
+      }
+      const r = applyProject(m.project);
+      saveProjectToStorage();
+      if (r.warnings.length || m.warnings.length) {
+        const all = [...m.warnings, ...r.warnings];
+        // Non-fatal: notify the user but keep what was applied.
+        console.warn('Project loaded with warnings:', all);
+      }
+      if (done) done(true);
+    } catch (e) {
+      alert('Invalid project file: ' + e.message);
+      if (done) done(false);
+    }
+  };
+  reader.onerror = () => { alert('Could not read file.'); if (done) done(false); };
+  reader.readAsText(file);
 }
 
 /** Returns true if point (px, py) lies within the shadow cast by tree (crown ellipse + optional cylinder). */
@@ -4464,7 +4811,7 @@ function heavyUpdate(){
   drawSceneMap();
   if (leafletActive) updateLeafletShadows();
 }
-function fullUpdate(){drawArray();heavyUpdate();}
+function fullUpdate(){drawArray();heavyUpdate();scheduleSaveProject();}
 
 // ── UI controls ────────────────────────────────────────────────────────────
 document.getElementById('clearBtn').addEventListener('click',()=>{
@@ -4537,6 +4884,35 @@ document.getElementById('loadTreesBtn').addEventListener('click', () => {
   } else {
     alert('No saved tree data found.');
   }
+});
+
+// Save full project to a JSON file
+document.getElementById('saveProjectBtn').addEventListener('click', () => {
+  // Persist to localStorage too so a refresh restores the same state.
+  saveProjectToStorage();
+  downloadProjectFile();
+  const btn = document.getElementById('saveProjectBtn');
+  const orig = btn.textContent;
+  btn.textContent = '✓ Saved';
+  setTimeout(() => { btn.textContent = orig; }, 1200);
+});
+
+// Load full project from a JSON file (via hidden file input)
+document.getElementById('loadProjectBtn').addEventListener('click', () => {
+  document.getElementById('loadProjectFile').click();
+});
+document.getElementById('loadProjectFile').addEventListener('change', function () {
+  const file = this.files && this.files[0];
+  this.value = ''; // allow re-selecting the same file later
+  if (!file) return;
+  loadProjectFile(file, ok => {
+    if (ok) {
+      const btn = document.getElementById('loadProjectBtn');
+      const orig = btn.textContent;
+      btn.textContent = '✓ Loaded';
+      setTimeout(() => { btn.textContent = orig; }, 1200);
+    }
+  });
 });
 
 // Clear all trees
@@ -4818,8 +5194,9 @@ document.getElementById('econBatSizeSelect').addEventListener('change', () => {
   // Size and draw new canvases
   resizeMapCanvas();
 
-  // Restore any previously saved trees from localStorage
-  loadTreesFromStorage();
+  // Restore previously saved project from localStorage (preferred), with
+  // automatic migration from the legacy trees-only key when needed.
+  loadProjectFromStorage();
 
   fullUpdate();
 
