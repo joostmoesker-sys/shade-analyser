@@ -2895,17 +2895,19 @@ function updateLeafletShadows() {
       const ax = tree.x, ay = tree.y;
       const bx = tree.x + cylLen * ux, by = tree.y + cylLen * uy;
       // Build stadium polygon: far semicircle + near semicircle
+      // Far cap (0→π): bump points outward in shadow direction (away from tree).
+      // Near cap (π→2π): bump points anti-shadow (toward sun).
       const Nh = 12;
       const cylPts = [];
       for (let i = 0; i <= Nh; i++) {
-        const a = Math.PI + (i / Nh) * Math.PI;   // far end: angles π..2π
+        const a = (i / Nh) * Math.PI;             // far end: angles 0..π
         const px = bx + cr * Math.cos(a) * vx + cr * Math.sin(a) * ux;
         const py = by + cr * Math.cos(a) * vy + cr * Math.sin(a) * uy;
         const ll = enuToLatLng(px, py, arrayOriginLat, arrayOriginLng);
         cylPts.push([ll.lat, ll.lng]);
       }
       for (let i = 0; i <= Nh; i++) {
-        const a = (i / Nh) * Math.PI;             // near end: angles 0..π
+        const a = Math.PI + (i / Nh) * Math.PI;   // near end: angles π..2π
         const px = ax + cr * Math.cos(a) * vx + cr * Math.sin(a) * ux;
         const py = ay + cr * Math.cos(a) * vy + cr * Math.sin(a) * uy;
         const ll = enuToLatLng(px, py, arrayOriginLat, arrayOriginLng);
