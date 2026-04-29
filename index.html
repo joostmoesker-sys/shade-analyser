@@ -2240,32 +2240,44 @@ function drawMapTreeShadows() {
 
 function drawMapTree(tree) {
   const {mx, my} = sceneToMap(tree.x, tree.y);
-  const rp = tree.crownRadius * MAP_SCALE;
+  const rx = tree.crownRadius * MAP_SCALE;          // horizontal half-width (m → px)
+  const ry = tree.height      * MAP_SCALE / 2;      // vertical half-height  (m → px)
+  const cy = my - ry;                               // ellipse centre: base sits at my
   const isSel = tree.id === selectedTreeId;
 
-  // Dark inner
-  mapCtx.fillStyle = isSel ? '#1a4520' : '#0d2010';
-  mapCtx.beginPath(); mapCtx.arc(mx, my, rp * 0.55, 0, 2*Math.PI); mapCtx.fill();
+  mapCtx.save();
 
-  // Crown gradient
-  const gr = mapCtx.createRadialGradient(mx - rp*0.3, my - rp*0.3, 0, mx, my, rp);
-  gr.addColorStop(0, isSel ? '#86efac' : '#4ade80');
-  gr.addColorStop(0.65, isSel ? '#22c55e' : '#16a34a');
-  gr.addColorStop(1,   isSel ? '#14532d' : '#052e16');
+  // Clipping to ellipse so the gradient is contained
+  mapCtx.beginPath();
+  mapCtx.ellipse(mx, cy, rx, ry, 0, 0, 2 * Math.PI);
+  mapCtx.clip();
+
+  // Vertical green-to-dark gradient (light at top, darker towards base)
+  const gr = mapCtx.createLinearGradient(mx, cy - ry, mx, cy + ry);
+  gr.addColorStop(0,    isSel ? '#a7f3d0' : '#86efac');   // top — light green
+  gr.addColorStop(0.45, isSel ? '#22c55e' : '#16a34a');   // mid
+  gr.addColorStop(1,    isSel ? '#14532d' : '#052e16');   // base — dark green
   mapCtx.fillStyle = gr;
-  mapCtx.beginPath(); mapCtx.arc(mx, my, rp, 0, 2*Math.PI); mapCtx.fill();
+  mapCtx.fillRect(mx - rx, cy - ry, rx * 2, ry * 2);
 
-  if (isSel) {
-    mapCtx.strokeStyle = '#fbbf24'; mapCtx.lineWidth = 2; mapCtx.setLineDash([3,2]);
-    mapCtx.beginPath(); mapCtx.arc(mx, my, rp + 3, 0, 2*Math.PI); mapCtx.stroke();
-    mapCtx.setLineDash([]);
-  }
+  mapCtx.restore();
 
-  // Height label
-  const fs = Math.max(8, Math.min(11, rp * 0.6));
-  mapCtx.fillStyle = '#fff'; mapCtx.font = `bold ${fs}px sans-serif`;
-  mapCtx.textAlign = 'center'; mapCtx.textBaseline = 'middle';
-  mapCtx.fillText(tree.height + 'm', mx, my);
+  // Thin dark outline
+  mapCtx.strokeStyle = isSel ? '#fbbf24' : '#052e16';
+  mapCtx.lineWidth   = isSel ? 2 : 1;
+  if (isSel) mapCtx.setLineDash([3, 2]);
+  mapCtx.beginPath();
+  mapCtx.ellipse(mx, cy, rx, ry, 0, 0, 2 * Math.PI);
+  mapCtx.stroke();
+  mapCtx.setLineDash([]);
+
+  // Height label at visual centre
+  const fs = Math.max(8, Math.min(11, rx * 0.65));
+  mapCtx.fillStyle = '#fff';
+  mapCtx.font = `bold ${fs}px sans-serif`;
+  mapCtx.textAlign = 'center';
+  mapCtx.textBaseline = 'middle';
+  mapCtx.fillText(tree.height + 'm', mx, cy);
   mapCtx.textBaseline = 'alphabetic';
 }
 
