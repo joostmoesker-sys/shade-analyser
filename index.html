@@ -365,9 +365,9 @@
 
     <!-- ══ Economic Forecast with Battery ══════════════════════════════════ -->
     <div class="card" id="econForecastCard">
-      <h3>🔋 Economic Forecast &mdash; Battery + Self-Consumption
-        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">
-          &nbsp;64 kWh battery &middot; house load model &middot; Dutch dynamic tariffs
+      <h3>🔋 Economic Forecast — Battery + Self-Consumption
+        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400;margin-left:4px">
+          64 kWh battery · house load model · Dutch dynamic tariffs
         </span>
       </h3>
 
@@ -3497,12 +3497,8 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
     // Clamp SOC
     soc = Math.max(0, Math.min(batCapKwh, soc));
 
-    // Track monthly savings
-    const hourRevenue  = (pvForLoad + (useBattery ? 0 : 0)) * buyPrice; // consumed at buy price
-    const hCostActual  = residualLoad > 1e-4 ? residualLoad * buyPrice : 0;
-    // These are accumulated above; use a simpler monthly breakdown below
-    const hBaseline    = load * buyPrice;
-    monthlySavingsBat[month]   += hBaseline; // will subtract actuals after loop
+    // Accumulate baseline cost by month for the monthly savings chart
+    monthlySavingsBat[month] += load * buyPrice; // will be replaced by scaled savings below
   }
 
   // ── Compute monetary totals ───────────────────────────────────────────────

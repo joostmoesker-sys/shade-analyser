@@ -267,7 +267,7 @@ The **Economic Forecast** panel (at the bottom of the right column) lets you eva
 
 - **Base**: 12 kWh/day, distributed with morning peak (06–09 h) and evening peak (18–22 h)
 - **Heat pump**: seasonal — full load Dec–Jan, tapering through autumn/spring, zero Jun–Aug
-- **Variation**: ±5% deterministic daily variation for realism
+- **Variation**: ±5% deterministic daily variation (based on a fixed `sin(doy)` formula — fully reproducible) for realism
 - Total yearly load ≈ 9–11 MWh (realistic for a Dutch large detached house + heat pump)
 
 ### Tariff Model
