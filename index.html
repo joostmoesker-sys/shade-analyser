@@ -1256,13 +1256,15 @@ const CONFIG_COST = { A:850, B:850, C:850, D:650, E:650, F:1205, G:1805, H:850, 
 const MIN_ROI_DISPLAY_YEARS = 5;
 
 // ── Battery storage constants ───────────────────────────────────────────────
-const BATT_CAPACITY_KWH = 64;              // nameplate capacity
-const BATT_MIN_SOC      = 0.05;            // 5 % safety floor
-const BATT_MAX_SOC      = 1.00;
-const BATT_EFF_C        = Math.sqrt(0.85); // charge efficiency   ≈ 0.922
-const BATT_EFF_D        = Math.sqrt(0.85); // discharge efficiency ≈ 0.922
-const HP_POWER_KW       = 12;              // heat-pump rated electrical power (kW)
-const HOUSE_BASE_KWH_HR = 12 / 24;        // base load 12 kWh/day → 0.5 kW constant
+const BATT_CAPACITY_KWH    = 64;              // nameplate capacity
+const BATT_MIN_SOC         = 0.05;            // 5 % safety floor
+const BATT_MAX_SOC         = 1.00;
+const BATT_EFF_C           = Math.sqrt(0.85); // charge efficiency   ≈ 0.922
+const BATT_EFF_D           = Math.sqrt(0.85); // discharge efficiency ≈ 0.922
+const BATT_MAX_CHARGE_KW   = 25;              // max charge power (≈ 0.4 C for 64 kWh)
+const BATT_MAX_DISCHARGE_KW = 25;             // max discharge power
+const HP_POWER_KW          = 12;              // heat-pump rated electrical power (kW)
+const HOUSE_BASE_LOAD_KW   = 12 / 24;        // base load 12 kWh/day → 0.5 kW constant
 
 // Monthly heat-pump duty-cycle fractions (average fraction of HP_POWER_KW active per hour).
 // Tuned for ~3 800 kWh/yr HP electricity + ~4 380 kWh base = ~8 180 kWh/yr total.
@@ -1287,7 +1289,7 @@ const HOURLY_LOAD = new Float32Array(12 * 24);
 (function buildHourlyLoad() {
   for (let m = 0; m < 12; m++)
     for (let h = 0; h < 24; h++)
-      HOURLY_LOAD[m * 24 + h] = HOUSE_BASE_KWH_HR + HP_POWER_KW * HP_HEATING_FRAC[m] * HP_DIURNAL[h];
+      HOURLY_LOAD[m * 24 + h] = HOUSE_BASE_LOAD_KW + HP_POWER_KW * HP_HEATING_FRAC[m] * HP_DIURNAL[h];
 })();
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -3453,7 +3455,8 @@ function simulateBattery(mhPV_totals, options) {
         for (const h of nightH.slice(0, 4)) {
           const spaceE = (BATT_MAX_SOC - socStart) * BATT_E;
           if (spaceE < 0.001) break;
-          const gridIn = Math.min(BATT_E, spaceE / η_c);
+          // Limit to 1 hour of charging at max charge power
+          const gridIn = Math.min(BATT_MAX_CHARGE_KW, spaceE / η_c);
           const battIn = gridIn * η_c;
           socStart    += battIn / BATT_E;
           gcFromGrid[h] = gridIn;
@@ -3476,7 +3479,8 @@ function simulateBattery(mhPV_totals, options) {
         // PV surplus: cover load, charge battery, then export remainder
         selfConsume[h]  = load;
         const spaceE    = (BATT_MAX_SOC - soc) * BATT_E;
-        const chargeE   = Math.min(net * η_c, spaceE);   // energy stored
+        // Limit charge to max charge rate (kWh per 1-hour slot)
+        const chargeE   = Math.min(net * η_c, spaceE, BATT_MAX_CHARGE_KW * η_c); // energy stored
         soc            += chargeE / BATT_E;
         pvToGrid[h]     = net - chargeE / η_c;            // surplus after battery
       } else {
@@ -3484,7 +3488,8 @@ function simulateBattery(mhPV_totals, options) {
         selfConsume[h]   = pv;
         const deficit    = -net;
         const availE     = (soc - BATT_MIN_SOC) * BATT_E; // energy in battery above floor
-        const drawE      = Math.min(deficit / η_d, availE);// kWh drawn from battery
+        // Limit discharge to max discharge rate (kWh per 1-hour slot)
+        const drawE      = Math.min(deficit / η_d, availE, BATT_MAX_DISCHARGE_KW / η_d); // kWh drawn
         const delivE     = drawE * η_d;                    // kWh delivered to load
         soc             -= drawE / BATT_E;
         battToLoad[h]    = delivE;
@@ -3495,6 +3500,7 @@ function simulateBattery(mhPV_totals, options) {
     // ── Night sell-back pass ────────────────────────────────────────────────
     // Any battery energy remaining above BATT_MIN_SOC is sold to the grid,
     // dispatched greedily from the most expensive night hour downward.
+    // Each hour is limited to BATT_MAX_DISCHARGE_KW.
     const battToGrid = new Float64Array(24);
     if (soc > BATT_MIN_SOC + 1e-6) {
       const nightH = [];
@@ -3502,10 +3508,12 @@ function simulateBattery(mhPV_totals, options) {
       nightH.sort((a, b) => APX[b] - APX[a]); // descending price
       for (const h of nightH) {
         if (soc <= BATT_MIN_SOC + 1e-6) break;
-        const availE    = (soc - BATT_MIN_SOC) * BATT_E;
-        const sellE     = availE * η_d; // kWh delivered to grid
-        battToGrid[h]   = sellE;
-        soc            -= availE / BATT_E; // deplete to floor
+        const availE  = (soc - BATT_MIN_SOC) * BATT_E;
+        // Limit discharge to max discharge rate per hour
+        const drawE   = Math.min(availE, BATT_MAX_DISCHARGE_KW / η_d);
+        const sellE   = drawE * η_d;  // kWh delivered to grid
+        battToGrid[h] = sellE;
+        soc          -= drawE / BATT_E;
       }
     }
 
@@ -3573,10 +3581,11 @@ function displayBatteryResults(monthlyResults, cfgId) {
     for (let h = 0; h < 24; h++) dayLoad += HOURLY_LOAD[m * 24 + h];
     annualLoad += dayLoad * DAYS_PER_MONTH[m];
   }
-  const pvUsedInHouse = ann.selfConsumedKwh + ann.battSelfConsumedKwh;
-  const selfUseRate   = (ann.gridExportKwh + pvUsedInHouse) > 0
-    ? pvUsedInHouse / (pvUsedInHouse + ann.gridExportKwh) * 100 : 0;
-  const co2Saved      = pvUsedInHouse * 0.35 / 1000; // tonnes CO₂
+  const pvUsedInHouse    = ann.selfConsumedKwh + ann.battSelfConsumedKwh;
+  const totalPvGenerated = pvUsedInHouse + ann.gridExportKwh; // total PV output (used + exported)
+  const selfUseRate      = totalPvGenerated > 0
+    ? pvUsedInHouse / totalPvGenerated * 100 : 0;
+  const co2Saved         = pvUsedInHouse * 0.35 / 1000; // tonnes CO₂
 
   // ── Headline ────────────────────────────────────────────────────────────
   document.getElementById('battHeadline').textContent = `€${ann.netSavings.toFixed(0)} / year`;
