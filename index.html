@@ -286,14 +286,7 @@
           <input type="checkbox" id="weatherToggle" checked style="accent-color:#38bdf8;width:13px;height:13px">
           Weather-adjusted &nbsp;<span style="color:#38bdf8">(Cloud Correction 2025 — KNMI/PVGIS Kc, Neer NL)</span>
         </label>
-        <select id="perfModeSelect" style="background:#111827;color:#9ca3af;border:1px solid #374151;border-radius:5px;padding:3px 7px;font-size:0.75rem">
-          <option value="auto" selected>Auto Workers</option>
-          <option value="1">1 Worker (Safe)</option>
-          <option value="4">4 Workers</option>
-          <option value="8">8 Workers</option>
-          <option value="16">16 Workers</option>
-          <option value="32">32 Workers</option>
-        </select>
+
         <span id="simModeLabel" style="font-size:0.71rem;color:#4b5563"></span>
       </div>
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:0.77rem;color:#9ca3af">
@@ -2179,12 +2172,17 @@ function resizeMapCanvas() {
 let leafletInstance   = null;
 let leafletActive     = false;
 let leafletTreeLayers = []; // [{treeId, circle, marker}]
-let leafletArrayRect  = null;
+let leafletArrayLayers = []; // L.polygon layers for the two array sections
+let leafletArrayHandle = null; // draggable center handle
 
 // Boshei 4, Neer, Netherlands — public GPS coordinates for map centering (±5 m precision)
 const BOSHEI_LAT = 51.271;
 const BOSHEI_LNG = 5.990;
 const EARTH_RADIUS_M = 6371000;
+
+// Mutable array origin (lat/lng of array centre — updated when user drags the array)
+let arrayOriginLat = BOSHEI_LAT;
+let arrayOriginLng = BOSHEI_LNG;
 
 function latLngToENU(lat, lng, refLat, refLng) {
   const dLat = (lat - refLat) * Math.PI / 180;
@@ -2197,6 +2195,109 @@ function enuToLatLng(x, y, refLat, refLng) {
     lat: refLat + (y / EARTH_RADIUS_M) * 180 / Math.PI,
     lng: refLng + (x / (EARTH_RADIUS_M * Math.cos(refLat * Math.PI / 180))) * 180 / Math.PI
   };
+}
+
+/**
+ * Compute Leaflet lat/lng polygon corners for the PV array footprint.
+ * Accounts for azimuth rotation and per-section tilt projection onto the horizontal plane.
+ *
+ * Coordinate convention (ENU):
+ *   row_dir  — unit vector in the azimuth direction (down the slope, projected on ground)
+ *   col_dir  — unit vector perpendicular to row_dir (90° CW when viewed from above)
+ *
+ * @returns {{ sec0: [lat,lng][], sec1: [lat,lng][] }}
+ */
+function computeArrayPolygonLatLngs(originLat, originLng) {
+  const az_rad = SECTIONS[0].azimuth * Math.PI / 180; // both sections share az=225°
+
+  // Row direction (toward azimuth = downhill): E=sin(az), N=cos(az)
+  const rowE = Math.sin(az_rad);
+  const rowN = Math.cos(az_rad);
+
+  // Column direction (90° CW from row_dir in top-down view): E=cos(az), N=-sin(az)
+  const colE = Math.cos(az_rad);
+  const colN = -Math.sin(az_rad);
+
+  const halfW = (COLS * COL_SPACING) / 2; // half-width along column axis (m)
+
+  // Section 0: rows 0..SECTION_DIV (tilt = SECTIONS[0].tilt)
+  const nRows0  = SECTION_DIV + 1;
+  const tilt0   = Math.abs(SECTIONS[0].tilt) * Math.PI / 180;
+  const depth0  = nRows0 * ROW_SPACING * Math.cos(tilt0); // horizontal projection
+
+  // Section 1: rows SECTION_DIV+1..ROWS-1 (tilt = SECTIONS[1].tilt)
+  const nRows1  = ROWS - SECTION_DIV - 1;
+  const tilt1   = Math.abs(SECTIONS[1].tilt) * Math.PI / 180;
+  const depth1  = nRows1 * ROW_SPACING * Math.cos(tilt1);
+
+  const totalDepth = depth0 + depth1;
+
+  // Signed distance along row_dir from array centre:
+  //   yTop   < 0  (uphill edge — against row_dir)
+  //   yBreak      (transition between sections)
+  //   yBot   > 0  (downhill edge — in row_dir direction)
+  const yTop   = -(totalDepth / 2);
+  const yBreak = yTop + depth0;
+  const yBot   = +(totalDepth / 2);
+
+  /** Convert (colOffset, rowOffset) in the rotated frame to Leaflet [lat, lng]. */
+  function ll(col, y) {
+    const e = col * colE + y * rowE;
+    const n = col * colN + y * rowN;
+    const p = enuToLatLng(e, n, originLat, originLng);
+    return [p.lat, p.lng];
+  }
+
+  return {
+    sec0: [ ll(-halfW, yTop), ll(+halfW, yTop), ll(+halfW, yBreak), ll(-halfW, yBreak) ],
+    sec1: [ ll(-halfW, yBreak), ll(+halfW, yBreak), ll(+halfW, yBot), ll(-halfW, yBot) ],
+  };
+}
+
+/** (Re-)draw the PV array footprint polygons and draggable handle on the Leaflet map. */
+function updateLeafletArrayPolygon() {
+  if (!leafletInstance) return;
+
+  // Remove stale layers
+  leafletArrayLayers.forEach(l => l.remove());
+  leafletArrayLayers = [];
+  if (leafletArrayHandle) { leafletArrayHandle.remove(); leafletArrayHandle = null; }
+
+  const { sec0, sec1 } = computeArrayPolygonLatLngs(arrayOriginLat, arrayOriginLng);
+
+  // Section 0 — top (blue, tilt +30°)
+  const poly0 = L.polygon(sec0, {
+    color: '#60a5fa', weight: 2, fillColor: '#60a5fa', fillOpacity: 0.18, interactive: false,
+  }).addTo(leafletInstance);
+
+  // Section 1 — bottom (orange, tilt −20°)
+  const poly1 = L.polygon(sec1, {
+    color: '#f97316', weight: 2, fillColor: '#f97316', fillOpacity: 0.18, interactive: false,
+  }).addTo(leafletInstance);
+
+  leafletArrayLayers.push(poly0, poly1);
+
+  // Draggable handle at array centre
+  const handleIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:22px;height:22px;background:#e94560;border:2px solid #fff;border-radius:50%;' +
+          'margin:-11px 0 0 -11px;cursor:move;display:flex;align-items:center;justify-content:center;' +
+          'font-size:12px;color:#fff;user-select:none">✥</div>',
+    iconSize: [0, 0],
+  });
+  const handle = L.marker([arrayOriginLat, arrayOriginLng], {
+    draggable: true, icon: handleIcon, zIndexOffset: 1000,
+  }).addTo(leafletInstance);
+
+  handle.on('drag', function () {
+    const ll = handle.getLatLng();
+    arrayOriginLat = ll.lat;
+    arrayOriginLng = ll.lng;
+    updateLeafletArrayPolygon();
+    syncTreeLayersToLeaflet();
+  });
+
+  leafletArrayHandle = handle;
 }
 
 function toggleOSMMap() {
@@ -2227,7 +2328,7 @@ function toggleOSMMap() {
 function initLeafletMap() {
   const mapDiv = document.getElementById('leafletMap');
   leafletInstance = L.map(mapDiv, { zoomControl: true, attributionControl: true })
-    .setView([BOSHEI_LAT, BOSHEI_LNG], 19);
+    .setView([arrayOriginLat, arrayOriginLng], 19);
 
   const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -2241,19 +2342,12 @@ function initLeafletMap() {
   L.control.layers({ 'Satellite (Esri)': satLayer, 'OSM Road': osmLayer }, {}, { position: 'topright' })
     .addTo(leafletInstance);
 
-  // PV array footprint rectangle (fixed at BOSHEI location)
-  const halfW = (COLS * COL_SPACING) / 2;
-  const halfH = (ROWS * ROW_SPACING) / 2;
-  const sw = enuToLatLng(-halfW, -halfH, BOSHEI_LAT, BOSHEI_LNG);
-  const ne = enuToLatLng(+halfW, +halfH, BOSHEI_LAT, BOSHEI_LNG);
-  leafletArrayRect = L.rectangle([[sw.lat, sw.lng], [ne.lat, ne.lng]], {
-    color: '#e94560', weight: 2, fillColor: '#e94560', fillOpacity: 0.2,
-    interactive: false,
-  }).addTo(leafletInstance);
+  // PV array footprint: two section polygons (rotated + tilt-projected) + draggable handle
+  updateLeafletArrayPolygon();
 
   // Click on map to add tree
   leafletInstance.on('click', function(e) {
-    const pos = latLngToENU(e.latlng.lat, e.latlng.lng, BOSHEI_LAT, BOSHEI_LNG);
+    const pos = latLngToENU(e.latlng.lat, e.latlng.lng, arrayOriginLat, arrayOriginLng);
     addTree(pos.x, pos.y);
     syncTreeLayersToLeaflet();
   });
@@ -2270,7 +2364,7 @@ function syncTreeLayersToLeaflet() {
   leafletTreeLayers = [];
 
   sceneTrees.forEach(tree => {
-    const pos = enuToLatLng(tree.x, tree.y, BOSHEI_LAT, BOSHEI_LNG);
+    const pos = enuToLatLng(tree.x, tree.y, arrayOriginLat, arrayOriginLng);
     const isSel = tree.id === selectedTreeId;
 
     // Visible crown circle
@@ -2295,7 +2389,7 @@ function syncTreeLayersToLeaflet() {
     marker.on('drag', function() {
       const ll = marker.getLatLng();
       circle.setLatLng(ll);
-      const np = latLngToENU(ll.lat, ll.lng, BOSHEI_LAT, BOSHEI_LNG);
+      const np = latLngToENU(ll.lat, ll.lng, arrayOriginLat, arrayOriginLng);
       tree.x = np.x; tree.y = np.y;
       recomputeTreeShadow(); scheduleUpdate();
     });
@@ -2328,10 +2422,8 @@ function runYearlySimulation() {
   if (simWorker) return; // already running
 
   const useWeather = document.getElementById('weatherToggle').checked;
-  const modeVal = document.getElementById('perfModeSelect')?.value || 'auto';
-  const nCPU = navigator.hardwareConcurrency || 4;
-  const nWorkers = modeVal === 'auto' ? Math.min(nCPU, 4) : parseInt(modeVal);
-  console.info(`Sim: using ${nWorkers} worker(s)`);
+  const nWorkers = Math.min(navigator.hardwareConcurrency || 4, 32);
+  console.info(`Sim: using ${nWorkers} worker(s) (${navigator.hardwareConcurrency} logical cores)`);
 
   const runBtn   = document.getElementById('runSimBtn');
   const abortBtn = document.getElementById('abortSimBtn');
@@ -2916,7 +3008,7 @@ document.getElementById('heatmapMonth')?.addEventListener('change', drawHeatmap)
 // Google Maps buttons
 document.getElementById('toggleGoogleMapBtn').addEventListener('click', toggleOSMMap);
 document.getElementById('centerBosheiBtn').addEventListener('click', () => {
-  if (leafletInstance) leafletInstance.setView([BOSHEI_LAT, BOSHEI_LNG], 19);
+  if (leafletInstance) leafletInstance.setView([arrayOriginLat, arrayOriginLng], 19);
 });
 
 // Resize canvases on window resize
@@ -2943,6 +3035,11 @@ window.addEventListener('resize', () => {
   resizeMapCanvas();
 
   fullUpdate();
+
+  // Auto-open OSM map once Leaflet is loaded (window.load fires after all scripts execute)
+  window.addEventListener('load', function () {
+    if (!leafletActive) toggleOSMMap();
+  });
 })();
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
