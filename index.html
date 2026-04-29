@@ -414,12 +414,13 @@ function poaIrradiance(dni, dhi, ghi, sun_alt_deg, sun_az_deg, tilt_deg, az_deg)
 
 function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
   if (tan_alt < 0.01) return false;
+  const sin_alt = tan_alt / Math.sqrt(1 + tan_alt * tan_alt);
   const sl  = Math.min(tree.height / tan_alt, MAX_SHADOW_LEN);
   const scx = tree.x - sl * Math.sin(az_rad), scy = tree.y - sl * Math.cos(az_rad);
   const dx = px - scx, dy = py - scy;
   const ux = -Math.sin(az_rad), uy = -Math.cos(az_rad);
   const along = dx*ux + dy*uy, perp = Math.abs(dx*uy - dy*ux);
-  const ra = Math.min(tree.crownRadius / tan_alt, MAX_SHADOW_AXIS), rp = tree.crownRadius;
+  const ra = Math.min(tree.crownRadius / sin_alt, MAX_SHADOW_AXIS), rp = tree.crownRadius;
   return (along*along)/(ra*ra) + (perp*perp)/(rp*rp) <= 1.0;
 }
 
@@ -923,9 +924,9 @@ function sectionOf(r) { return r <= SECTION_DIV ? 0 : 1; }
 // ── Colour palettes ────────────────────────────────────────────────────────
 const COL3 = ['#38bdf8', '#4ade80', '#fb923c'];
 const COL4 = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490'];
+const COL5 = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490', '#164e63'];
 const COL6 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24'];
 const COL8 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171'];
-const COL9 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171','#60a5fa'];
 
 // ── Monthly cloud-correction factors (Kc) for Neer, NL ────────────────────
 // Kc = actual POA irradiance / clear-sky POA irradiance, per calendar month.
@@ -990,13 +991,13 @@ const HOURLY_APX_PRICE_2025 = [
 const ROW_GROUPS  = [[0,1],[2,4],[5,7]];       // 2+3+3 rows: 1–2 | 3–5 | 6–8 (configs A/B)
 const ROW_GROUPS4 = [[0,1],[2,3],[4,5],[6,7]]; // 2+2+2+2 rows (configs F/G — 4 MPPTs)
 const COL_GROUPS  = [[0,2],[3,5],[6,8]];       // 3+3+3 cols  (configs D/E/H/I)
-const COL_GROUPS4 = [[0,1],[2,3],[4,5],[6,8]]; // 2+2+2+3 cols (configs J/K — 4 MPPTs)
+const COL_GROUPS5 = [[0,1],[2,3],[4,5],[6,7],[8,8]]; // 2+2+2+2+1 cols (configs J/K — 5 MPPTs)
 const DE_ROW_GROUPS = [[0,1],[2,4],[5,7]];     // 2+3+3 rows — 3×3 blocks on bottom (configs D/E)
 const DE_BLOCKS = DE_ROW_GROUPS.flatMap(([r0,r1]) => COL_GROUPS.map(([c0,c1]) => ({r0,r1,c0,c1})));
 // Column-span blocks for H/I (all 8 rows, 3 col groups)
 const HI_BLOCKS = COL_GROUPS.map(([c0,c1]) => ({r0:0, r1:ROWS-1, c0, c1}));
-// Column-span blocks for J/K (all 8 rows, 4 col groups)
-const JK_BLOCKS = COL_GROUPS4.map(([c0,c1]) => ({r0:0, r1:ROWS-1, c0, c1}));
+// Column-span blocks for J/K (all 8 rows, 5 col groups)
+const JK_BLOCKS = COL_GROUPS5.map(([c0,c1]) => ({r0:0, r1:ROWS-1, c0, c1}));
 
 /** Build ordered cell list for a row-wise snake (L): 8 rows × 9 cols, 12 panels/string */
 function buildSnakeRowCells() {
@@ -1031,7 +1032,7 @@ function buildSnakeColCells() {
 const SNAKE_ROW_CELLS = buildSnakeRowCells(); // 6 strings × 12 cells each (config L)
 const SNAKE_COL_CELLS = buildSnakeColCells(); // 6 strings × 12 cells each (config M)
 
-// ── Config definitions (A–I) ───────────────────────────────────────────────
+const COL9 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171','#60a5fa'];
 const CONFIGS = [
   {
     id:'A', label:'Option A', short:'A \u2014 SP',
@@ -1088,15 +1089,15 @@ const CONFIGS = [
     blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
-    id:'J', label:'Option J', short:'J \u2014 4\u00d7col TCT',
-    desc:'4 MPPTs \u00b7 V-TCT: column groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20139 (all 8 rows), cross-tied within each col-group',
-    cfgColor:'#67e8f9', mpptColors:COL4,
+    id:'J', label:'Option J', short:'J \u2014 5\u00d7col TCT',
+    desc:'5 MPPTs \u00b7 V-TCT: column groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 | 9 (all 8 rows), cross-tied within each col-group',
+    cfgColor:'#67e8f9', mpptColors:COL5,
     blocks: JK_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
-    id:'K', label:'Option K', short:'K \u2014 4\u00d7col SP',
-    desc:'4 MPPTs \u00b7 SP: column groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20139 (all 8 rows), each col = series string, strings in parallel',
-    cfgColor:'#fca5a5', mpptColors:COL4,
+    id:'K', label:'Option K', short:'K \u2014 5\u00d7col SP',
+    desc:'5 MPPTs \u00b7 SP: column groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 | 9 (all 8 rows), each col = series string, strings in parallel',
+    cfgColor:'#fca5a5', mpptColors:COL5,
     blocks: JK_BLOCKS.map((b,i)=>({...b,topo:'sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
@@ -1380,9 +1381,9 @@ function drawGroupDividers() {
       ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
     }
   }
-  // Column dividers for J/K (4 col groups: 0-1 | 2-3 | 4-5 | 6-8)
+  // Column dividers for J/K (5 col groups: 0-1 | 2-3 | 4-5 | 6-7 | 8)
   if (id === 'J' || id === 'K') {
-    for (const sepCol of [1, 3, 5]) {
+    for (const sepCol of [1, 3, 5, 7]) {
       const rctA = panelRect(0, sepCol);
       const x = rctA.x + rctA.w + GAP/2;
       ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
@@ -1962,8 +1963,9 @@ function updateTreeCountLabel() {
 /** Returns true if point (px, py) lies within the shadow ellipse cast by tree. */
 function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
   if (tan_alt < 0.01) return false;
+  const sin_alt = tan_alt / Math.sqrt(1 + tan_alt * tan_alt);
   const shadow_len = Math.min(tree.height / tan_alt, MAX_SHADOW_LEN);
-  // Shadow centre = ground position of tree-tip shadow
+  // Shadow centre = ground position of crown-centre shadow
   const scx = tree.x - shadow_len * Math.sin(az_rad);
   const scy = tree.y - shadow_len * Math.cos(az_rad);
   const dx = px - scx, dy = py - scy;
@@ -1971,7 +1973,7 @@ function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
   const ux = -Math.sin(az_rad), uy = -Math.cos(az_rad);
   const along = dx * ux + dy * uy;               // component along shadow axis
   const perp  = Math.abs(dx * uy - dy * ux);     // perpendicular component
-  const ra    = Math.min(tree.crownRadius / tan_alt, MAX_SHADOW_AXIS); // elongated semi-axis
+  const ra    = Math.min(tree.crownRadius / sin_alt, MAX_SHADOW_AXIS); // elongated semi-axis
   const rp    = tree.crownRadius;                                       // lateral semi-axis
   return (along * along) / (ra * ra) + (perp * perp) / (rp * rp) <= 1.0;
 }
@@ -2140,6 +2142,7 @@ function drawMapArray() {
 function drawMapTreeShadows() {
   const az_rad  = lastSunPos.azimuth  * Math.PI / 180;
   const tan_alt = Math.tan(lastSunPos.altitude * Math.PI / 180); // altitude already > 0.5°
+  const sin_alt = Math.sin(lastSunPos.altitude * Math.PI / 180);
   const foliageFactor = FOLIAGE[buildDateFromUI().getMonth()];
 
   mapCtx.save(); mapCtx.globalAlpha = 0.35;
@@ -2151,7 +2154,7 @@ function drawMapTreeShadows() {
     const {mx: tx, my: ty} = sceneToMap(tree.x, tree.y);
 
     const rp = tree.crownRadius * foliageFactor * MAP_SCALE;
-    const ra = Math.min(tree.crownRadius * foliageFactor / tan_alt, MAX_SHADOW_AXIS) * MAP_SCALE;
+    const ra = Math.min(tree.crownRadius * foliageFactor / sin_alt, MAX_SHADOW_AXIS) * MAP_SCALE;
     const screenAngle = Math.atan2(ey - ty, ex - tx);
 
     mapCtx.save();
@@ -2290,8 +2293,8 @@ mapCanvas.addEventListener('mousemove', e => {
     const {x, y} = mapToScene(mx, my);
     arraySceneX = x - mapDragArray.offX;
     arraySceneY = y - mapDragArray.offY;
-    recomputeTreeShadow(); drawSceneMap();
-    if (leafletActive) updateLeafletArrayPolygon();
+    recomputeTreeShadow(); drawSceneMap(); scheduleUpdate();
+    if (leafletActive) refreshLeafletArrayGeometry();
     return;
   }
   if (mapRotateArray) {
@@ -2301,7 +2304,7 @@ mapCanvas.addEventListener('mousemove', e => {
     const angle = Math.atan2(y - arraySceneY, x - arraySceneX) * 180 / Math.PI;
     arrayRotDeg = angle - mapRotateArray.angleOffset;
     recomputeTreeShadow(); drawSceneMap(); scheduleUpdate();
-    if (leafletActive) updateLeafletArrayPolygon();
+    if (leafletActive) refreshLeafletArrayGeometry();
     return;
   }
   if (!mapDragTree) return;
@@ -2359,8 +2362,8 @@ mapCanvas.addEventListener('touchmove', e => {
     const {x, y} = mapToScene(mx, my);
     arraySceneX = x - mapDragArray.offX;
     arraySceneY = y - mapDragArray.offY;
-    recomputeTreeShadow(); drawSceneMap();
-    if (leafletActive) updateLeafletArrayPolygon();
+    recomputeTreeShadow(); drawSceneMap(); scheduleUpdate();
+    if (leafletActive) refreshLeafletArrayGeometry();
     return;
   }
   if (mapRotateArray) {
@@ -2369,7 +2372,7 @@ mapCanvas.addEventListener('touchmove', e => {
     const angle = Math.atan2(y - arraySceneY, x - arraySceneX) * 180 / Math.PI;
     arrayRotDeg = angle - mapRotateArray.angleOffset;
     recomputeTreeShadow(); drawSceneMap(); scheduleUpdate();
-    if (leafletActive) updateLeafletArrayPolygon();
+    if (leafletActive) refreshLeafletArrayGeometry();
     return;
   }
   if (!mapDragTree) return;
@@ -2462,6 +2465,27 @@ function computeArrayPolygonLatLngs(originLat, originLng) {
   };
 }
 
+/** Lightweight geometry refresh — updates polygon corners and handle positions in-place.
+ *  Call this during drag to avoid recreating the markers that are currently being dragged. */
+function refreshLeafletArrayGeometry() {
+  if (!leafletInstance || leafletArrayLayers.length < 2) return;
+  const { sec0, sec1 } = computeArrayPolygonLatLngs(arrayOriginLat, arrayOriginLng);
+  leafletArrayLayers[0].setLatLngs(sec0);
+  leafletArrayLayers[1].setLatLngs(sec1);
+  if (leafletArrayHandle) {
+    const c = enuToLatLng(arraySceneX, arraySceneY, arrayOriginLat, arrayOriginLng);
+    leafletArrayHandle.setLatLng([c.lat, c.lng]);
+  }
+  if (leafletArrayRotHandle) {
+    const rot_rad = arrayRotDeg * Math.PI / 180;
+    const rDist   = COLS * COL_SPACING / 2 + 3;
+    const rhEX    = rDist * Math.cos(rot_rad) + arraySceneX;
+    const rhEY    = rDist * Math.sin(rot_rad) + arraySceneY;
+    const rotLL   = enuToLatLng(rhEX, rhEY, arrayOriginLat, arrayOriginLng);
+    leafletArrayRotHandle.setLatLng([rotLL.lat, rotLL.lng]);
+  }
+}
+
 /** (Re-)draw the PV array footprint polygons, move handle and rotate handle on the Leaflet map. */
 function updateLeafletArrayPolygon() {
   if (!leafletInstance) return;
@@ -2502,8 +2526,10 @@ function updateLeafletArrayPolygon() {
     const ll = moveHandle.getLatLng();
     const enu = latLngToENU(ll.lat, ll.lng, arrayOriginLat, arrayOriginLng);
     arraySceneX = enu.x; arraySceneY = enu.y;
-    updateLeafletArrayPolygon();
-    syncTreeLayersToLeaflet();
+    recomputeTreeShadow();
+    refreshLeafletArrayGeometry();
+    updateLeafletShadows();
+    scheduleUpdate();
   });
   leafletArrayHandle = moveHandle;
 
@@ -2528,7 +2554,8 @@ function updateLeafletArrayPolygon() {
     const pos = latLngToENU(ll.lat, ll.lng, arrayOriginLat, arrayOriginLng);
     arrayRotDeg = Math.atan2(pos.y - arraySceneY, pos.x - arraySceneX) * 180 / Math.PI;
     recomputeTreeShadow();
-    updateLeafletArrayPolygon();
+    refreshLeafletArrayGeometry();
+    updateLeafletShadows();
     scheduleUpdate();
   });
   leafletArrayRotHandle = rotHandle;
@@ -2647,6 +2674,7 @@ function updateLeafletShadows() {
 
   const az_rad  = lastSunPos.azimuth  * Math.PI / 180;
   const tan_alt = Math.tan(lastSunPos.altitude * Math.PI / 180);
+  const sin_alt = Math.sin(lastSunPos.altitude * Math.PI / 180);
   const foliageFactor = FOLIAGE[buildDateFromUI().getMonth()];
 
   // Shadow direction unit vectors (ENU: x=East, y=North)
@@ -2662,7 +2690,7 @@ function updateLeafletShadows() {
     // Shadow-ellipse centre (ENU)
     const scx = tree.x - shadow_len * Math.sin(az_rad);
     const scy = tree.y - shadow_len * Math.cos(az_rad);
-    const ra = Math.min(cr / tan_alt, MAX_SHADOW_AXIS); // elongated semi-axis
+    const ra = Math.min(cr / sin_alt, MAX_SHADOW_AXIS); // elongated semi-axis
     const rp = cr;                                       // lateral semi-axis
 
     // Approximate ellipse with 24-point polygon
