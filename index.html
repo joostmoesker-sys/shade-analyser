@@ -3687,9 +3687,10 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
  * @param {Float64Array} pvKwh     — hourly PV (8760)
  * @param {Float64Array} loadKwh   — hourly load (8760)
  * @param {Float64Array} tariffs   — hourly buy tariff (8760)
+ * @param {number}       sellFactor — sell tariff = buy × sellFactor (passed through from simulation opts)
  * @returns Array(365) of daily stat objects
  */
-function precomputeDailyStats(pvKwh, loadKwh, tariffs) {
+function precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor = SELL_PRICE_FACTOR_DEF) {
   const days = 365;
   const daily = [];
   for (let d = 0; d < days; d++) {
@@ -3707,7 +3708,7 @@ function precomputeDailyStats(pvKwh, loadKwh, tariffs) {
       const isDeficit = loadKwh[idx] > pvKwh[idx];
       const value = isDeficit
         ? p * batteryParams.selfUseMultiplier
-        : p * SELL_PRICE_FACTOR_DEF;
+        : p * sellFactor;
       hourValues.push({ hour: h, value, price: p, isDeficit });
     }
     // Sort hours by value descending — used for priority allocation
@@ -3796,7 +3797,7 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
   const sellFactor   = options.sellFactor ?? SELL_PRICE_FACTOR_DEF;
 
   // Precompute daily statistics (needed for smart SOC floor + priority allocation)
-  const dailyStats = precomputeDailyStats(pvKwh, loadKwh, tariffs);
+  const dailyStats = precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor);
 
   // State
   let soc = BATTERY_CAPACITY_KWH * 0.5;  // start at 50% SOC
