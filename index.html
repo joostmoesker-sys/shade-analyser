@@ -648,6 +648,7 @@ function blockHTCT_hc(r0, r1, c0, c1, nPts=100) {
 }
 
 
+function stringIV_sim(Gs, nPts=100) {
   const fns    = Gs.map(G => makeVofI(cachedPanelIV(G), true));
   const maxIsc = Math.max(...Gs.map(G => PNL.Isc*Math.max(G, 0.001)));
   const result = [];
