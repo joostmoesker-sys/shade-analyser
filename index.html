@@ -4023,7 +4023,12 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
   // was mathematically unreachable for any sellFactor < 0.92).
   const exportThreshold = avgFuturePrice * sellFactor + (params.minProfitSpread || 0.06);
   for (let s = 0; s < states; s++) {
-    dp[n][s] = s * socStep * avgFuturePrice * 0.6 * 0.3;
+    // Terminal value: energy still stored at the end of the horizon is assumed to be
+    // self-consumed in the future at average price × selfUseMultiplier (90% confidence).
+    // The previous 0.6×0.3 = 0.18 factor was far too aggressive — it made the DP
+    // strongly prefer near-term export over saving for future self-use, propagating
+    // a myopic bias back through the entire 48 h plan.
+    dp[n][s] = s * socStep * avgFuturePrice * (params.selfUseMultiplier || 1.05) * 0.9;
   }
 
   // Backward induction
@@ -4201,26 +4206,34 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
       let chargedPv = 0, gridCharge = 0, dischargedSelf = 0, dischargedExport = 0;
 
       if (net >= 0) {
-        // ── Surplus PV: charge battery first, export the rest ────────────────
-        const canCharge = Math.min(net, (BATTERY_CAPACITY_KWH - soc) / CHARGE_EFF_PV, MAX_BATTERY_POWER_KW);
-        chargedPv = canCharge;
-        soc += chargedPv * CHARGE_EFF_PV;
-        batteryFromPv += chargedPv;
-        const excess = net - chargedPv;
-        exportPv  += excess;
-        revenue   += excess * sellPrice;
-        selfDirect += load;
+        // ── Surplus PV ───────────────────────────────────────────────────────
+        selfDirect += load; // load is always fully covered by PV when net ≥ 0
 
-        // DP says export: also discharge stored energy for additional grid sale
-        if (dpAction === 'discharge_export') {
+        if (dpAction === 'discharge_export' && sellPrice > exportGatePx) {
+          // DP says export: send PV surplus straight to grid (no battery charge),
+          // then also drain battery for additional export.  Skipping the charge
+          // step removes the ~10 % round-trip loss that caused the graph to show
+          // simultaneous charge + discharge in the same hour.
+          exportPv  += net;
+          revenue   += net * sellPrice;
           const avail  = Math.max(0, soc - BATTERY_CAPACITY_KWH * MIN_SOC_SELL);
           const canExp = Math.min(avail * DISCHARGE_EFF * 0.7, MAX_BATTERY_POWER_KW * 0.6);
-          if (canExp > 0.1 && sellPrice > exportGatePx) {
+          if (canExp > 0.1) {
             dischargedExport = canExp;
             soc -= dischargedExport / DISCHARGE_EFF;
             exportBattery += dischargedExport;
             revenue += dischargedExport * sellPrice;
           }
+        } else {
+          // Default (charge / idle / discharge_self): charge battery from PV surplus,
+          // export whatever doesn't fit.
+          const canCharge = Math.min(net, (BATTERY_CAPACITY_KWH - soc) / CHARGE_EFF_PV, MAX_BATTERY_POWER_KW);
+          chargedPv = canCharge;
+          soc += chargedPv * CHARGE_EFF_PV;
+          batteryFromPv += chargedPv;
+          const excess = net - chargedPv;
+          exportPv  += excess;
+          revenue   += excess * sellPrice;
         }
       } else {
         // ── Load deficit: cover from battery and/or grid ─────────────────────
@@ -4241,14 +4254,9 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
         }
 
         // SOC floor for self-use: always 5% (MIN_SOC_SELF), matching V1/V2.
-        // Earlier DP-action-dependent floors (15%/25% for idle/charge) prevented
-        // V3 from fully utilising the battery for self-consumption and were the
-        // main reason V3 underperformed V1/V2.
         const socFloor  = BATTERY_CAPACITY_KWH * MIN_SOC_SELF;
         const available = Math.max(0, soc - socFloor);
         if (available > 0.1) {
-          // gridCharge stays in the battery this hour and does not reduce the
-          // current hour's deficit, so cover the full deficit from battery.
           const canDis = Math.min(deficit, available * DISCHARGE_EFF, MAX_BATTERY_POWER_KW);
           if (canDis > 0.1) {
             dischargedSelf = canDis;
@@ -4260,11 +4268,13 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
         const still = deficit - dischargedSelf;
         if (still > 0.01) { importGrid += still; cost += still * buyPrice; }
 
-        // Battery export during deficit hours when DP recommends it (price arbitrage)
-        if (dpAction === 'discharge_export') {
+        // Battery export in deficit hours: only when the deficit was already fully
+        // covered by battery (still ≈ 0).  Exporting while simultaneously importing
+        // is always a net loss when sellFactor < 1, so guard on still ≤ 0.
+        if (dpAction === 'discharge_export' && still <= 0.01 && sellPrice > exportGatePx) {
           const avail2  = Math.max(0, soc - BATTERY_CAPACITY_KWH * MIN_SOC_SELL);
           const canExp  = Math.min(avail2 * DISCHARGE_EFF * 0.7, MAX_BATTERY_POWER_KW * 0.6);
-          if (canExp > 0.1 && sellPrice > exportGatePx) {
+          if (canExp > 0.1) {
             dischargedExport = canExp;
             soc -= dischargedExport / DISCHARGE_EFF;
             exportBattery += dischargedExport;

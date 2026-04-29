@@ -355,16 +355,17 @@ It appears alongside V2 in the 🔋 Economic Forecast card and shows a **three-w
 
 | Step | Action |
 |---|---|
-| **DP planning** | Runs `optimizeBatteryDP()` once per day over the look-ahead horizon |
-| **Surplus hours** | PV → load; charge battery; if DP says *export* also sell from battery |
-| **Deficit hours** | PV → load; battery covers the rest down to 5% SOC (matches V1/V2) |
-| **Export arbitrage** | Battery → grid only when sell price > horizon-/day-average sell price + min spread (DP-recommended hours) |
-| **Grid pre-charge** | Optional (same control as V2), triggered when DP action = *charge* during deficit |
+| **DP planning** | Runs `optimizeBatteryDP()` once per day over the look-ahead horizon, seeded with the battery's actual SOC |
+| **Surplus + export** | If DP says *export*: PV surplus goes straight to grid (no round-trip loss); battery also discharged for extra export |
+| **Surplus + other** | Default: charge battery from PV surplus; export whatever doesn't fit |
+| **Deficit hours** | PV → load; battery self-discharge down to 5% SOC (matches V1/V2); no export unless deficit is fully covered |
+| **Export gate** | Battery → grid only when sell price > day-average sell price + min spread **and** DP action = *discharge\_export* |
+| **Grid pre-charge** | Optional (same control as V2), triggered when DP action = *charge* during a deficit hour |
 
 #### Expected Improvement
 
-- V3 typically outperforms V2 by **+5–12%** in battery-driven annual savings.
-- Largest gain with the 96 h horizon on days ahead of price spikes or prolonged cloudy periods.
+- V3 typically outperforms V1 by **15–25%** and V2 by **+5–10%** in battery-driven annual savings.
+- Largest gain on days with strong intra-day price variation (dynamic tariff peak/off-peak spread).
 - Performance: even at 96 h horizon the full-year DP run takes < 300 ms on a modern mid-range laptop (Chrome/Firefox, single-threaded JS).
 
 ---
