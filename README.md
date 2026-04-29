@@ -357,8 +357,8 @@ It appears alongside V2 in the 🔋 Economic Forecast card and shows a **three-w
 |---|---|
 | **DP planning** | Runs `optimizeBatteryDP()` once per day over the look-ahead horizon |
 | **Surplus hours** | PV → load; charge battery; if DP says *export* also sell from battery |
-| **Deficit hours** | PV → load; DP action sets SOC floor: 5% (discharge) / 15% (idle) / 25% (charge/hold) |
-| **Export arbitrage** | Battery → grid only when sell price > buy price × 0.92 + min spread |
+| **Deficit hours** | PV → load; battery covers the rest down to 5% SOC (matches V1/V2) |
+| **Export arbitrage** | Battery → grid only when sell price > horizon-/day-average sell price + min spread (DP-recommended hours) |
 | **Grid pre-charge** | Optional (same control as V2), triggered when DP action = *charge* during deficit |
 
 #### Expected Improvement
