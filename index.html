@@ -1136,28 +1136,28 @@ const CONFIGS = [
     blocks: ROW_GROUPS4.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
   {
-    id:'H', label:'Option H', short:'H \u2014 3\u00d7col TCT',
-    desc:'3 MPPTs \u00b7 V-TCT: column groups 1\u20133 | 4\u20136 | 7\u20139 (all 8 rows), cross-tied within each col-group',
+    id:'H', label:'Option H', short:'H \u2014 3\u00d7col-SP',
+    desc:'3 MPPTs \u00b7 col-SP: col groups 1\u20133 | 4\u20136 | 7\u20139 \u2014 each col = 8-panel series string, 3 strings in \u2225 per MPPT',
     cfgColor:'#34d399', mpptColors:COL3,
-    blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+    blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
-    id:'I', label:'Option I', short:'I \u2014 3\u00d7col SP',
-    desc:'3 MPPTs \u00b7 SP: column groups 1\u20133 | 4\u20136 | 7\u20139 (all 8 rows), each col = series string, strings in parallel',
+    id:'I', label:'Option I', short:'I \u2014 3\u00d7col-TCT',
+    desc:'3 MPPTs \u00b7 H-TCT: same col groups as H (1\u20133 | 4\u20136 | 7\u20139), horizontal cross-tied within each group',
     cfgColor:'#f87171', mpptColors:COL3,
-    blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+    blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'h-tct',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
-    id:'J', label:'Option J', short:'J \u2014 5\u00d7col TCT',
-    desc:'5 MPPTs \u00b7 V-TCT: column groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 | 9 (all 8 rows), cross-tied within each col-group',
+    id:'J', label:'Option J', short:'J \u2014 5\u00d7col-SP',
+    desc:'5 MPPTs \u00b7 col-SP: col groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 | 9 \u2014 each col = series string, strings in \u2225 per MPPT (MPPT 5 = single string)',
     cfgColor:'#67e8f9', mpptColors:COL5,
-    blocks: JK_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+    blocks: JK_BLOCKS.map((b,i)=>({...b,topo:'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
-    id:'K', label:'Option K', short:'K \u2014 5\u00d7col SP',
-    desc:'5 MPPTs \u00b7 SP: column groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 | 9 (all 8 rows), each col = series string, strings in parallel',
+    id:'K', label:'Option K', short:'K \u2014 5\u00d7col-TCT',
+    desc:'5 MPPTs \u00b7 H-TCT: col groups 1\u20132, 3\u20134, 5\u20136, 7\u20138 horizontal cross-tied; MPPT 5 (col 9) = single series string',
     cfgColor:'#fca5a5', mpptColors:COL5,
-    blocks: JK_BLOCKS.map((b,i)=>({...b,topo:'sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+    blocks: JK_BLOCKS.map((b,i)=>({...b,topo:i<4?'h-tct':'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
     id:'L', label:'Option L', short:'L \u2014 6\u00d712 Snake\u2194',
@@ -1808,6 +1808,11 @@ function snakeStringIV(cells, nPts=200) {
   return stringIV(cells.map(({r,c}) => effectiveG(r, c)), nPts);
 }
 
+/** Column series string: panels at column c, rows r0..r1 connected in series. */
+function colStringIV(c, r0, r1, nPts=200) {
+  return stringIV(Array.from({length:r1-r0+1}, (_,i) => effectiveG(r0+i, c)), nPts);
+}
+
 /** Dispatch by topology — uses effectiveG */
 function computeBlockIV(block) {
   const {r0,r1,c0,c1,topo}=block;
@@ -1818,7 +1823,10 @@ function computeBlockIV(block) {
   if (topo==='sp')
     return parallelIV(Array.from({length:r1-r0+1},(_,i)=>
       stringIV(Array.from({length:c1-c0+1},(_,j)=>eG(r0+i,c0+j)))));
+  if (topo==='col-sp')
+    return parallelIV(Array.from({length:c1-c0+1},(_,j)=>colStringIV(c0+j,r0,r1)));
   if (topo==='v-tct') return blockVTCT(r0,r1,c0,c1);
+  if (topo==='h-tct') return blockHTCT(r0,r1,c0,c1);
   return [{V:0,I:0}];
 }
 
