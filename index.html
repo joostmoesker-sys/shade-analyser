@@ -385,7 +385,7 @@
         </label>
         <label>
           <input type="checkbox" id="econSimpleDischargeToggle" style="accent-color:#a78bfa;width:13px;height:13px">
-          Simple 3.6 kW discharge <span style="color:#a78bfa;font-size:.7rem">(load &gt; PV → drain at 3.6 kW to 5% SOC, no sell/precharge)</span>
+          Simple 3.6 kW discharge <span style="color:#a78bfa;font-size:.7rem">(load &gt; PV → drain at 3.6 kW to 5% SOC, surplus exported, no precharge)</span>
         </label>
         <button class="btn" id="runEconBtn" style="border-color:#4ade80;color:#4ade80;margin-left:auto">&#9654; Run Economic Analysis</button>
         <span id="econStatusLabel" style="font-size:0.74rem;color:#6b7280">Requires yearly sim first</span>
@@ -3500,18 +3500,28 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
 
     // ── 4+5. Discharge battery / import from grid ────────────────────────
     if (useSimpleDischarge) {
-      // Simple mode: fixed 3.6 kW discharge when load > PV, down to MIN_SOC_SELF
+      // Simple mode: fixed 3.6 kW discharge when load > PV, down to MIN_SOC_SELF.
+      // Discharges at exactly 3.6 kW (limited by availability); covers load first,
+      // any remainder is exported to the grid.
       if (useBattery && residualLoad > 1e-4) {
-        const minSoc   = batCapKwh * MIN_SOC_SELF;
-        const avail    = (soc - minSoc) * DISCHARGE_EFF;
-        // Discharge at exactly 3.6 kW (= 3.6 kWh/h) but never more than deficit or available
-        const dischNet = Math.min(residualLoad, SIMPLE_DISCHARGE_KW, Math.max(0, avail));
+        const minSoc    = batCapKwh * MIN_SOC_SELF;
+        const avail     = (soc - minSoc) * DISCHARGE_EFF;
+        // Discharge at exactly 3.6 kW — NOT capped by the load deficit
+        const dischNet  = Math.min(SIMPLE_DISCHARGE_KW, Math.max(0, avail));
         if (dischNet > 0) {
           const dischGross = dischNet / DISCHARGE_EFF;
-          soc          -= dischGross;
-          batKwhOut    += dischGross;
-          selfBattery  += dischNet;
-          residualLoad -= dischNet;
+          soc         -= dischGross;
+          batKwhOut   += dischGross;
+          // Portion that covers remaining load
+          const toLoad = Math.min(dischNet, residualLoad);
+          selfBattery  += toLoad;
+          residualLoad -= toLoad;
+          // Any surplus over the load is sold to grid
+          const toExport = dischNet - toLoad;
+          if (toExport > 1e-4) {
+            exportBat += toExport;
+            revExport += toExport * sellPrice;
+          }
         }
       }
       if (residualLoad > 1e-4) {
@@ -3646,9 +3656,10 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
       }
       if (useBattery && rLoad > 1e-4) {
         if (useSimpleDischarge) {
-          const minS = batCapKwh * MIN_SOC_SELF;
+          const minS  = batCapKwh * MIN_SOC_SELF;
           const avail = (trSoc - minS) * DISCHARGE_EFF;
-          const dnet  = Math.min(rLoad, SIMPLE_DISCHARGE_KW, Math.max(0, avail));
+          // Discharge at exactly 3.6 kW — NOT capped by load deficit
+          const dnet  = Math.min(SIMPLE_DISCHARGE_KW, Math.max(0, avail));
           trSoc -= dnet / DISCHARGE_EFF;
         } else {
           const minS = batCapKwh * MIN_SOC_SELF;
