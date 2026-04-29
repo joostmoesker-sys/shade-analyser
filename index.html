@@ -142,7 +142,9 @@
     .toast.error   { background:#450a0a; border:1px solid #7f1d1d; }
     .toast.info    { background:#0c1a2e; border:1px solid #1e3a5f; }
 
-    /* ── Help modal ───────────────────────────────────────────────────────── */
+    /* ── Help button accent ───────────────────────────────────────────────── */
+    #helpBtn { border-color:#60a5fa; color:#60a5fa; }
+    #helpBtn:hover { border-color:#93c5fd; color:#93c5fd; }
     #help-modal-overlay { display:none; position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.75); align-items:center; justify-content:center; }
     #help-modal-overlay.open { display:flex; }
     #help-modal { background:#1f2937; border:1px solid #374151; border-radius:12px; padding:24px; max-width:560px; width:90%; max-height:85vh; overflow-y:auto; position:relative; }
@@ -164,7 +166,7 @@
   <div style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
     <button class="btn" id="undoBtn" title="Undo last shade/tree change (Ctrl+Z)" disabled aria-label="Undo">&#8617; Undo</button>
     <button class="btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled aria-label="Redo">&#8618; Redo</button>
-    <button class="btn" id="helpBtn" title="Open help (press ?)" style="border-color:#60a5fa;color:#60a5fa" aria-label="Help">? Help</button>
+    <button class="btn" id="helpBtn" title="Open help (press ?)" aria-label="Help">? Help</button>
   </div>
 </header>
 
@@ -1583,7 +1585,9 @@ function _applySnapshot(snap) {
   manualShade    = snap.manualShade;
   currentTreeShade = snap.currentTreeShade;
   sceneTrees     = snap.sceneTrees;
-  nextTreeId     = sceneTrees.length > 0 ? Math.max(...sceneTrees.map(t => t.id)) + 1 : 0;
+  nextTreeId     = sceneTrees.length > 0
+    ? sceneTrees.reduce((max, t) => Math.max(max, t.id), -1) + 1
+    : 0;
   combineShadeMaps();
   drawArray();
   drawSceneMap();
@@ -3483,8 +3487,8 @@ function runYearlySimulation() {
             Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggNoShadeRevenueDynamic[cfg.id])])),
             Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggHourlyKwh[cfg.id])])));
           // Find best config for toast
-          const totals = CONFIGS.map(cfg => ({ id: cfg.id, kwh: (result[cfg.id] || []).reduce((s,v)=>s+v,0) }));
-          totals.sort((a,b) => b.kwh - a.kwh);
+          const totals = CONFIGS.map(cfg => ({ id: cfg.id, kwh: (result[cfg.id] || []).reduce((sum, val) => sum + val, 0) }));
+          totals.sort((a, b) => b.kwh - a.kwh);
           if (totals.length > 0) {
             const best = totals[0];
             showToast(`&#9733; Yearly sim complete — Best: Config ${best.id} (${best.kwh.toFixed(0)} kWh/yr)`, 'success', 5000);
@@ -5087,12 +5091,13 @@ function switchTab(tabId) {
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.classList.toggle('active', panel.id === 'tab-' + tabId);
   });
-  // Refresh canvas-based charts when their tab becomes visible
+  // Refresh canvas-based charts when their tab becomes visible.
+  // Brief delay allows the browser to recalculate clientWidth of the now-visible canvas.
   if (tabId === 'curves') {
     setTimeout(() => {
       const hlRes = computeConfig(highlightedConfig);
       updateChart(hlRes);
-    }, 30);
+    }, 30); // 30 ms — one rAF is sufficient; avoids extra compute on hidden tabs
   }
 }
 
@@ -5137,9 +5142,9 @@ function openHelpModal() {
   const overlay = document.getElementById('help-modal-overlay');
   if (!overlay) return;
   overlay.classList.add('open');
-  // Focus the close button for accessibility
+  // Move focus to close button after display transition completes (accessibility)
   const closeBtn = document.getElementById('helpModalClose');
-  if (closeBtn) setTimeout(() => closeBtn.focus(), 50);
+  if (closeBtn) setTimeout(() => closeBtn.focus(), 50); // 50 ms — after CSS display change
 }
 
 function closeHelpModal() {
@@ -5153,12 +5158,12 @@ document.getElementById('help-modal-overlay').addEventListener('click', e => {
   if (e.target === document.getElementById('help-modal-overlay')) closeHelpModal();
 });
 
-// Show onboarding toast on first visit
+// Show onboarding toast on first visit — delay to let page fully render first
 if (!localStorage.getItem('shadeAnalyserSeenHelp')) {
   setTimeout(() => {
     showToast('&#128075; Welcome! Press <b>?</b> or click <b>Help</b> for a quick start guide.', 'info', 6000);
     localStorage.setItem('shadeAnalyserSeenHelp', '1');
-  }, 1200);
+  }, 1200); // 1200 ms — after initial render + Leaflet map load
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
