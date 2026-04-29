@@ -2297,6 +2297,7 @@ let leafletTreeLayers = []; // [{treeId, circle, marker}]
 let leafletArrayLayers   = []; // L.polygon layers for the two array sections
 let leafletArrayHandle   = null; // draggable move handle
 let leafletArrayRotHandle = null; // draggable rotate handle
+let leafletShadowLayers  = []; // L.polygon layers for tree shadows
 
 // Boshei 4, Neer, Netherlands — 51°15'34.6"N  5°57'26.2"E
 const BOSHEI_LAT = 51.259611;
@@ -2310,7 +2311,7 @@ let arrayOriginLng = BOSHEI_LNG;
 // Array position (ENU metres from origin) and rotation (degrees CCW from East)
 let arraySceneX = 0;    // array centre East offset (m)
 let arraySceneY = 0;    // array centre North offset (m)
-let arrayRotDeg = 90;   // 90° CCW default — columns run N-S, rows run E-W
+let arrayRotDeg = 180;  // 180° default — corrected to match physical array orientation
 
 function latLngToENU(lat, lng, refLat, refLng) {
   const dLat = (lat - refLat) * Math.PI / 180;
@@ -2523,6 +2524,61 @@ function syncTreeLayersToLeaflet() {
     });
 
     leafletTreeLayers.push({ treeId: tree.id, circle, marker });
+  });
+
+  // Update shadows whenever the tree layers are refreshed
+  updateLeafletShadows();
+}
+
+/** Draw tree-shadow ellipses on the Leaflet map (same calculation as the canvas shadow preview). */
+function updateLeafletShadows() {
+  if (!leafletInstance) return;
+
+  // Remove stale shadow layers
+  leafletShadowLayers.forEach(l => l.remove());
+  leafletShadowLayers = [];
+
+  if (sceneTrees.length === 0 || lastSunPos.altitude <= 0.5) return;
+
+  const az_rad  = lastSunPos.azimuth  * Math.PI / 180;
+  const tan_alt = Math.tan(lastSunPos.altitude * Math.PI / 180);
+  const foliageFactor = FOLIAGE[buildDateFromUI().getMonth()];
+
+  // Shadow direction unit vectors (ENU: x=East, y=North)
+  const ux = -Math.sin(az_rad); // along shadow, East component
+  const uy = -Math.cos(az_rad); // along shadow, North component
+  // Perpendicular to shadow
+  const vx = -uy;
+  const vy =  ux;
+
+  sceneTrees.forEach(tree => {
+    const cr = tree.crownRadius * foliageFactor;
+    const shadow_len = Math.min(tree.height / tan_alt, MAX_SHADOW_LEN);
+    // Shadow-ellipse centre (ENU)
+    const scx = tree.x - shadow_len * Math.sin(az_rad);
+    const scy = tree.y - shadow_len * Math.cos(az_rad);
+    const ra = Math.min(cr / tan_alt, MAX_SHADOW_AXIS); // elongated semi-axis
+    const rp = cr;                                       // lateral semi-axis
+
+    // Approximate ellipse with 24-point polygon
+    const N = 24;
+    const pts = [];
+    for (let i = 0; i < N; i++) {
+      const θ = 2 * Math.PI * i / N;
+      const ex = scx + ra * Math.cos(θ) * ux + rp * Math.sin(θ) * vx;
+      const ey = scy + ra * Math.cos(θ) * uy + rp * Math.sin(θ) * vy;
+      const ll = enuToLatLng(ex, ey, arrayOriginLat, arrayOriginLng);
+      pts.push([ll.lat, ll.lng]);
+    }
+
+    const shadowPoly = L.polygon(pts, {
+      color: 'transparent',
+      fillColor: '#000',
+      fillOpacity: 0.35,
+      interactive: false,
+    }).addTo(leafletInstance);
+
+    leafletShadowLayers.push(shadowPoly);
   });
 }
 
@@ -3009,6 +3065,7 @@ function heavyUpdate(){
   updatePowerDetail(hlRes.mpptResults);
   updateChart(hlRes.mpptResults);
   drawSceneMap();
+  if (leafletActive) updateLeafletShadows();
 }
 function fullUpdate(){drawArray();heavyUpdate();}
 
