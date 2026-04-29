@@ -246,6 +246,49 @@
       </div>
     </div>
 
+    <!-- Array Dimensions -->
+    <div class="card">
+      <h3>&#9632; Array Dimensions
+        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">&nbsp;rows &middot; cols &middot; spacing &middot; sections</span>
+      </h3>
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:0.78rem">
+        <label>Rows
+          <input type="range" id="dimRows" min="1" max="20" value="8" style="width:80px;margin:0 6px">
+          <b id="dimRowsVal" style="color:#38bdf8">8</b>
+        </label>
+        <label>Cols
+          <input type="range" id="dimCols" min="1" max="20" value="9" style="width:80px;margin:0 6px">
+          <b id="dimColsVal" style="color:#38bdf8">9</b>
+        </label>
+      </div>
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:0.78rem;margin-top:8px">
+        <label>Col spacing (m)
+          <input type="number" id="dimColSpacing" min="0.5" max="5" step="0.05" value="1.8"
+                 style="width:64px;margin-left:6px" title="Metres between panel column centres">
+        </label>
+        <label>Row spacing (m)
+          <input type="number" id="dimRowSpacing" min="0.5" max="5" step="0.05" value="1.1"
+                 style="width:64px;margin-left:6px" title="Metres between panel row centres">
+        </label>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:0.78rem;margin-top:8px">
+        <label>Section boundary
+          <input type="range" id="dimSectionDiv" min="0" max="19" value="4" style="width:100px;margin:0 6px">
+          <b id="dimSectionDivVal" style="color:#e94560">after row 5</b>
+        </label>
+      </div>
+      <div id="dimSectionsContainer" style="margin-top:8px;font-size:0.78rem"></div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="applyDimsBtn" style="border-color:#4ade80;color:#4ade80"
+                title="Rebuild the array with the new dimensions — resets shade overlay and configs">
+          &#10003; Apply Dimensions
+        </button>
+        <button class="btn" id="resetDimsBtn" title="Reset to the default Neer 8×9 layout"
+                style="font-size:0.72rem">&#8635; 8&times;9 Default</button>
+        <span id="dimInfoLabel" style="font-size:0.72rem;color:#6b7280"></span>
+      </div>
+    </div>
+
     <!-- Panel specs -->
     <div class="card">
       <h3>Panel &mdash; Lucksolar LS-M120-340W</h3>
@@ -1078,7 +1121,7 @@ self.onmessage = function(e) {
 'use strict';
 
 // ── Panel & array constants ─────────────────────────────────────────────────
-const ROWS = 8, COLS = 9;
+let ROWS = 8, COLS = 9;
 const BYPASS_VD = 0.5, VT_25 = 0.025693;
 const STC_IRRAD = 1000; // W/m²
 
@@ -1096,13 +1139,18 @@ const NEER_LAT = NEER.lat * Math.PI / 180; // radians
 //       Negative = panel normal tilts to the OPPOSITE side of azimuth
 //       (e.g. tilt −20°, az 225° is mathematically equivalent to tilt +20°, az 45° NE-facing).
 // azimuth: degrees clockwise from North (180° = South, 225° ≈ SW).
-const SECTIONS = [
+let SECTIONS = [
   { name: 'Top',    rowMin: 0, rowMax: 4, tilt: +30, azimuth: 225, color: '#60a5fa' },
   { name: 'Bottom', rowMin: 5, rowMax: 7, tilt: -20, azimuth: 225, color: '#f97316' },
 ];
-const SECTION_DIV = 4; // divider between rows 4 and 5 (0-indexed)
+let SECTION_DIV = 4; // divider between rows 4 and 5 (0-indexed)
 
-function sectionOf(r) { return r <= SECTION_DIV ? 0 : 1; }
+function sectionOf(r) {
+  for (let i = 0; i < SECTIONS.length; i++) {
+    if (r >= SECTIONS[i].rowMin && r <= SECTIONS[i].rowMax) return i;
+  }
+  return SECTIONS.length - 1; // fallback: last section
+}
 
 // ── Colour palettes ────────────────────────────────────────────────────────
 const COL3 = ['#38bdf8', '#4ade80', '#fb923c'];
@@ -1170,132 +1218,267 @@ const HOURLY_APX_PRICE_2025 = [
   [0.098,0.088,0.080,0.075,0.074,0.076,0.090,0.115,0.138,0.132,0.122,0.116,0.112,0.108,0.108,0.114,0.132,0.168,0.198,0.190,0.165,0.142,0.120,0.100],
 ];
 
-// ── Block structure helpers ────────────────────────────────────────────────
-const ROW_GROUPS  = [[0,1],[2,4],[5,7]];       // 2+3+3 rows: 1–2 | 3–5 | 6–8 (configs A/B)
-const ROW_GROUPS4 = [[0,1],[2,3],[4,5],[6,7]]; // 2+2+2+2 rows (configs F/G — 4 MPPTs)
-const COL_GROUPS  = [[0,2],[3,5],[6,8]];       // 3+3+3 cols  (configs D/E/H/I)
-const COL_GROUPS5 = [[0,1],[2,3],[4,5],[6,7],[8,8]]; // 2+2+2+2+1 cols (configs J/K — 5 MPPTs)
-const DE_ROW_GROUPS = [[0,1],[2,4],[5,7]];     // 2+3+3 rows — 3×3 blocks on bottom (configs D/E)
-const DE_BLOCKS = DE_ROW_GROUPS.flatMap(([r0,r1]) => COL_GROUPS.map(([c0,c1]) => ({r0,r1,c0,c1})));
-// Column-span blocks for H/I (all 8 rows, 3 col groups)
-const HI_BLOCKS = COL_GROUPS.map(([c0,c1]) => ({r0:0, r1:ROWS-1, c0, c1}));
-// Column-span blocks for J/K (all 8 rows, 5 col groups)
-const JK_BLOCKS = COL_GROUPS5.map(([c0,c1]) => ({r0:0, r1:ROWS-1, c0, c1}));
+// ── Block structure helpers (hardcoded for the classic Neer 8×9 layout) ──────
+const ROW_GROUPS_8x9  = [[0,1],[2,4],[5,7]];       // 2+3+3 rows: A/B
+const ROW_GROUPS4_8x9 = [[0,1],[2,3],[4,5],[6,7]]; // 2+2+2+2 rows: F/G
+const COL_GROUPS_8x9  = [[0,2],[3,5],[6,8]];       // 3+3+3 cols: D/E/H/I
+const COL_GROUPS5_8x9 = [[0,1],[2,3],[4,5],[6,7],[8,8]]; // 2+2+2+2+1 cols: J/K
+const DE_BLOCKS_8x9   = [[0,1],[2,4],[5,7]].flatMap(([r0,r1]) => COL_GROUPS_8x9.map(([c0,c1]) => ({r0,r1,c0,c1})));
+const HI_BLOCKS_8x9   = COL_GROUPS_8x9.map(([c0,c1]) => ({r0:0, r1:7, c0, c1}));
+const JK_BLOCKS_8x9   = COL_GROUPS5_8x9.map(([c0,c1]) => ({r0:0, r1:7, c0, c1}));
 
-/** Build ordered cell list for a row-wise snake (L): 8 rows × 9 cols, 12 panels/string */
-function buildSnakeRowCells() {
-  const strings = Array.from({length: 6}, () => []);
+/**
+ * Build ordered cell list for a row-wise snake.
+ * rows, cols, nStrings, panelsPerString default to global values for the 8×9 / 6-string case.
+ * Returns null if the panel count doesn't divide evenly.
+ */
+function buildSnakeRowCells(rows, cols, nStrings, panelsPerString) {
+  if (rows === undefined) { rows = ROWS; cols = COLS; nStrings = 6; panelsPerString = 12; }
+  if (rows * cols !== nStrings * panelsPerString) return null;
+  const strings = Array.from({length: nStrings}, () => []);
   let idx = 0;
-  for (let r = 0; r < ROWS; r++) {
+  for (let r = 0; r < rows; r++) {
     const ltr = r % 2 === 0;
-    for (let ci = 0; ci < COLS; ci++) {
-      const c = ltr ? ci : COLS - 1 - ci;
-      strings[Math.floor(idx / 12)].push({r, c});
+    for (let ci = 0; ci < cols; ci++) {
+      const c = ltr ? ci : cols - 1 - ci;
+      strings[Math.floor(idx / panelsPerString)].push({r, c});
       idx++;
     }
   }
   return strings;
 }
 
-/** Build ordered cell list for a column-wise snake (M): 8 rows × 9 cols, 12 panels/string */
-function buildSnakeColCells() {
-  const strings = Array.from({length: 6}, () => []);
+/** Build ordered cell list for a column-wise snake (same parameterization as above). */
+function buildSnakeColCells(rows, cols, nStrings, panelsPerString) {
+  if (rows === undefined) { rows = ROWS; cols = COLS; nStrings = 6; panelsPerString = 12; }
+  if (rows * cols !== nStrings * panelsPerString) return null;
+  const strings = Array.from({length: nStrings}, () => []);
   let idx = 0;
-  for (let c = 0; c < COLS; c++) {
+  for (let c = 0; c < cols; c++) {
     const ttb = c % 2 === 0;
-    for (let ri = 0; ri < ROWS; ri++) {
-      const r = ttb ? ri : ROWS - 1 - ri;
-      strings[Math.floor(idx / 12)].push({r, c});
+    for (let ri = 0; ri < rows; ri++) {
+      const r = ttb ? ri : rows - 1 - ri;
+      strings[Math.floor(idx / panelsPerString)].push({r, c});
       idx++;
     }
   }
   return strings;
 }
-
-const SNAKE_ROW_CELLS = buildSnakeRowCells(); // 6 strings × 12 cells each (config L)
-const SNAKE_COL_CELLS = buildSnakeColCells(); // 6 strings × 12 cells each (config M)
 
 const COL9 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171','#60a5fa'];
-const CONFIGS = [
+
+// ── Classic Neer 8×9 config set (A–M) ──────────────────────────────────────
+// Built once at load time using the hardcoded 8×9 block helpers above.
+// Kept as CONFIGS_8x9 so they can be restored after a reinit back to 8×9.
+const SNAKE_ROW_CELLS_8x9 = buildSnakeRowCells(8, 9, 6, 12);
+const SNAKE_COL_CELLS_8x9 = buildSnakeColCells(8, 9, 6, 12);
+
+const CONFIGS_8x9 = [
   {
     id:'A', label:'Option A', short:'A \u2014 SP',
     desc:'3 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20135 | 6\u20138, each = parallel strings of 9',
     cfgColor:'#38bdf8', mpptColors:COL3,
-    blocks: ROW_GROUPS.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
+    blocks: ROW_GROUPS_8x9.map(([r0,r1],i)=>({r0,r1,c0:0,c1:8,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
   {
     id:'B', label:'Option B', short:'B \u2014 TCT',
     desc:'3 MPPTs \u00b7 V-TCT: same row groups as A (1\u20132 | 3\u20135 | 6\u20138), cross-tied (cols in series, rows in \u2225 per col)',
     cfgColor:'#a78bfa', mpptColors:['#a78bfa','#c4b5fd','#7c3aed'],
-    blocks: ROW_GROUPS.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'v-tct',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
+    blocks: ROW_GROUPS_8x9.map(([r0,r1],i)=>({r0,r1,c0:0,c1:8,topo:'v-tct',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
   {
     id:'C', label:'Option C', short:'C \u2014 1\u00d79',
     desc:'8 MPPTs \u00b7 1 series string per row (9 panels each)',
     cfgColor:'#4ade80', mpptColors:COL8,
-    blocks: Array.from({length:ROWS},(_,r)=>({r0:r,r1:r,c0:0,c1:COLS-1,topo:'series',label:`MPPT ${r+1} (row ${r+1})`})),
+    blocks: Array.from({length:8},(_,r)=>({r0:r,r1:r,c0:0,c1:8,topo:'series',label:`MPPT ${r+1} (row ${r+1})`})),
   },
   {
     id:'D', label:'Option D', short:'D \u2014 Blk SP',
     desc:'9 MPPTs \u00b7 Block SP: 3\u00d73 macro grid (2\u00d73 top + 3\u00d73 mid/bot blocks), SP within each block',
     cfgColor:'#fb923c', mpptColors:COL9,
-    blocks: DE_BLOCKS.map((b,i)=>({...b,topo:'sp',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
+    blocks: DE_BLOCKS_8x9.map((b,i)=>({...b,topo:'sp',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
     id:'E', label:'Option E', short:'E \u2014 Blk TCT',
     desc:'9 MPPTs \u00b7 Block V-TCT: same block structure as D (2\u00d73 top + 3\u00d73 mid/bot), cross-tied within each block',
     cfgColor:'#f472b6', mpptColors:COL9,
-    blocks: DE_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
+    blocks: DE_BLOCKS_8x9.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
     id:'F', label:'Option F', short:'F \u2014 4\u00d718 10kW',
     desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d79 = 18 panels per MPPT) \u00b7 10 kW total inverter limit',
     cfgColor:'#22d3ee', mpptColors:COL4,
-    blocks: ROW_GROUPS4.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
+    blocks: ROW_GROUPS4_8x9.map(([r0,r1],i)=>({r0,r1,c0:0,c1:8,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
   {
     id:'G', label:'Option G', short:'G \u2014 4\u00d718 15kW',
     desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d79 = 18 panels per MPPT) \u00b7 15 kW total inverter limit',
     cfgColor:'#f59e0b', mpptColors:COL4,
-    blocks: ROW_GROUPS4.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
+    blocks: ROW_GROUPS4_8x9.map(([r0,r1],i)=>({r0,r1,c0:0,c1:8,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
   {
     id:'H', label:'Option H', short:'H \u2014 3\u00d7col-SP',
     desc:'3 MPPTs \u00b7 col-SP: col groups 1\u20133 | 4\u20136 | 7\u20139 \u2014 each col = 8-panel series string, 3 strings in \u2225 per MPPT',
     cfgColor:'#34d399', mpptColors:COL3,
-    blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+    blocks: HI_BLOCKS_8x9.map((b,i)=>({...b,topo:'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
     id:'I', label:'Option I', short:'I \u2014 3\u00d7col-TCT',
     desc:'3 MPPTs \u00b7 H-TCT: same col groups as H (1\u20133 | 4\u20136 | 7\u20139), horizontal cross-tied within each group',
     cfgColor:'#f87171', mpptColors:COL3,
-    blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'h-tct',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+    blocks: HI_BLOCKS_8x9.map((b,i)=>({...b,topo:'h-tct',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
     id:'J', label:'Option J', short:'J \u2014 5\u00d7col-SP',
     desc:'5 MPPTs \u00b7 col-SP: col groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 | 9 \u2014 each col = series string, strings in \u2225 per MPPT (MPPT 5 = single string)',
     cfgColor:'#67e8f9', mpptColors:COL5,
-    blocks: JK_BLOCKS.map((b,i)=>({...b,topo:'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+    blocks: JK_BLOCKS_8x9.map((b,i)=>({...b,topo:'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
     id:'K', label:'Option K', short:'K \u2014 5\u00d7col-TCT',
     desc:'5 MPPTs \u00b7 H-TCT: col groups 1\u20132, 3\u20134, 5\u20136, 7\u20138 horizontal cross-tied; MPPT 5 (col 9) = single series string',
     cfgColor:'#fca5a5', mpptColors:COL5,
-    blocks: JK_BLOCKS.map((b,i)=>({...b,topo:i<4?'h-tct':'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+    blocks: JK_BLOCKS_8x9.map((b,i)=>({...b,topo:i<4?'h-tct':'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
     id:'L', label:'Option L', short:'L \u2014 6\u00d712 Snake\u2194',
     desc:'6 MPPTs \u00b7 Row-wise snake: 12 panels in series per MPPT, string snakes across rows (left\u2194right alternating)',
     cfgColor:'#86efac', mpptColors:COL6,
-    blocks: SNAKE_ROW_CELLS.map((cells,i)=>({r0:0,r1:ROWS-1,c0:0,c1:COLS-1,topo:'snake-series',cells,label:`MPPT ${i+1} (snake row ${i+1})`})),
+    blocks: SNAKE_ROW_CELLS_8x9.map((cells,i)=>({r0:0,r1:7,c0:0,c1:8,topo:'snake-series',cells,label:`MPPT ${i+1} (snake row ${i+1})`})),
   },
   {
     id:'M', label:'Option M', short:'M \u2014 6\u00d712 Snake\u2195',
     desc:'6 MPPTs \u00b7 Column-wise snake: 12 panels in series per MPPT, string snakes across columns (top\u2195bottom alternating)',
     cfgColor:'#fde68a', mpptColors:COL6,
-    blocks: SNAKE_COL_CELLS.map((cells,i)=>({r0:0,r1:ROWS-1,c0:0,c1:COLS-1,topo:'snake-series',cells,label:`MPPT ${i+1} (snake col ${i+1})`})),
+    blocks: SNAKE_COL_CELLS_8x9.map((cells,i)=>({r0:0,r1:7,c0:0,c1:8,topo:'snake-series',cells,label:`MPPT ${i+1} (snake col ${i+1})`})),
   },
 ];
+
+// Active CONFIGS — reset by buildConfigs() whenever array dimensions change.
+let CONFIGS = CONFIGS_8x9.slice();
+
+/**
+ * Rebuild the active CONFIGS list for the current ROWS × COLS.
+ * For the classic 8×9 setup, the pre-built CONFIGS_8x9 set (A–M) is used unchanged.
+ * For other dimensions a compact generic set of row-SP, col-SP, all-SP, half-row,
+ * half-col and snake configurations is generated automatically.
+ * Also ensures INVERTER_SPECS entries exist for every generated config id.
+ */
+function buildConfigs() {
+  if (ROWS === 8 && COLS === 9) {
+    CONFIGS = CONFIGS_8x9.slice();
+    return;
+  }
+  const total   = ROWS * COLS;
+  const palette = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6',
+                   '#fbbf24','#34d399','#f87171','#60a5fa','#e879f9'];
+  const pickColors = n => Array.from({length: n}, (_, i) => palette[i % palette.length]);
+  const cfgs = [];
+
+  // A: per-row SP — one MPPT per row
+  cfgs.push({
+    id:'A', label:'Option A', short:'A \u2014 Row-SP',
+    desc:`${ROWS} MPPTs \u00b7 1 series string per row (${COLS} panels each)`,
+    cfgColor:'#38bdf8', mpptColors: pickColors(ROWS),
+    blocks: Array.from({length: ROWS}, (_, r) => ({
+      r0:r, r1:r, c0:0, c1:COLS-1, topo:'sp',
+      label:`MPPT ${r+1} (row ${r+1})`,
+    })),
+  });
+
+  // B: per-col SP — one MPPT per column
+  cfgs.push({
+    id:'B', label:'Option B', short:'B \u2014 Col-SP',
+    desc:`${COLS} MPPTs \u00b7 1 series string per column (${ROWS} panels each)`,
+    cfgColor:'#4ade80', mpptColors: pickColors(COLS),
+    blocks: Array.from({length: COLS}, (_, c) => ({
+      r0:0, r1:ROWS-1, c0:c, c1:c, topo:'col-sp',
+      label:`MPPT ${c+1} (col ${c+1})`,
+    })),
+  });
+
+  // C: all-SP — single MPPT covering the whole array
+  cfgs.push({
+    id:'C', label:'Option C', short:'C \u2014 All-SP',
+    desc:`1 MPPT \u00b7 All ${total} panels (${ROWS}\u00d7${COLS}) in series-parallel`,
+    cfgColor:'#fb923c', mpptColors:['#fb923c'],
+    blocks:[{r0:0, r1:ROWS-1, c0:0, c1:COLS-1, topo:'sp', label:'MPPT 1 (all)'}],
+  });
+
+  // D / E: halve the rows into two groups
+  if (ROWS >= 4) {
+    const half = Math.floor(ROWS / 2);
+    const grps = [[0, half-1], [half, ROWS-1]];
+    const mkBlocks = topo => grps.map(([r0,r1],i) => ({
+      r0, r1, c0:0, c1:COLS-1, topo,
+      label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`,
+    }));
+    cfgs.push({
+      id:'D', label:'Option D', short:'D \u2014 Half-SP',
+      desc:`2 MPPTs \u00b7 Row halves (rows 1\u2013${half} | ${half+1}\u2013${ROWS}) in SP`,
+      cfgColor:'#a78bfa', mpptColors:['#a78bfa','#7c3aed'], blocks: mkBlocks('sp'),
+    });
+    cfgs.push({
+      id:'E', label:'Option E', short:'E \u2014 Half-TCT',
+      desc:'2 MPPTs \u00b7 Row halves, V-TCT topology',
+      cfgColor:'#f472b6', mpptColors:['#f472b6','#db2777'], blocks: mkBlocks('v-tct'),
+    });
+  }
+
+  // F / G: halve the columns into two groups
+  if (COLS >= 4) {
+    const half = Math.floor(COLS / 2);
+    const grps = [[0, half-1], [half, COLS-1]];
+    const mkBlocks = topo => grps.map(([c0,c1],i) => ({
+      r0:0, r1:ROWS-1, c0, c1, topo,
+      label:`MPPT ${i+1} (cols ${c0+1}\u2013${c1+1})`,
+    }));
+    cfgs.push({
+      id:'F', label:'Option F', short:'F \u2014 ColHalf-SP',
+      desc:`2 MPPTs \u00b7 Column halves (cols 1\u2013${half} | ${half+1}\u2013${COLS}) in col-SP`,
+      cfgColor:'#22d3ee', mpptColors:['#22d3ee','#0891b2'], blocks: mkBlocks('col-sp'),
+    });
+    cfgs.push({
+      id:'G', label:'Option G', short:'G \u2014 ColHalf-TCT',
+      desc:'2 MPPTs \u00b7 Column halves, H-TCT topology',
+      cfgColor:'#f59e0b', mpptColors:['#f59e0b','#d97706'], blocks: mkBlocks('h-tct'),
+    });
+  }
+
+  // H / I: snake configs — only when total panels divides evenly into 12-panel strings
+  const PANELS_PER_STRING = 12;
+  if (total % PANELS_PER_STRING === 0) {
+    const nStr = total / PANELS_PER_STRING;
+    const rowSnake = buildSnakeRowCells(ROWS, COLS, nStr, PANELS_PER_STRING);
+    if (rowSnake) cfgs.push({
+      id:'H', label:'Option H', short:'H \u2014 Row-Snake',
+      desc:`${nStr} MPPTs \u00b7 Row-wise snake (${PANELS_PER_STRING} panels/string)`,
+      cfgColor:'#86efac', mpptColors: pickColors(nStr),
+      blocks: rowSnake.map((cells,i) => ({
+        r0:0, r1:ROWS-1, c0:0, c1:COLS-1, topo:'snake-series', cells,
+        label:`MPPT ${i+1} (snake-row ${i+1})`,
+      })),
+    });
+    const colSnake = buildSnakeColCells(ROWS, COLS, nStr, PANELS_PER_STRING);
+    if (colSnake) cfgs.push({
+      id:'I', label:'Option I', short:'I \u2014 Col-Snake',
+      desc:`${nStr} MPPTs \u00b7 Col-wise snake (${PANELS_PER_STRING} panels/string)`,
+      cfgColor:'#fde68a', mpptColors: pickColors(nStr),
+      blocks: colSnake.map((cells,i) => ({
+        r0:0, r1:ROWS-1, c0:0, c1:COLS-1, topo:'snake-series', cells,
+        label:`MPPT ${i+1} (snake-col ${i+1})`,
+      })),
+    });
+  }
+
+  CONFIGS = cfgs;
+
+  // Ensure INVERTER_SPECS has an entry for every generated config id.
+  const genericSpec = { VmpptMin:60, VmpptMax:500, ImaxPerMppt:22, totalPowerW:null };
+  for (const cfg of CONFIGS) {
+    if (!INVERTER_SPECS[cfg.id]) INVERTER_SPECS[cfg.id] = { ...genericSpec };
+  }
+}
 
 // ── Inverter specs per configuration (WP6) ─────────────────────────────────
 const INVERTER_SPECS = {
@@ -1393,6 +1576,85 @@ function combineShadeMaps() {
 /** Combined effective irradiance fraction for physics calculations */
 function effectiveG(r, c) { return Math.max(0, irr[r][c] * shade[r][c]); }
 
+/**
+ * Reinitialize the app for new array dimensions.
+ * Calling this is equivalent to reloading the page with different hardcoded constants —
+ * all dimension-dependent state is rebuilt from scratch.
+ *
+ * @param {number} rows       Number of panel rows (1–20)
+ * @param {number} cols       Number of panel columns (1–20)
+ * @param {Array}  sections   Array of section objects [{name,rowMin,rowMax,tilt,azimuth,color}]
+ * @param {number} sectionDiv Row index of the main section boundary (for divider drawing)
+ * @param {number} colSpacing Metres between panel column centres
+ * @param {number} rowSpacing Metres between panel row centres
+ */
+function reinitArrayDimensions(rows, cols, sections, sectionDiv, colSpacing, rowSpacing) {
+  ROWS        = Math.max(1, Math.min(20, rows  | 0));
+  COLS        = Math.max(1, Math.min(20, cols  | 0));
+  SECTIONS    = sections.map(s => ({ ...s }));
+  SECTION_DIV = sectionDiv;
+  COL_SPACING = colSpacing;
+  ROW_SPACING = rowSpacing;
+
+  // Reinit dimension-dependent 2-D arrays
+  manualShade      = Array.from({length: ROWS}, () => Array(COLS).fill(1.0));
+  currentTreeShade = Array.from({length: ROWS}, () => Array(COLS).fill(1.0));
+  shade            = Array.from({length: ROWS}, () => Array(COLS).fill(1.0));
+  irr              = Array.from({length: ROWS}, () => Array(COLS).fill(1.0));
+
+  // Rebuild config list
+  buildConfigs();
+
+  // Reset highlighted config to first available one
+  if (!CONFIGS.some(c => c.id === highlightedConfig)) {
+    highlightedConfig = CONFIGS[0].id;
+  }
+
+  // Resize the panel canvas
+  resizeArrayCanvas();
+
+  // Refresh derived state
+  const d = buildDateFromUI();
+  updateIrradiance(d);
+  combineShadeMaps();
+  recomputeTreeShadow();
+  drawSceneMap();
+  fullUpdate();
+
+  // Update the dimensions UI to reflect the live state
+  _syncArrayDimsUI();
+}
+
+/** Push the current ROWS/COLS/SECTIONS/spacing values back into the Array Dimensions UI. */
+function _syncArrayDimsUI() {
+  const $ = id => document.getElementById(id);
+  const setV = (id, v) => { const el = $(id); if (el) el.value = v; };
+  const setT = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+
+  setV('dimRows', ROWS);  setT('dimRowsVal', ROWS);
+  setV('dimCols', COLS);  setT('dimColsVal', COLS);
+  setV('dimColSpacing', COL_SPACING);
+  setV('dimRowSpacing', ROW_SPACING);
+  setV('dimSectionDiv', SECTION_DIV);  setT('dimSectionDivVal', `after row ${SECTION_DIV + 1}`);
+
+  // Populate per-section tilt / azimuth inputs
+  const container = $('dimSectionsContainer');
+  if (!container) return;
+  container.innerHTML = '';
+  SECTIONS.forEach((sec, i) => {
+    container.insertAdjacentHTML('beforeend', `
+      <div class="dim-section-row" data-si="${i}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px">
+        <span style="color:${sec.color};min-width:52px;font-size:0.75rem">${sec.name}</span>
+        <label style="font-size:0.75rem">Tilt</label>
+        <input type="number" class="dim-sec-tilt" min="-90" max="90" value="${sec.tilt}"
+               style="width:56px" title="Tilt in degrees (positive = facing azimuth, negative = opposite side)">
+        <label style="font-size:0.75rem">Az</label>
+        <input type="number" class="dim-sec-az" min="0" max="360" value="${sec.azimuth}"
+               style="width:60px" title="Azimuth in degrees CW from North (180=South, 225≈SW)">
+      </div>`);
+  });
+}
+
 // ── Canvas setup ───────────────────────────────────────────────────────────
 const canvas = document.getElementById('arrayCanvas');
 const ctx    = canvas.getContext('2d');
@@ -1401,8 +1663,12 @@ const PAD_T = 18, PAD_B = 14, PAD_R = 14;
 const PAD_L = 56; // wider left margin for section labels
 const GAP = 5, PW = 68, PH = 44;
 
-canvas.width  = PAD_L + PAD_R + COLS * PW + (COLS - 1) * GAP;
-canvas.height = PAD_T + PAD_B + ROWS * PH + (ROWS - 1) * GAP + 10; // +10 for divider space
+/** Resize the array canvas to match the current ROWS × COLS. */
+function resizeArrayCanvas() {
+  canvas.width  = PAD_L + PAD_R + COLS * PW + (COLS - 1) * GAP;
+  canvas.height = PAD_T + PAD_B + ROWS * PH + (ROWS - 1) * GAP + 10; // +10 for divider space
+}
+resizeArrayCanvas();
 
 function panelRect(r, c) {
   return {
@@ -2153,8 +2419,8 @@ function niceMax(val,step){return Math.ceil(val/step)*step;}
 // SCENE: panel positions, tree management, shadow geometry
 // ═══════════════════════════════════════════════════════════════════════════
 
-const COL_SPACING = 1.8;  // meters between panel column centres
-const ROW_SPACING = 1.1;  // meters between panel row centres
+let COL_SPACING = 1.8;  // meters between panel column centres
+let ROW_SPACING = 1.1;  // meters between panel row centres
 const MAX_SHADOW_LEN  = 500; // cap shadow length (m) — avoids near-horizon infinities
 const MAX_SHADOW_AXIS = 400; // cap elongated shadow semi-axis (m)
 
@@ -2350,26 +2616,51 @@ function migrateProject(raw) {
 
 /**
  * Apply a project snapshot to the running app.
- * Structural fields (ROWS/COLS, panel single-diode parameters, sections) that
- * are immutable in this build are validated and warned-on if they differ.
+ * Array structural fields (ROWS/COLS/SECTIONS/spacing) are now applied via
+ * reinitArrayDimensions() so they actually take effect.
  * Returns { ok, warnings[] }.
  */
 function applyProject(p) {
   const warnings = [];
   const $ = id => document.getElementById(id);
 
-  // ── Structural validation (fields that are still hardcoded in this build) ─
+  // ── Array structure (rows, cols, sections, spacing) ─
+  // These now drive reinitArrayDimensions() so the UI and simulation
+  // respond to projects saved with different dimensions.
   if (p.array) {
-    if (Number.isFinite(p.array.rows) && p.array.rows !== ROWS)
-      warnings.push(`Project rows (${p.array.rows}) differ from app rows (${ROWS}); structural change ignored.`);
-    if (Number.isFinite(p.array.cols) && p.array.cols !== COLS)
-      warnings.push(`Project cols (${p.array.cols}) differ from app cols (${COLS}); structural change ignored.`);
+    const newRows   = Number.isFinite(p.array.rows) ? p.array.rows : ROWS;
+    const newCols   = Number.isFinite(p.array.cols) ? p.array.cols : COLS;
+    const newSecDiv = Number.isFinite(p.array.sectionDiv) ? p.array.sectionDiv : SECTION_DIV;
+    const newColSp  = Number.isFinite(p.array.colSpacing)  ? p.array.colSpacing  : COL_SPACING;
+    const newRowSp  = Number.isFinite(p.array.rowSpacing)  ? p.array.rowSpacing  : ROW_SPACING;
+    let   newSecs   = SECTIONS;
+    if (Array.isArray(p.array.sections) && p.array.sections.length > 0) {
+      newSecs = p.array.sections.map(s => ({
+        name:    s.name    || 'Section',
+        rowMin:  Number.isFinite(s.rowMin)  ? s.rowMin  : 0,
+        rowMax:  Number.isFinite(s.rowMax)  ? s.rowMax  : newRows - 1,
+        tilt:    Number.isFinite(s.tilt)    ? s.tilt    : 30,
+        azimuth: Number.isFinite(s.azimuth) ? s.azimuth : 180,
+        color:   s.color   || '#60a5fa',
+      }));
+    }
+    const dimsChanged = newRows !== ROWS || newCols !== COLS || newSecDiv !== SECTION_DIV ||
+                        newColSp !== COL_SPACING || newRowSp !== ROW_SPACING;
+    if (dimsChanged) {
+      // reinitArrayDimensions() also calls fullUpdate/combineShadeMaps etc.
+      // We call it first so subsequent field assignments write into correctly-sized arrays.
+      reinitArrayDimensions(newRows, newCols, newSecs, newSecDiv, newColSp, newRowSp);
+    } else if (p.array.sections) {
+      // Same dims but sections may have changed tilt/azimuth
+      SECTIONS = newSecs;
+    }
   }
+
   if (p.site && (p.site.lat !== NEER.lat || p.site.lon !== NEER.lon)) {
     warnings.push(`Project site (${p.site.lat},${p.site.lon}) differs from app site; site change ignored in this build.`);
   }
 
-  // ── Array transform (mutable today) ─
+  // ── Array transform (scene position / rotation) ─
   if (p.array) {
     if (Number.isFinite(p.array.sceneX)) arraySceneX = p.array.sceneX;
     if (Number.isFinite(p.array.sceneY)) arraySceneY = p.array.sceneY;
@@ -2382,7 +2673,8 @@ function applyProject(p) {
       if (INVERTER_SPECS[id] && spec && typeof spec === 'object') {
         Object.assign(INVERTER_SPECS[id], spec);
       } else if (!INVERTER_SPECS[id]) {
-        warnings.push(`Inverter spec for unknown config "${id}" ignored.`);
+        // Silently add the spec so projects with custom configs don't lose their settings.
+        INVERTER_SPECS[id] = { VmpptMin:60, VmpptMax:500, ImaxPerMppt:22, totalPowerW:null, ...spec };
       }
     }
   }
@@ -2398,8 +2690,8 @@ function applyProject(p) {
         }
       }
     }
-  } else if (p.manualShade !== undefined) {
-    warnings.push('Manual shade dimensions do not match this build; ignored.');
+  } else if (p.manualShade != null && p.manualShade.length !== ROWS) {
+    warnings.push('Manual shade dimensions do not match applied dimensions; ignored.');
   }
   if (Number.isFinite(p.shadeLevel)) {
     shadeLevel = Math.max(0, Math.min(1, p.shadeLevel));
@@ -4886,6 +5178,90 @@ document.getElementById('loadTreesBtn').addEventListener('click', () => {
   }
 });
 
+// ── Array Dimensions panel ────────────────────────────────────────────────
+
+// Live-update labels while sliders are dragged (no reinit until Apply is clicked)
+document.getElementById('dimRows').addEventListener('input', function () {
+  document.getElementById('dimRowsVal').textContent = this.value;
+  const secDiv = document.getElementById('dimSectionDiv');
+  secDiv.max = Math.max(0, parseInt(this.value) - 2);
+  if (parseInt(secDiv.value) > parseInt(secDiv.max)) secDiv.value = secDiv.max;
+  document.getElementById('dimSectionDivVal').textContent = `after row ${parseInt(secDiv.value) + 1}`;
+  document.getElementById('dimInfoLabel').textContent =
+    `${this.value} × ${document.getElementById('dimCols').value} = ${parseInt(this.value) * parseInt(document.getElementById('dimCols').value)} panels`;
+});
+document.getElementById('dimCols').addEventListener('input', function () {
+  document.getElementById('dimColsVal').textContent = this.value;
+  document.getElementById('dimInfoLabel').textContent =
+    `${document.getElementById('dimRows').value} × ${this.value} = ${parseInt(document.getElementById('dimRows').value) * parseInt(this.value)} panels`;
+});
+document.getElementById('dimSectionDiv').addEventListener('input', function () {
+  document.getElementById('dimSectionDivVal').textContent = `after row ${parseInt(this.value) + 1}`;
+});
+
+// Apply button: read UI values, validate, reinit
+document.getElementById('applyDimsBtn').addEventListener('click', () => {
+  const rows = parseInt(document.getElementById('dimRows').value);
+  const cols = parseInt(document.getElementById('dimCols').value);
+  const colSp = parseFloat(document.getElementById('dimColSpacing').value);
+  const rowSp = parseFloat(document.getElementById('dimRowSpacing').value);
+  const secDiv = parseInt(document.getElementById('dimSectionDiv').value);
+
+  if (isNaN(rows) || rows < 1 || isNaN(cols) || cols < 1) {
+    alert('Rows and columns must be positive integers.');
+    return;
+  }
+  if (isNaN(colSp) || colSp < 0.1 || isNaN(rowSp) || rowSp < 0.1) {
+    alert('Spacing values must be ≥ 0.1 m.');
+    return;
+  }
+
+  // Read section tilt/azimuth from the dynamic section rows
+  const sectionRows = document.querySelectorAll('#dimSectionsContainer .dim-section-row');
+  let newSections;
+  if (sectionRows.length === SECTIONS.length) {
+    newSections = Array.from(sectionRows).map((row, i) => ({
+      ...SECTIONS[i],
+      tilt:    parseFloat(row.querySelector('.dim-sec-tilt').value) || 0,
+      azimuth: parseFloat(row.querySelector('.dim-sec-az').value)  || 180,
+    }));
+  } else {
+    // Default two sections if the container wasn't rendered yet
+    const boundary = secDiv;
+    newSections = [
+      { name:'Top',    rowMin:0,          rowMax:boundary,  tilt:+30, azimuth:225, color:'#60a5fa' },
+      { name:'Bottom', rowMin:boundary+1, rowMax:rows-1,    tilt:-20, azimuth:225, color:'#f97316' },
+    ];
+  }
+
+  // Update section row bounds to fit within new row count
+  newSections = newSections.map((sec, i) => ({
+    ...sec,
+    rowMin: i === 0 ? 0 : secDiv + 1,
+    rowMax: i === 0 ? secDiv : rows - 1,
+  })).slice(0, 2); // currently support 2 sections
+
+  const infoLabel = document.getElementById('dimInfoLabel');
+  infoLabel.style.color = '#4ade80';
+  infoLabel.textContent = `Applying ${rows}×${cols}…`;
+
+  reinitArrayDimensions(rows, cols, newSections, secDiv, colSp, rowSp);
+
+  infoLabel.textContent = `Applied: ${ROWS}×${COLS}, ${ROWS * COLS} panels`;
+  scheduleSaveProject();
+});
+
+// Reset to 8×9 defaults
+document.getElementById('resetDimsBtn').addEventListener('click', () => {
+  const defaultSections = [
+    { name:'Top',    rowMin:0, rowMax:4, tilt:+30, azimuth:225, color:'#60a5fa' },
+    { name:'Bottom', rowMin:5, rowMax:7, tilt:-20, azimuth:225, color:'#f97316' },
+  ];
+  reinitArrayDimensions(8, 9, defaultSections, 4, 1.8, 1.1);
+  document.getElementById('dimInfoLabel').textContent = 'Reset to 8×9 default';
+  scheduleSaveProject();
+});
+
 // Save full project to a JSON file
 document.getElementById('saveProjectBtn').addEventListener('click', () => {
   // Persist to localStorage too so a refresh restores the same state.
@@ -5197,6 +5573,9 @@ document.getElementById('econBatSizeSelect').addEventListener('change', () => {
   // Restore previously saved project from localStorage (preferred), with
   // automatic migration from the legacy trees-only key when needed.
   loadProjectFromStorage();
+
+  // Initialise the Array Dimensions UI to show the current (possibly restored) values.
+  _syncArrayDimsUI();
 
   fullUpdate();
 
