@@ -210,8 +210,8 @@
         <input type="range" id="treeHeightSlider" min="2" max="25" value="8">
         <span id="treeHeightVal" style="color:#fbbf24;min-width:26px">8 m</span>
         <label style="margin-left:6px">Crown&#8960;:</label>
-        <input type="range" id="treeCrownSlider" min="1" max="10" value="3">
-        <span id="treeCrownVal" style="color:#4ade80;min-width:26px">3 m</span>
+        <input type="range" id="treeCrownSlider" min="1" max="10" value="6">
+        <span id="treeCrownVal" style="color:#4ade80;min-width:26px">6 m</span>
         <button class="btn" id="deleteTreeBtn" style="margin-left:6px;border-color:#ef4444;color:#ef4444">&#10005; Delete</button>
       </div>
       <p class="instructions">Shadows from trees are automatically applied to the array based on current date &amp; time.</p>
@@ -591,7 +591,49 @@ function blockVTCT_hc(r0, r1, c0, c1, nPts=100) {
   result.sort((a,b)=>a.V-b.V); return result;
 }
 
-function stringIV_sim(Gs, nPts=100) {
+// Half-cut aware vertical series string: column c, rows r0..r1
+function colStringIV_hc(c, r0, r1, nPts=100) {
+  const ivs = [];
+  for (let r=r0; r<=r1; r++) ivs.push(getPanelIV(r, c));
+  const fns    = ivs.map(iv => makeVofI(iv, true));
+  const maxIsc = Math.max(...ivs.map(iv => iv[0] ? iv[0].I : 0), 0.001);
+  const result = [];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of fns) V += fn(I);
+    result.push({V, I});
+  }
+  result.sort((a,b)=>a.V-b.V); return result;
+}
+
+// Half-cut aware H-TCT block: rows in series, cols cross-tied at each row level
+function blockHTCT_hc(r0, r1, c0, c1, nPts=100) {
+  const secCurves = [];
+  for (let r=r0; r<=r1; r++) {
+    const colFns = []; let maxVsec = 0;
+    for (let c=c0; c<=c1; c++) {
+      const piv = getPanelIV(r, c);
+      colFns.push(makeIofV(piv));
+      if (piv.length > 1) maxVsec = Math.max(maxVsec, piv[piv.length-1].V);
+    }
+    const sec = [];
+    for (let k=0; k<=nPts; k++) {
+      const V=(k/nPts)*maxVsec; sec.push({V, I: colFns.reduce((s,fn)=>s+fn(V), 0)});
+    }
+    secCurves.push(sec);
+  }
+  const VofI   = secCurves.map(cv => makeVofI(cv, false));
+  const maxIsc = Math.max(...secCurves.map(cv => cv[0] ? cv[0].I : 0), 0.001);
+  const result = [];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of VofI) V += fn(I);
+    result.push({V, I});
+  }
+  result.sort((a,b)=>a.V-b.V); return result;
+}
+
+
   const fns    = Gs.map(G => makeVofI(cachedPanelIV(G), true));
   const maxIsc = Math.max(...Gs.map(G => PNL.Isc*Math.max(G, 0.001)));
   const result = [];
@@ -664,7 +706,10 @@ function computeBlockIV_sim(block) {
     return stringIV_hc(r0, c0, c1);
   if (topo==='sp')
     return parallelIV_sim(Array.from({length:r1-r0+1}, (_,i) => stringIV_hc(r0+i, c0, c1)));
+  if (topo==='col-sp')
+    return parallelIV_sim(Array.from({length:c1-c0+1}, (_,j) => colStringIV_hc(c0+j, r0, r1)));
   if (topo==='v-tct') return blockVTCT_hc(r0, r1, c0, c1);
+  if (topo==='h-tct') return blockHTCT_hc(r0, r1, c0, c1);
   return [{V:0, I:0}];
 }
 
@@ -1719,7 +1764,32 @@ function blockVTCT(r0, r1, c0, c1, nPts=200) {
   result.sort((a,b)=>a.V-b.V); return result;
 }
 
-/** Series IV for an arbitrary ordered cell list — used for snake-series strings */
+/** Horizontal TCT: rows in series, columns cross-tied at each row level — uses effectiveG */
+function blockHTCT(r0, r1, c0, c1, nPts=200) {
+  const secCurves=[];
+  for (let r=r0; r<=r1; r++) {
+    const pcurves=[];
+    for (let c=c0; c<=c1; c++) pcurves.push(panelIV(effectiveG(r,c), 80));
+    const fns=pcurves.map(cv=>makeIofV(cv));
+    const maxVsec=Math.max(...Array.from({length:c1-c0+1},(_,j)=>{
+      const G=effectiveG(r,c0+j); return G>0.001 ? PNL.Voc+PNL.nNsVt*Math.log(G) : 0;
+    }));
+    const sec=[];
+    for (let k=0;k<=nPts;k++) { const V=(k/nPts)*maxVsec; sec.push({V,I:fns.reduce((s,fn)=>s+fn(V),0)}); }
+    secCurves.push(sec);
+  }
+  const VofI=secCurves.map(cv=>makeVofI(cv,false));
+  const maxIsc=Math.max(...secCurves.map(cv=>cv[0].I));
+  const result=[];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of VofI) V+=fn(I);
+    result.push({V,I});
+  }
+  result.sort((a,b)=>a.V-b.V); return result;
+}
+
+
 function snakeStringIV(cells, nPts=200) {
   return stringIV(cells.map(({r,c}) => effectiveG(r, c)), nPts);
 }
@@ -1930,7 +2000,7 @@ let nextTreeId    = 0;
 let selectedTreeId = null;
 
 function addTree(x, y) {
-  const t = { id: nextTreeId++, x, y, height: 8, crownRadius: 3 };
+  const t = { id: nextTreeId++, x, y, height: 8, crownRadius: 6 };
   sceneTrees.push(t);
   selectTree(t.id);
   recomputeTreeShadow();
