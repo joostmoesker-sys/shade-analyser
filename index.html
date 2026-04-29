@@ -643,8 +643,22 @@ function blockVTCT_sim(r0, r1, c0, c1, nPts=100) {
   result.sort((a,b)=>a.V-b.V); return result;
 }
 
+function snakeStringIV_sim(cells, nPts=100) {
+  const ivs = cells.map(({r,c}) => getPanelIV(r, c));
+  const fns = ivs.map(iv => makeVofI(iv, true));
+  const maxIsc = Math.max(...ivs.map(iv => iv[0] ? iv[0].I : 0), 0.001);
+  const result = [];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of fns) V += fn(I);
+    result.push({V, I});
+  }
+  result.sort((a,b)=>a.V-b.V); return result;
+}
+
 function computeBlockIV_sim(block) {
   const {r0,r1,c0,c1,topo} = block;
+  if (topo==='snake-series') return snakeStringIV_sim(block.cells);
   if (topo==='series' || (topo==='sp' && r0===r1))
     return stringIV_hc(r0, c0, c1);
   if (topo==='sp')
@@ -909,6 +923,7 @@ function sectionOf(r) { return r <= SECTION_DIV ? 0 : 1; }
 // ── Colour palettes ────────────────────────────────────────────────────────
 const COL3 = ['#38bdf8', '#4ade80', '#fb923c'];
 const COL4 = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490'];
+const COL6 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24'];
 const COL8 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171'];
 const COL9 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171','#60a5fa'];
 
@@ -975,10 +990,46 @@ const HOURLY_APX_PRICE_2025 = [
 const ROW_GROUPS  = [[0,1],[2,4],[5,7]];       // 2+3+3 rows: 1–2 | 3–5 | 6–8 (configs A/B)
 const ROW_GROUPS4 = [[0,1],[2,3],[4,5],[6,7]]; // 2+2+2+2 rows (configs F/G — 4 MPPTs)
 const COL_GROUPS  = [[0,2],[3,5],[6,8]];       // 3+3+3 cols  (configs D/E/H/I)
+const COL_GROUPS4 = [[0,1],[2,3],[4,5],[6,8]]; // 2+2+2+3 cols (configs J/K — 4 MPPTs)
 const DE_ROW_GROUPS = [[0,1],[2,4],[5,7]];     // 2+3+3 rows — 3×3 blocks on bottom (configs D/E)
 const DE_BLOCKS = DE_ROW_GROUPS.flatMap(([r0,r1]) => COL_GROUPS.map(([c0,c1]) => ({r0,r1,c0,c1})));
 // Column-span blocks for H/I (all 8 rows, 3 col groups)
 const HI_BLOCKS = COL_GROUPS.map(([c0,c1]) => ({r0:0, r1:ROWS-1, c0, c1}));
+// Column-span blocks for J/K (all 8 rows, 4 col groups)
+const JK_BLOCKS = COL_GROUPS4.map(([c0,c1]) => ({r0:0, r1:ROWS-1, c0, c1}));
+
+/** Build ordered cell list for a row-wise snake (L): 8 rows × 9 cols, 12 panels/string */
+function buildSnakeRowCells() {
+  const strings = Array.from({length: 6}, () => []);
+  let idx = 0;
+  for (let r = 0; r < ROWS; r++) {
+    const ltr = r % 2 === 0;
+    for (let ci = 0; ci < COLS; ci++) {
+      const c = ltr ? ci : COLS - 1 - ci;
+      strings[Math.floor(idx / 12)].push({r, c});
+      idx++;
+    }
+  }
+  return strings;
+}
+
+/** Build ordered cell list for a column-wise snake (M): 8 rows × 9 cols, 12 panels/string */
+function buildSnakeColCells() {
+  const strings = Array.from({length: 6}, () => []);
+  let idx = 0;
+  for (let c = 0; c < COLS; c++) {
+    const ttb = c % 2 === 0;
+    for (let ri = 0; ri < ROWS; ri++) {
+      const r = ttb ? ri : ROWS - 1 - ri;
+      strings[Math.floor(idx / 12)].push({r, c});
+      idx++;
+    }
+  }
+  return strings;
+}
+
+const SNAKE_ROW_CELLS = buildSnakeRowCells(); // 6 strings × 12 cells each (config L)
+const SNAKE_COL_CELLS = buildSnakeColCells(); // 6 strings × 12 cells each (config M)
 
 // ── Config definitions (A–I) ───────────────────────────────────────────────
 const CONFIGS = [
@@ -1036,19 +1087,47 @@ const CONFIGS = [
     cfgColor:'#f87171', mpptColors:COL3,
     blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
   },
+  {
+    id:'J', label:'Option J', short:'J \u2014 4\u00d7col TCT',
+    desc:'4 MPPTs \u00b7 V-TCT: column groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20139 (all 8 rows), cross-tied within each col-group',
+    cfgColor:'#67e8f9', mpptColors:COL4,
+    blocks: JK_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+  },
+  {
+    id:'K', label:'Option K', short:'K \u2014 4\u00d7col SP',
+    desc:'4 MPPTs \u00b7 SP: column groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20139 (all 8 rows), each col = series string, strings in parallel',
+    cfgColor:'#fca5a5', mpptColors:COL4,
+    blocks: JK_BLOCKS.map((b,i)=>({...b,topo:'sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
+  },
+  {
+    id:'L', label:'Option L', short:'L \u2014 6\u00d712 Snake\u2194',
+    desc:'6 MPPTs \u00b7 Row-wise snake: 12 panels in series per MPPT, string snakes across rows (left\u2194right alternating)',
+    cfgColor:'#86efac', mpptColors:COL6,
+    blocks: SNAKE_ROW_CELLS.map((cells,i)=>({r0:0,r1:ROWS-1,c0:0,c1:COLS-1,topo:'snake-series',cells,label:`MPPT ${i+1} (snake row ${i+1})`})),
+  },
+  {
+    id:'M', label:'Option M', short:'M \u2014 6\u00d712 Snake\u2195',
+    desc:'6 MPPTs \u00b7 Column-wise snake: 12 panels in series per MPPT, string snakes across columns (top\u2195bottom alternating)',
+    cfgColor:'#fde68a', mpptColors:COL6,
+    blocks: SNAKE_COL_CELLS.map((cells,i)=>({r0:0,r1:ROWS-1,c0:0,c1:COLS-1,topo:'snake-series',cells,label:`MPPT ${i+1} (snake col ${i+1})`})),
+  },
 ];
 
 // ── Inverter specs per configuration (WP6) ─────────────────────────────────
 const INVERTER_SPECS = {
-  A: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:27, totalPowerW:null },
-  B: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:27, totalPowerW:null },
-  C: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:27, totalPowerW:null },
+  A: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
+  B: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
+  C: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
   D: { VmpptMin:75,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
   E: { VmpptMin:75,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
   F: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:10000 },
   G: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:15000 },
-  H: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:40, totalPowerW:null },
-  I: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:40, totalPowerW:null },
+  H: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
+  I: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
+  J: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
+  K: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
+  L: { VmpptMin:75,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
+  M: { VmpptMin:75,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
 };
 
 /**
@@ -1070,7 +1149,7 @@ function applyInverterClipping(mpp, spec) {
 const FEED_IN_FACTOR  = 0.70;  // feed-in ≈ 70 % of APX spot (no saldering / direct feed-in)
 const PRICE_SALDERING    = 0.26;  // €/kWh — kept for reference / heatmap € fallback
 const PRICE_NO_SALDERING = 0.08;  // €/kWh — kept for reference / heatmap € fallback
-const CONFIG_COST = { A:850, B:850, C:850, D:650, E:650, F:1205, G:1805, H:850, I:850 }; // € installed cost
+const CONFIG_COST = { A:850, B:850, C:850, D:650, E:650, F:1205, G:1805, H:850, I:850, J:850, K:850, L:900, M:900 }; // € installed cost
 const MIN_ROI_DISPLAY_YEARS = 5;
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -1132,7 +1211,11 @@ function getMpptIdx(r, c) {
   const blocks = CONFIGS.find(x => x.id === highlightedConfig).blocks;
   for (let i=0; i<blocks.length; i++) {
     const b = blocks[i];
-    if (r>=b.r0 && r<=b.r1 && c>=b.c0 && c<=b.c1) return i;
+    if (b.topo === 'snake-series') {
+      if (b.cells.some(cell => cell.r === r && cell.c === c)) return i;
+    } else {
+      if (r>=b.r0 && r<=b.r1 && c>=b.c0 && c<=b.c1) return i;
+    }
   }
   return 0;
 }
@@ -1284,6 +1367,22 @@ function drawGroupDividers() {
   }
   if (id === 'D' || id === 'E') {
     for (const sepCol of [2, 5]) {
+      const rctA = panelRect(0, sepCol);
+      const x = rctA.x + rctA.w + GAP/2;
+      ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
+    }
+  }
+  // Column dividers for H/I (3 col groups: 0-2 | 3-5 | 6-8)
+  if (id === 'H' || id === 'I') {
+    for (const sepCol of [2, 5]) {
+      const rctA = panelRect(0, sepCol);
+      const x = rctA.x + rctA.w + GAP/2;
+      ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
+    }
+  }
+  // Column dividers for J/K (4 col groups: 0-1 | 2-3 | 4-5 | 6-8)
+  if (id === 'J' || id === 'K') {
+    for (const sepCol of [1, 3, 5]) {
       const rctA = panelRect(0, sepCol);
       const x = rctA.x + rctA.w + GAP/2;
       ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
@@ -1619,10 +1718,16 @@ function blockVTCT(r0, r1, c0, c1, nPts=200) {
   result.sort((a,b)=>a.V-b.V); return result;
 }
 
+/** Series IV for an arbitrary ordered cell list — used for snake-series strings */
+function snakeStringIV(cells, nPts=200) {
+  return stringIV(cells.map(({r,c}) => effectiveG(r, c)), nPts);
+}
+
 /** Dispatch by topology — uses effectiveG */
 function computeBlockIV(block) {
   const {r0,r1,c0,c1,topo}=block;
   const eG=(r,c)=>effectiveG(r,c);
+  if (topo==='snake-series') return snakeStringIV(block.cells);
   if (topo==='series'||(topo==='sp'&&r0===r1))
     return stringIV(Array.from({length:c1-c0+1},(_,i)=>eG(r0,c0+i)));
   if (topo==='sp')
@@ -2638,7 +2743,10 @@ function runYearlySimulation() {
     const spec = INVERTER_SPECS[cfg.id] || null;
     return {
       id: cfg.id,
-      blocks: cfg.blocks.map(b => ({ r0:b.r0, r1:b.r1, c0:b.c0, c1:b.c1, topo:b.topo })),
+      blocks: cfg.blocks.map(b => ({
+        r0:b.r0, r1:b.r1, c0:b.c0, c1:b.c1, topo:b.topo,
+        ...(b.cells ? {cells: b.cells} : {}),
+      })),
       totalPowerW: spec?.totalPowerW ?? null,
     };
   });
