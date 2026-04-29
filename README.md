@@ -328,7 +328,7 @@ function precomputeYearlyLoad() {
 
 #### Overview
 
-**V3** replaces the daily greedy allocation of V2 with a **true lightweight dynamic programming (DP) optimizer** that looks ahead over a user-selectable rolling horizon (24 h / 48 h / 96 h).
+**V3** replaces the daily greedy allocation of V2 with a **true lightweight dynamic programming (DP) optimizer** that looks ahead over a user-selectable rolling horizon (24 h / 48 h / 96 h / **120 h**).
 
 It appears alongside V2 in the 🔋 Economic Forecast card and shows a **three-way comparison** (v1 | v2 | v3) with deltas.
 
@@ -336,7 +336,7 @@ It appears alongside V2 in the 🔋 Economic Forecast card and shows a **three-w
 
 1. Run the **Yearly PV Simulation** and the **Economic Analysis** as normal.
 2. The V3 panel appears automatically inside the Economic Forecast results section.
-3. Select the **Forecast Horizon** (24 h, 48 h recommended, or 96 h max look-ahead).
+3. Select the **Forecast Horizon** (24 h, 48 h, 96 h, or 120 h — default, 5-day rolling look-ahead).
 4. Enable or disable **Use V3 Dynamic Programming** with the checkbox.
 5. Click **Re-run with v2/v3 Strategy** to refresh the comparison.
 
@@ -346,10 +346,18 @@ It appears alongside V2 in the 🔋 Economic Forecast card and shows a **three-w
 |---|---|
 | SOC states | 20 buckets (5% steps of battery capacity) |
 | Actions | charge / discharge\_self / discharge\_export / idle |
-| Horizon | 24 h · 48 h · 96 h (rolling, re-run every 24 h) |
+| Horizon | 24 h · 48 h · 96 h · **120 h** (rolling, re-run every 24 h) |
 | Objective | Maximise net economic value (€) over the horizon |
 | Algorithm | Backward induction (classic finite-horizon DP) |
-| Terminal value | Small bonus for higher SOC at horizon end |
+| Terminal value | Remaining SOC × avg sell price × selfUseMultiplier × 0.9 |
+
+#### Tibber Tariff Model (post-2027)
+
+Saldering (net metering) is abolished in 2027. The model uses the post-2027 Tibber pricing:
+
+- **Buy tariff** = bare APX spot price + €0.04/kWh (Tibber opslag surcharge)
+- **Sell tariff** = bare APX spot price (no surcharge, no saldering benefit)
+- The DP and executor both use the correct asymmetric buy/sell prices for all valuation and gate calculations.
 
 #### V3 Dispatch Logic
 
@@ -366,7 +374,7 @@ It appears alongside V2 in the 🔋 Economic Forecast card and shows a **three-w
 
 - V3 typically outperforms V1 by **15–25%** and V2 by **+5–10%** in battery-driven annual savings.
 - Largest gain on days with strong intra-day price variation (dynamic tariff peak/off-peak spread).
-- Performance: even at 96 h horizon the full-year DP run takes < 300 ms on a modern mid-range laptop (Chrome/Firefox, single-threaded JS).
+- Performance: even at 120 h horizon the full-year DP run takes < 400 ms on a modern mid-range laptop (Chrome/Firefox, single-threaded JS).
 
 ---
 
