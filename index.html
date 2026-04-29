@@ -212,6 +212,10 @@
         <label style="margin-left:6px">Crown&#8960;:</label>
         <input type="range" id="treeCrownSlider" min="1" max="10" value="6">
         <span id="treeCrownVal" style="color:#4ade80;min-width:26px">6 m</span>
+        <label style="margin-left:8px;display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.78rem">
+          <input type="checkbox" id="treeUnderstoryCheck" checked>
+          <span style="color:#86efac">Understory</span>
+        </label>
         <button class="btn" id="deleteTreeBtn" style="margin-left:6px;border-color:#ef4444;color:#ef4444">&#10005; Delete</button>
       </div>
       <p class="instructions">Shadows from trees are automatically applied to the array based on current date &amp; time.</p>
@@ -421,7 +425,17 @@ function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
   const ux = -Math.sin(az_rad), uy = -Math.cos(az_rad);
   const along = dx*ux + dy*uy, perp = Math.abs(dx*uy - dy*ux);
   const ra = Math.min(tree.crownRadius / sin_alt, MAX_SHADOW_AXIS), rp = tree.crownRadius;
-  return (along*along)/(ra*ra) + (perp*perp)/(rp*rp) <= 1.0;
+  if ((along*along)/(ra*ra) + (perp*perp)/(rp*rp) <= 1.0) return true;
+  // Understory foliage cylinder: z=0 to height/2 casts a stadium-shaped shadow
+  if (tree.hasUnderstoryFoliage) {
+    const L = Math.min(tree.height / 2 / tan_alt, MAX_SHADOW_LEN);
+    const abx = L * ux, aby = L * uy;
+    const apx = px - tree.x, apy = py - tree.y;
+    const t = L > 0 ? Math.max(0, Math.min(1, (apx*abx + apy*aby) / (L*L))) : 0;
+    const ex = apx - t*abx, ey = apy - t*aby;
+    if (ex*ex + ey*ey <= tree.crownRadius * tree.crownRadius) return true;
+  }
+  return false;
 }
 
 // ── IV-curve physics (reduced resolution: nPts=40/100 vs 80/200 for display) 
@@ -2000,7 +2014,7 @@ let nextTreeId    = 0;
 let selectedTreeId = null;
 
 function addTree(x, y) {
-  const t = { id: nextTreeId++, x, y, height: 8, crownRadius: 6 };
+  const t = { id: nextTreeId++, x, y, height: 8, crownRadius: 6, hasUnderstoryFoliage: true };
   sceneTrees.push(t);
   selectTree(t.id);
   recomputeTreeShadow();
@@ -2016,6 +2030,7 @@ function selectTree(id) {
   document.getElementById('treeHeightVal').textContent = t.height + ' m';
   document.getElementById('treeCrownSlider').value = t.crownRadius;
   document.getElementById('treeCrownVal').textContent = t.crownRadius + ' m';
+  document.getElementById('treeUnderstoryCheck').checked = t.hasUnderstoryFoliage !== false;
   updateTreeCountLabel();
 }
 
@@ -2030,22 +2045,30 @@ function updateTreeCountLabel() {
     n === 0 ? 'No trees' : n + ' tree' + (n === 1 ? '' : 's');
 }
 
-/** Returns true if point (px, py) lies within the shadow ellipse cast by tree. */
+/** Returns true if point (px, py) lies within the shadow cast by tree (crown ellipse + optional cylinder). */
 function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
   if (tan_alt < 0.01) return false;
   const sin_alt = tan_alt / Math.sqrt(1 + tan_alt * tan_alt);
   const shadow_len = Math.min(tree.height / tan_alt, MAX_SHADOW_LEN);
-  // Shadow centre = ground position of crown-centre shadow
   const scx = tree.x - shadow_len * Math.sin(az_rad);
   const scy = tree.y - shadow_len * Math.cos(az_rad);
   const dx = px - scx, dy = py - scy;
-  // Shadow direction unit vector (away from sun)
   const ux = -Math.sin(az_rad), uy = -Math.cos(az_rad);
-  const along = dx * ux + dy * uy;               // component along shadow axis
-  const perp  = Math.abs(dx * uy - dy * ux);     // perpendicular component
-  const ra    = Math.min(tree.crownRadius / sin_alt, MAX_SHADOW_AXIS); // elongated semi-axis
-  const rp    = tree.crownRadius;                                       // lateral semi-axis
-  return (along * along) / (ra * ra) + (perp * perp) / (rp * rp) <= 1.0;
+  const along = dx * ux + dy * uy;
+  const perp  = Math.abs(dx * uy - dy * ux);
+  const ra    = Math.min(tree.crownRadius / sin_alt, MAX_SHADOW_AXIS);
+  const rp    = tree.crownRadius;
+  if ((along * along) / (ra * ra) + (perp * perp) / (rp * rp) <= 1.0) return true;
+  // Understory foliage cylinder (z=0 to height/2): stadium shadow
+  if (tree.hasUnderstoryFoliage) {
+    const L = Math.min(tree.height / 2 / tan_alt, MAX_SHADOW_LEN);
+    const abx = L * ux, aby = L * uy;
+    const apx = px - tree.x, apy = py - tree.y;
+    const t = L > 0 ? Math.max(0, Math.min(1, (apx*abx + apy*aby) / (L*L))) : 0;
+    const ex = apx - t*abx, ey = apy - t*aby;
+    if (ex*ex + ey*ey <= tree.crownRadius * tree.crownRadius) return true;
+  }
+  return false;
 }
 
 /** Recompute currentTreeShade[][] from sceneTrees + lastSunPos, then recombine. */
@@ -2215,61 +2238,116 @@ function drawMapTreeShadows() {
   const sin_alt = Math.sin(lastSunPos.altitude * Math.PI / 180);
   const foliageFactor = FOLIAGE[buildDateFromUI().getMonth()];
 
-  mapCtx.save(); mapCtx.globalAlpha = 0.35;
+  mapCtx.save(); mapCtx.globalAlpha = 0.35; mapCtx.fillStyle = '#111800';
   sceneTrees.forEach(tree => {
+    const cr = tree.crownRadius * foliageFactor;
     const shadow_len = Math.min(tree.height / tan_alt, MAX_SHADOW_LEN);
     const scx = tree.x - shadow_len * Math.sin(az_rad);
     const scy = tree.y - shadow_len * Math.cos(az_rad);
     const {mx: ex, my: ey} = sceneToMap(scx, scy);
     const {mx: tx, my: ty} = sceneToMap(tree.x, tree.y);
 
-    const rp = tree.crownRadius * foliageFactor * MAP_SCALE;
-    const ra = Math.min(tree.crownRadius * foliageFactor / sin_alt, MAX_SHADOW_AXIS) * MAP_SCALE;
+    // Crown ellipse shadow
+    const rp = cr * MAP_SCALE;
+    const ra = Math.min(cr / sin_alt, MAX_SHADOW_AXIS) * MAP_SCALE;
     const screenAngle = Math.atan2(ey - ty, ex - tx);
 
     mapCtx.save();
     mapCtx.translate(ex, ey);
     mapCtx.rotate(screenAngle - Math.PI/2);
     mapCtx.scale(ra/rp, 1);
-    mapCtx.fillStyle = '#111800';
     mapCtx.beginPath(); mapCtx.arc(0, 0, rp, 0, 2*Math.PI); mapCtx.fill();
     mapCtx.restore();
+
+    // Understory cylinder shadow: stadium from tree base to shadow of cylinder top
+    if (tree.hasUnderstoryFoliage !== false) {
+      const cylLen = Math.min(tree.height / 2 / tan_alt, MAX_SHADOW_LEN);
+      const bx = tree.x - cylLen * Math.sin(az_rad);
+      const by = tree.y - cylLen * Math.cos(az_rad);
+      const {mx: bxm, my: bym} = sceneToMap(bx, by);
+      mapCtx.save();
+      mapCtx.beginPath();
+      mapCtx.moveTo(tx, ty);
+      mapCtx.lineTo(bxm, bym);
+      mapCtx.lineWidth = 2 * cr * MAP_SCALE;
+      mapCtx.lineCap = 'round';
+      mapCtx.strokeStyle = '#111800';
+      mapCtx.stroke();
+      mapCtx.restore();
+    }
   });
   mapCtx.restore();
 }
 
 function drawMapTree(tree) {
   const {mx, my} = sceneToMap(tree.x, tree.y);
-  const rx = tree.crownRadius * MAP_SCALE;          // horizontal half-width (m → px)
-  const ry = tree.height      * MAP_SCALE / 2;      // vertical half-height  (m → px)
-  const cy = my - ry;                               // ellipse centre: base sits at my
+  const rx = tree.crownRadius * MAP_SCALE;    // horizontal half-width (m → px)
+  const ry = tree.height * MAP_SCALE / 2;     // half-height of full oval (= height/2 in px)
+  const cy = my - ry;                         // oval centre (at height/2 above ground)
   const isSel = tree.id === selectedTreeId;
 
-  mapCtx.save();
+  if (tree.hasUnderstoryFoliage !== false) {
+    // ── Understory cylinder: rectangle from ground (my) to oval centre (cy) ──
+    mapCtx.save();
+    mapCtx.beginPath();
+    mapCtx.rect(mx - rx, cy, rx * 2, ry);    // from cy down to my
+    mapCtx.clip();
+    const grCyl = mapCtx.createLinearGradient(mx, cy, mx, my);
+    grCyl.addColorStop(0,    isSel ? '#22c55e' : '#16a34a');
+    grCyl.addColorStop(1,    isSel ? '#1a4520' : '#0a2410');
+    mapCtx.fillStyle = grCyl;
+    mapCtx.fillRect(mx - rx, cy, rx * 2, ry);
+    mapCtx.restore();
 
-  // Clipping to ellipse so the gradient is contained
-  mapCtx.beginPath();
-  mapCtx.ellipse(mx, cy, rx, ry, 0, 0, 2 * Math.PI);
-  mapCtx.clip();
+    // ── Crown oval: clipped to top half (cy - ry  →  cy) ──
+    mapCtx.save();
+    mapCtx.beginPath();
+    mapCtx.rect(mx - rx, cy - ry, rx * 2, ry);   // upper half bounding box
+    mapCtx.clip();
+    mapCtx.beginPath();
+    mapCtx.ellipse(mx, cy, rx, ry, 0, 0, 2 * Math.PI);
+    const grCrown = mapCtx.createLinearGradient(mx, cy - ry, mx, cy);
+    grCrown.addColorStop(0,   isSel ? '#a7f3d0' : '#86efac');
+    grCrown.addColorStop(0.5, isSel ? '#22c55e' : '#16a34a');
+    grCrown.addColorStop(1,   isSel ? '#166534' : '#052e16');
+    mapCtx.fillStyle = grCrown;
+    mapCtx.fill();
+    mapCtx.restore();
 
-  // Vertical green-to-dark gradient (light at top, darker towards base)
-  const gr = mapCtx.createLinearGradient(mx, cy - ry, mx, cy + ry);
-  gr.addColorStop(0,    isSel ? '#a7f3d0' : '#86efac');   // top — light green
-  gr.addColorStop(0.45, isSel ? '#22c55e' : '#16a34a');   // mid
-  gr.addColorStop(1,    isSel ? '#14532d' : '#052e16');   // base — dark green
-  mapCtx.fillStyle = gr;
-  mapCtx.fillRect(mx - rx, cy - ry, rx * 2, ry * 2);
+    // ── Outline: tombstone shape (half-ellipse top + rectangle sides + flat base) ──
+    mapCtx.strokeStyle = isSel ? '#fbbf24' : '#1a4520';
+    mapCtx.lineWidth   = isSel ? 2 : 1;
+    if (isSel) mapCtx.setLineDash([3, 2]);
+    mapCtx.beginPath();
+    mapCtx.ellipse(mx, cy, rx, ry, 0, Math.PI, 2 * Math.PI); // top arc L→R
+    mapCtx.lineTo(mx + rx, my);   // right side down to ground
+    mapCtx.lineTo(mx - rx, my);   // base
+    mapCtx.closePath();            // left side back up
+    mapCtx.stroke();
+    mapCtx.setLineDash([]);
 
-  mapCtx.restore();
+  } else {
+    // ── Full oval only (no understory) ──
+    mapCtx.save();
+    mapCtx.beginPath();
+    mapCtx.ellipse(mx, cy, rx, ry, 0, 0, 2 * Math.PI);
+    mapCtx.clip();
+    const gr = mapCtx.createLinearGradient(mx, cy - ry, mx, cy + ry);
+    gr.addColorStop(0,    isSel ? '#a7f3d0' : '#86efac');
+    gr.addColorStop(0.45, isSel ? '#22c55e' : '#16a34a');
+    gr.addColorStop(1,    isSel ? '#14532d' : '#052e16');
+    mapCtx.fillStyle = gr;
+    mapCtx.fillRect(mx - rx, cy - ry, rx * 2, ry * 2);
+    mapCtx.restore();
 
-  // Thin dark outline
-  mapCtx.strokeStyle = isSel ? '#fbbf24' : '#052e16';
-  mapCtx.lineWidth   = isSel ? 2 : 1;
-  if (isSel) mapCtx.setLineDash([3, 2]);
-  mapCtx.beginPath();
-  mapCtx.ellipse(mx, cy, rx, ry, 0, 0, 2 * Math.PI);
-  mapCtx.stroke();
-  mapCtx.setLineDash([]);
+    mapCtx.strokeStyle = isSel ? '#fbbf24' : '#052e16';
+    mapCtx.lineWidth   = isSel ? 2 : 1;
+    if (isSel) mapCtx.setLineDash([3, 2]);
+    mapCtx.beginPath();
+    mapCtx.ellipse(mx, cy, rx, ry, 0, 0, 2 * Math.PI);
+    mapCtx.stroke();
+    mapCtx.setLineDash([]);
+  }
 
   // Height label at visual centre
   const fs = Math.max(8, Math.min(11, rx * 0.65));
@@ -2801,6 +2879,38 @@ function updateLeafletShadows() {
     }).addTo(leafletInstance);
 
     leafletShadowLayers.push(shadowPoly);
+
+    // Understory cylinder shadow: stadium polygon from tree base to shadow of cylinder top
+    if (tree.hasUnderstoryFoliage !== false) {
+      const cylLen = Math.min(tree.height / 2 / tan_alt, MAX_SHADOW_LEN);
+      // Near end centre (tree base) and far end centre (cylinder top shadow)
+      const ax = tree.x, ay = tree.y;
+      const bx = tree.x + cylLen * ux, by = tree.y + cylLen * uy;
+      // Build stadium polygon: far semicircle + near semicircle
+      const Nh = 12;
+      const cylPts = [];
+      for (let i = 0; i <= Nh; i++) {
+        const a = Math.PI + (i / Nh) * Math.PI;   // far end: angles π..2π
+        const px = bx + cr * Math.cos(a) * vx + cr * Math.sin(a) * ux;
+        const py = by + cr * Math.cos(a) * vy + cr * Math.sin(a) * uy;
+        const ll = enuToLatLng(px, py, arrayOriginLat, arrayOriginLng);
+        cylPts.push([ll.lat, ll.lng]);
+      }
+      for (let i = 0; i <= Nh; i++) {
+        const a = (i / Nh) * Math.PI;             // near end: angles 0..π
+        const px = ax + cr * Math.cos(a) * vx + cr * Math.sin(a) * ux;
+        const py = ay + cr * Math.cos(a) * vy + cr * Math.sin(a) * uy;
+        const ll = enuToLatLng(px, py, arrayOriginLat, arrayOriginLng);
+        cylPts.push([ll.lat, ll.lng]);
+      }
+      const cylPoly = L.polygon(cylPts, {
+        color: 'transparent',
+        fillColor: '#000',
+        fillOpacity: 0.35,
+        interactive: false,
+      }).addTo(leafletInstance);
+      leafletShadowLayers.push(cylPoly);
+    }
   });
 }
 
@@ -2955,7 +3065,7 @@ function runYearlySimulation() {
       FOLIAGE: [...FOLIAGE],
       MAX_SHADOW_LEN, MAX_SHADOW_AXIS,
       DYNAMIC_PRICES: Float64Array.from({length:12*24}, (_,i) => HOURLY_APX_PRICE_2025[Math.floor(i/24)][i%24]),
-      sceneTrees: sceneTrees.map(t => ({ x:t.x, y:t.y, height:t.height, crownRadius:t.crownRadius })),
+      sceneTrees: sceneTrees.map(t => ({ x:t.x, y:t.y, height:t.height, crownRadius:t.crownRadius, hasUnderstoryFoliage:t.hasUnderstoryFoliage !== false })),
       shadeLevel, useWeather,
       DOY_TO_MONTH, PANEL_POS,
       INVERTER_SPECS: { ...INVERTER_SPECS },
@@ -3391,6 +3501,17 @@ document.getElementById('treeCrownSlider').addEventListener('input', function ()
   recomputeTreeShadow();
   drawSceneMap();
   syncTreeLayersToLeaflet();
+  scheduleUpdate();
+});
+
+// Understory foliage toggle
+document.getElementById('treeUnderstoryCheck').addEventListener('change', function () {
+  const t = sceneTrees.find(tr => tr.id === selectedTreeId);
+  if (!t) return;
+  t.hasUnderstoryFoliage = this.checked;
+  recomputeTreeShadow();
+  drawSceneMap();
+  if (leafletActive) updateLeafletShadows();
   scheduleUpdate();
 });
 
