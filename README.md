@@ -226,3 +226,99 @@ I = Iph − I₀·(exp((V + I·Rs) / (n·Ns·Vt)) − 1) − (V + I·Rs) / Rsh
 ## Browser Support
 
 Any modern browser with ES6+ support: Chrome 80+, Firefox 75+, Safari 13+, Edge 80+.
+
+---
+
+## Economic Analysis & Battery Support
+
+### Overview
+
+The **Economic Forecast** panel (at the bottom of the right column) lets you evaluate the annual monetary value of each wiring configuration under your current shade pattern, with or without a 64 kWh battery.
+
+### How to Use
+
+1. Run the **Yearly PV Simulation** first (click "↺ Run Yearly Sim" in the Yearly Simulation card). This takes 1–3 s.
+2. Scroll to the **🔋 Economic Forecast** card.
+3. Configure the parameters (battery enable, grid pre-charge, load profile, sell price factor).
+4. Click **▶ Run Economic Analysis** (< 200 ms).
+
+### Parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| **64 kWh Battery** | ✅ On | 64 kWh LFP battery, capex excluded (already paid for) |
+| **Grid Pre-charge** | Off | Charge battery from grid during cheapest hours on days with predicted low PV yield |
+| **Base load** | 12 kWh/day | Household appliances + lighting + EV slow-charge |
+| **HP winter** | 28 kWh/day | Heat pump electrical demand at peak winter (electrical kWh, COP not modeled) |
+| **Sell factor** | 0.85× | Sell tariff = buy tariff × factor (Dutch feed-in / SDE++ range) |
+| **Battery size** | 64 kWh | Sensitivity: 32 / 64 / 96 kWh |
+
+### Battery Dispatch Logic
+
+1. **PV → load** (direct self-consumption, highest priority)
+2. **Surplus PV → battery** (charge at 95% efficiency, up to 15 kW)
+3. **Remaining surplus PV → grid** (at sell tariff)
+4. **Battery → load** (discharge for self-use when PV insufficient, down to 10% SOC)
+5. **Grid → load** (import only what battery cannot cover)
+6. **After sundown, during top-6 most expensive hours per day**: sell from battery to grid down to **25% SOC** (16 kWh reserve) — time-shifts stored solar to high-price periods
+7. **Optional grid pre-charge**: on days where next-day PV < next-day load, charge battery during 4 cheapest hours at (deficit / 0.80) kWh
+
+### House Load Model
+
+- **Base**: 12 kWh/day, distributed with morning peak (06–09 h) and evening peak (18–22 h)
+- **Heat pump**: seasonal — full load Dec–Jan, tapering through autumn/spring, zero Jun–Aug
+- **Variation**: ±5% deterministic daily variation for realism
+- Total yearly load ≈ 9–11 MWh (realistic for a Dutch large detached house + heat pump)
+
+### Tariff Model
+
+Synthetic Dutch dynamic APX/EPEX tariff profile, based on the 12×24 monthly-hourly price matrix (`HOURLY_APX_PRICE_2025`):
+- Summer midday prices can go near zero (solar duck curve)
+- Winter evening peaks 17–20 h: 0.15–0.40 €/kWh
+- Weekend discount ~18%
+- Daily variation ±10% (deterministic seed)
+
+### Output Metrics
+
+| Metric | Meaning |
+|---|---|
+| PV kWh/yr | Annual PV production for this config under current shade |
+| SC% | Self-consumption rate (% of PV consumed directly + via battery) |
+| Export kWh | Total grid export (PV surplus + battery time-shift) |
+| Savings (no bat) | Annual € savings with PV only, no battery |
+| Savings (+ bat) | Annual € savings with PV + battery dispatch |
+| 🔋 Bonus | Extra savings from battery vs. PV-only |
+
+### Example Results (no shade, 64 kWh battery, clear-sky)
+
+```
+Best config: ~€2,400–3,200 annual savings (clear-sky optimistic)
+Battery bonus: €300–700 vs PV-only
+Self-consumption rate: 60–80% with battery
+Real-world estimate: derate by 15–25% for cloud losses
+```
+
+### Assumptions & Limitations
+
+- **Clear-sky model** — no clouds, aerosols, or soiling. Real yield is 15–25% lower.
+- Fixed shade pattern applied uniformly across all 8760 hours (clear-sky irradiance varies with sun position; shade mask does not change seasonally, except tree foliage).
+- Battery capex excluded entirely (already paid for scenario).
+- Battery degradation not modeled (single-year snapshot).
+- Heat pump modeled as electrical load, COP not applied (conservative — actual savings could be higher if thermal storage is also considered).
+- Sell tariff = buy tariff × factor (default 0.85). Dutch saldering rules may allow higher rates.
+
+### Export
+
+Click **💾 Export CSV** to download an hourly CSV with: Hour, Date, PV_kWh, Load_kWh, Tariff_EUR_kWh, SellTariff_EUR_kWh (for the best-savings configuration).
+
+### Customisation
+
+To use a custom load profile or tariff series, edit the `precomputeYearlyLoad()` or `generateYearlyTariffs()` functions in the `<script>` block of `index.html`. Both return `Float64Array(8760)` and are easy to replace with real measured data.
+
+```js
+// Example: override with real measured load data
+function precomputeYearlyLoad() {
+  // return your own Float64Array(8760) in kWh/hour
+}
+```
+
