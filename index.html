@@ -192,7 +192,7 @@
     <div class="card">
       <h3>&#127758; Scene Map
         <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">
-          &nbsp;top-down &middot; click empty area = add tree &middot; click tree = select &amp; drag
+          &nbsp;top-down &middot; <span style="color:#e94560">✥</span> drag = move array &middot; <span style="color:#38bdf8">↻</span> drag = rotate &middot; click empty = add tree &middot; click tree = drag
         </span>
       </h3>
       <div id="leafletMap"></div>
@@ -1806,11 +1806,16 @@ const ROW_SPACING = 1.1;  // meters between panel row centres
 const MAX_SHADOW_LEN  = 500; // cap shadow length (m) — avoids near-horizon infinities
 const MAX_SHADOW_AXIS = 400; // cap elongated shadow semi-axis (m)
 
-/** Scene (ENU) coordinates (m) of panel centre for row r, col c. Origin = array centre. */
+/** Scene (ENU) coordinates (m) of panel centre for row r, col c.
+ *  Applies arrayRotDeg (CCW) rotation and arraySceneX/Y offset.
+ *  Used by both shadow calculations and canvas rendering → simulation and display stay in sync. */
 function panelScenePos(r, c) {
+  const raw_x = COL_SPACING * (c - (COLS - 1) / 2);
+  const raw_y = ROW_SPACING * ((ROWS - 1) / 2 - r);
+  const rot   = arrayRotDeg * Math.PI / 180;
   return {
-    x: COL_SPACING * (c - (COLS - 1) / 2),
-    y: ROW_SPACING * ((ROWS - 1) / 2 - r)
+    x: raw_x * Math.cos(rot) - raw_y * Math.sin(rot) + arraySceneX,
+    y: raw_x * Math.sin(rot) + raw_y * Math.cos(rot) + arraySceneY,
   };
 }
 
@@ -1966,7 +1971,10 @@ function drawSceneMap() {
 }
 
 function drawMapArray() {
-  SECTIONS.forEach((sec, si) => {
+  const rot   = arrayRotDeg * Math.PI / 180;
+  const cos_r = Math.cos(rot), sin_r = Math.sin(rot);
+
+  SECTIONS.forEach((sec) => {
     for (let r = sec.rowMin; r <= sec.rowMax; r++) {
       for (let c = 0; c < COLS; c++) {
         const pos = panelScenePos(r, c);
@@ -1975,23 +1983,53 @@ function drawMapArray() {
         const ph = ROW_SPACING * MAP_SCALE * 0.87;
         const G  = effectiveG(r, c);
         const panelShade = 1 - G * 0.6 - 0.2;
+        mapCtx.save();
+        mapCtx.translate(mx, my);
+        mapCtx.rotate(-rot); // canvas y-axis is flipped → CCW ENU = CW in screen coords, so negate
         mapCtx.fillStyle = blendHex(sec.color, '#0a0f0a', panelShade);
-        mapCtx.fillRect(mx - pw/2, my - ph/2, pw, ph);
+        mapCtx.fillRect(-pw/2, -ph/2, pw, ph);
         mapCtx.strokeStyle = sec.color + '55'; mapCtx.lineWidth = 0.5;
-        mapCtx.strokeRect(mx - pw/2, my - ph/2, pw, ph);
+        mapCtx.strokeRect(-pw/2, -ph/2, pw, ph);
+        mapCtx.restore();
       }
     }
   });
 
-  // Array bounding box
-  const tl = panelScenePos(0, 0), br = panelScenePos(ROWS-1, COLS-1);
-  const {mx:x1, my:y1} = sceneToMap(tl.x - COL_SPACING*0.5, tl.y + ROW_SPACING*0.5);
-  const {mx:x2, my:y2} = sceneToMap(br.x + COL_SPACING*0.5, br.y - ROW_SPACING*0.5);
+  // Bounding polygon (rotated)
+  const xHalf = COLS * COL_SPACING / 2;
+  const yTop  =  ROW_SPACING * ROWS / 2;
+  const yBot  = -ROW_SPACING * ROWS / 2;
+  const raw = [[-xHalf, yTop], [xHalf, yTop], [xHalf, yBot], [-xHalf, yBot]];
+  const pts = raw.map(([rx, ry]) => sceneToMap(
+    rx * cos_r - ry * sin_r + arraySceneX,
+    rx * sin_r + ry * cos_r + arraySceneY,
+  ));
   mapCtx.strokeStyle = '#e9456088'; mapCtx.lineWidth = 1.5; mapCtx.setLineDash([4,3]);
-  mapCtx.strokeRect(x1, y1, x2-x1, y2-y1);
-  mapCtx.setLineDash([]);
-  mapCtx.fillStyle = '#e94560'; mapCtx.font = 'bold 8px sans-serif'; mapCtx.textAlign = 'center';
-  mapCtx.fillText('PV ARRAY', (x1+x2)/2, y1 - 3);
+  mapCtx.beginPath();
+  pts.forEach(({mx, my}, i) => i ? mapCtx.lineTo(mx, my) : mapCtx.moveTo(mx, my));
+  mapCtx.closePath(); mapCtx.stroke(); mapCtx.setLineDash([]);
+
+  // Array centre move-handle (red circle with crosshair)
+  const {mx: cx, my: cy} = sceneToMap(arraySceneX, arraySceneY);
+  mapCtx.beginPath(); mapCtx.arc(cx, cy, 8, 0, 2*Math.PI);
+  mapCtx.fillStyle = '#e94560cc'; mapCtx.fill();
+  mapCtx.strokeStyle = '#fff9'; mapCtx.lineWidth = 1.5; mapCtx.stroke();
+  mapCtx.strokeStyle = '#fff'; mapCtx.lineWidth = 1;
+  mapCtx.beginPath(); mapCtx.moveTo(cx-5, cy); mapCtx.lineTo(cx+5, cy); mapCtx.stroke();
+  mapCtx.beginPath(); mapCtx.moveTo(cx, cy-5); mapCtx.lineTo(cx, cy+5); mapCtx.stroke();
+
+  // Rotate handle (blue circle at +xHalf+2m along column direction)
+  const rDist = xHalf + 2.5;
+  const rhx_e = rDist * cos_r + arraySceneX;
+  const rhy_e = rDist * sin_r + arraySceneY;
+  const {mx: rhx, my: rhy} = sceneToMap(rhx_e, rhy_e);
+  mapCtx.beginPath(); mapCtx.arc(rhx, rhy, 7, 0, 2*Math.PI);
+  mapCtx.fillStyle = '#38bdf8cc'; mapCtx.fill();
+  mapCtx.strokeStyle = '#fff9'; mapCtx.lineWidth = 1.5; mapCtx.stroke();
+  mapCtx.fillStyle = '#fff'; mapCtx.font = 'bold 8px sans-serif'; mapCtx.textAlign = 'center';
+  mapCtx.textBaseline = 'middle';
+  mapCtx.fillText('↻', rhx, rhy);
+  mapCtx.textBaseline = 'alphabetic';
 }
 
 function drawMapTreeShadows() {
@@ -2086,7 +2124,16 @@ function drawMapSunArrow() {
 }
 
 // ── Map mouse / touch interactions ─────────────────────────────────────────
-let mapDragTree = null; // {tree, offX, offY}
+let mapDragTree    = null; // {tree, offX, offY}
+let mapDragArray   = null; // {offX, offY} — dragging array centre
+let mapRotateArray = null; // {angleOffset} — rotating array
+
+/** Returns ENU position of rotate handle (in scene coords). */
+function _rotHandleENU() {
+  const rot  = arrayRotDeg * Math.PI / 180;
+  const dist = COLS * COL_SPACING / 2 + 2.5;
+  return { x: dist * Math.cos(rot) + arraySceneX, y: dist * Math.sin(rot) + arraySceneY };
+}
 
 function mapCanvasPos(e) {
   const bb = mapCanvas.getBoundingClientRect();
@@ -2098,9 +2145,28 @@ function mapCanvasPos(e) {
 mapCanvas.addEventListener('mousedown', e => {
   e.preventDefault();
   const {mx, my} = mapCanvasPos(e);
+
+  // Array centre move-handle
+  const {mx: acx, my: acy} = sceneToMap(arraySceneX, arraySceneY);
+  if (Math.hypot(mx - acx, my - acy) <= 10) {
+    const {x, y} = mapToScene(mx, my);
+    mapDragArray = { offX: x - arraySceneX, offY: y - arraySceneY };
+    return;
+  }
+
+  // Array rotate handle
+  const rh = _rotHandleENU();
+  const {mx: rhx, my: rhy} = sceneToMap(rh.x, rh.y);
+  if (Math.hypot(mx - rhx, my - rhy) <= 10) {
+    const {x, y} = mapToScene(mx, my);
+    const angle = Math.atan2(y - arraySceneY, x - arraySceneX) * 180 / Math.PI;
+    mapRotateArray = { angleOffset: angle - arrayRotDeg };
+    return;
+  }
+
+  // Tree
   const hit = treeAtMapPos(mx, my);
   if (hit) {
-    // Select and prepare drag
     selectTree(hit.id);
     const {mx:tx, my:ty} = sceneToMap(hit.x, hit.y);
     mapDragTree = { tree: hit, offX: mx - tx, offY: my - ty };
@@ -2113,6 +2179,26 @@ mapCanvas.addEventListener('mousedown', e => {
 });
 
 mapCanvas.addEventListener('mousemove', e => {
+  if (mapDragArray) {
+    e.preventDefault();
+    const {mx, my} = mapCanvasPos(e);
+    const {x, y} = mapToScene(mx, my);
+    arraySceneX = x - mapDragArray.offX;
+    arraySceneY = y - mapDragArray.offY;
+    recomputeTreeShadow(); drawSceneMap();
+    if (leafletActive) updateLeafletArrayPolygon();
+    return;
+  }
+  if (mapRotateArray) {
+    e.preventDefault();
+    const {mx, my} = mapCanvasPos(e);
+    const {x, y} = mapToScene(mx, my);
+    const angle = Math.atan2(y - arraySceneY, x - arraySceneX) * 180 / Math.PI;
+    arrayRotDeg = angle - mapRotateArray.angleOffset;
+    recomputeTreeShadow(); drawSceneMap(); scheduleUpdate();
+    if (leafletActive) updateLeafletArrayPolygon();
+    return;
+  }
   if (!mapDragTree) return;
   e.preventDefault();
   const {mx, my} = mapCanvasPos(e);
@@ -2124,12 +2210,30 @@ mapCanvas.addEventListener('mousemove', e => {
   scheduleUpdate();
 });
 
-mapCanvas.addEventListener('mouseup',    () => { mapDragTree = null; });
-mapCanvas.addEventListener('mouseleave', () => { mapDragTree = null; });
+mapCanvas.addEventListener('mouseup',    () => { mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
+mapCanvas.addEventListener('mouseleave', () => { mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
 
 mapCanvas.addEventListener('touchstart', e => {
   e.preventDefault();
   const {mx, my} = mapCanvasPos(e);
+
+  // Array centre move-handle
+  const {mx: acx, my: acy} = sceneToMap(arraySceneX, arraySceneY);
+  if (Math.hypot(mx - acx, my - acy) <= 12) {
+    const {x, y} = mapToScene(mx, my);
+    mapDragArray = { offX: x - arraySceneX, offY: y - arraySceneY };
+    return;
+  }
+  // Array rotate handle
+  const rh = _rotHandleENU();
+  const {mx: rhx, my: rhy} = sceneToMap(rh.x, rh.y);
+  if (Math.hypot(mx - rhx, my - rhy) <= 12) {
+    const {x, y} = mapToScene(mx, my);
+    const angle = Math.atan2(y - arraySceneY, x - arraySceneX) * 180 / Math.PI;
+    mapRotateArray = { angleOffset: angle - arrayRotDeg };
+    return;
+  }
+  // Tree
   const hit = treeAtMapPos(mx, my);
   if (hit) {
     selectTree(hit.id);
@@ -2145,6 +2249,24 @@ mapCanvas.addEventListener('touchstart', e => {
 
 mapCanvas.addEventListener('touchmove', e => {
   e.preventDefault();
+  if (mapDragArray) {
+    const {mx, my} = mapCanvasPos(e);
+    const {x, y} = mapToScene(mx, my);
+    arraySceneX = x - mapDragArray.offX;
+    arraySceneY = y - mapDragArray.offY;
+    recomputeTreeShadow(); drawSceneMap();
+    if (leafletActive) updateLeafletArrayPolygon();
+    return;
+  }
+  if (mapRotateArray) {
+    const {mx, my} = mapCanvasPos(e);
+    const {x, y} = mapToScene(mx, my);
+    const angle = Math.atan2(y - arraySceneY, x - arraySceneX) * 180 / Math.PI;
+    arrayRotDeg = angle - mapRotateArray.angleOffset;
+    recomputeTreeShadow(); drawSceneMap(); scheduleUpdate();
+    if (leafletActive) updateLeafletArrayPolygon();
+    return;
+  }
   if (!mapDragTree) return;
   const {mx, my} = mapCanvasPos(e);
   const {x, y} = mapToScene(mx - mapDragTree.offX, my - mapDragTree.offY);
@@ -2155,7 +2277,7 @@ mapCanvas.addEventListener('touchmove', e => {
   scheduleUpdate();
 }, {passive:false});
 
-mapCanvas.addEventListener('touchend', () => { mapDragTree = null; });
+mapCanvas.addEventListener('touchend', () => { mapDragTree = null; mapDragArray = null; mapRotateArray = null; });
 
 // ── Map canvas auto-size ────────────────────────────────────────────────────
 function resizeMapCanvas() {
@@ -2172,17 +2294,23 @@ function resizeMapCanvas() {
 let leafletInstance   = null;
 let leafletActive     = false;
 let leafletTreeLayers = []; // [{treeId, circle, marker}]
-let leafletArrayLayers = []; // L.polygon layers for the two array sections
-let leafletArrayHandle = null; // draggable center handle
+let leafletArrayLayers   = []; // L.polygon layers for the two array sections
+let leafletArrayHandle   = null; // draggable move handle
+let leafletArrayRotHandle = null; // draggable rotate handle
 
-// Boshei 4, Neer, Netherlands — public GPS coordinates for map centering (±5 m precision)
-const BOSHEI_LAT = 51.271;
-const BOSHEI_LNG = 5.990;
+// Boshei 4, Neer, Netherlands — 51°15'34.6"N  5°57'26.2"E
+const BOSHEI_LAT = 51.259611;
+const BOSHEI_LNG = 5.957278;
 const EARTH_RADIUS_M = 6371000;
 
-// Mutable array origin (lat/lng of array centre — updated when user drags the array)
+// Mutable array origin (lat/lng of ENU reference — updated when user drags the origin)
 let arrayOriginLat = BOSHEI_LAT;
 let arrayOriginLng = BOSHEI_LNG;
+
+// Array position (ENU metres from origin) and rotation (degrees CCW from East)
+let arraySceneX = 0;    // array centre East offset (m)
+let arraySceneY = 0;    // array centre North offset (m)
+let arrayRotDeg = 90;   // 90° CCW default — columns run N-S, rows run E-W
 
 function latLngToENU(lat, lng, refLat, refLng) {
   const dLat = (lat - refLat) * Math.PI / 180;
@@ -2199,69 +2327,44 @@ function enuToLatLng(x, y, refLat, refLng) {
 
 /**
  * Compute Leaflet lat/lng polygon corners for the PV array footprint.
- * Accounts for azimuth rotation and per-section tilt projection onto the horizontal plane.
- *
- * Coordinate convention (ENU):
- *   row_dir  — unit vector in the azimuth direction (down the slope, projected on ground)
- *   col_dir  — unit vector perpendicular to row_dir (90° CW when viewed from above)
+ * Uses the SAME rotation + offset as panelScenePos() so OSM display is
+ * pixel-accurate with the canvas scene map and shadow calculations.
  *
  * @returns {{ sec0: [lat,lng][], sec1: [lat,lng][] }}
  */
 function computeArrayPolygonLatLngs(originLat, originLng) {
-  const az_rad = SECTIONS[0].azimuth * Math.PI / 180; // both sections share az=225°
+  const rot   = arrayRotDeg * Math.PI / 180;
+  const cos_r = Math.cos(rot), sin_r = Math.sin(rot);
 
-  // Row direction (toward azimuth = downhill): E=sin(az), N=cos(az)
-  const rowE = Math.sin(az_rad);
-  const rowN = Math.cos(az_rad);
+  // Half-extents in raw (unrotated) local frame
+  const xHalf  = COLS * COL_SPACING / 2;
+  const yTop   =  ROW_SPACING * ROWS / 2;                              // north edge
+  const yBreak = ROW_SPACING * ((ROWS - 1) / 2 - SECTION_DIV) - ROW_SPACING / 2; // section divide
+  const yBot   = -ROW_SPACING * ROWS / 2;                              // south edge
 
-  // Column direction (90° CW from row_dir in top-down view): E=cos(az), N=-sin(az)
-  const colE = Math.cos(az_rad);
-  const colN = -Math.sin(az_rad);
-
-  const halfW = (COLS * COL_SPACING) / 2; // half-width along column axis (m)
-
-  // Section 0: rows 0..SECTION_DIV (tilt = SECTIONS[0].tilt)
-  const nRows0  = SECTION_DIV + 1;
-  const tilt0   = Math.abs(SECTIONS[0].tilt) * Math.PI / 180;
-  const depth0  = nRows0 * ROW_SPACING * Math.cos(tilt0); // horizontal projection
-
-  // Section 1: rows SECTION_DIV+1..ROWS-1 (tilt = SECTIONS[1].tilt)
-  const nRows1  = ROWS - SECTION_DIV - 1;
-  const tilt1   = Math.abs(SECTIONS[1].tilt) * Math.PI / 180;
-  const depth1  = nRows1 * ROW_SPACING * Math.cos(tilt1);
-
-  const totalDepth = depth0 + depth1;
-
-  // Signed distance along row_dir from array centre:
-  //   yTop   < 0  (uphill edge — against row_dir)
-  //   yBreak      (transition between sections)
-  //   yBot   > 0  (downhill edge — in row_dir direction)
-  const yTop   = -(totalDepth / 2);
-  const yBreak = yTop + depth0;
-  const yBot   = +(totalDepth / 2);
-
-  /** Convert (colOffset, rowOffset) in the rotated frame to Leaflet [lat, lng]. */
-  function ll(col, y) {
-    const e = col * colE + y * rowE;
-    const n = col * colN + y * rowN;
+  /** Raw local-frame offset → rotated ENU → Leaflet [lat, lng] */
+  function ll(rx, ry) {
+    const e = rx * cos_r - ry * sin_r + arraySceneX;
+    const n = rx * sin_r + ry * cos_r + arraySceneY;
     const p = enuToLatLng(e, n, originLat, originLng);
     return [p.lat, p.lng];
   }
 
   return {
-    sec0: [ ll(-halfW, yTop), ll(+halfW, yTop), ll(+halfW, yBreak), ll(-halfW, yBreak) ],
-    sec1: [ ll(-halfW, yBreak), ll(+halfW, yBreak), ll(+halfW, yBot), ll(-halfW, yBot) ],
+    sec0: [ ll(-xHalf, yTop),   ll(xHalf, yTop),   ll(xHalf, yBreak), ll(-xHalf, yBreak) ],
+    sec1: [ ll(-xHalf, yBreak), ll(xHalf, yBreak),  ll(xHalf, yBot),   ll(-xHalf, yBot)   ],
   };
 }
 
-/** (Re-)draw the PV array footprint polygons and draggable handle on the Leaflet map. */
+/** (Re-)draw the PV array footprint polygons, move handle and rotate handle on the Leaflet map. */
 function updateLeafletArrayPolygon() {
   if (!leafletInstance) return;
 
   // Remove stale layers
   leafletArrayLayers.forEach(l => l.remove());
   leafletArrayLayers = [];
-  if (leafletArrayHandle) { leafletArrayHandle.remove(); leafletArrayHandle = null; }
+  if (leafletArrayHandle)    { leafletArrayHandle.remove();    leafletArrayHandle = null; }
+  if (leafletArrayRotHandle) { leafletArrayRotHandle.remove(); leafletArrayRotHandle = null; }
 
   const { sec0, sec1 } = computeArrayPolygonLatLngs(arrayOriginLat, arrayOriginLng);
 
@@ -2277,27 +2380,52 @@ function updateLeafletArrayPolygon() {
 
   leafletArrayLayers.push(poly0, poly1);
 
-  // Draggable handle at array centre
-  const handleIcon = L.divIcon({
+  // Move handle at array centre
+  const centerLL = enuToLatLng(arraySceneX, arraySceneY, arrayOriginLat, arrayOriginLng);
+  const moveIcon = L.divIcon({
     className: '',
     html: '<div style="width:22px;height:22px;background:#e94560;border:2px solid #fff;border-radius:50%;' +
           'margin:-11px 0 0 -11px;cursor:move;display:flex;align-items:center;justify-content:center;' +
           'font-size:12px;color:#fff;user-select:none">✥</div>',
     iconSize: [0, 0],
   });
-  const handle = L.marker([arrayOriginLat, arrayOriginLng], {
-    draggable: true, icon: handleIcon, zIndexOffset: 1000,
+  const moveHandle = L.marker([centerLL.lat, centerLL.lng], {
+    draggable: true, icon: moveIcon, zIndexOffset: 1000,
   }).addTo(leafletInstance);
-
-  handle.on('drag', function () {
-    const ll = handle.getLatLng();
-    arrayOriginLat = ll.lat;
-    arrayOriginLng = ll.lng;
+  moveHandle.on('drag', function () {
+    const ll = moveHandle.getLatLng();
+    const enu = latLngToENU(ll.lat, ll.lng, arrayOriginLat, arrayOriginLng);
+    arraySceneX = enu.x; arraySceneY = enu.y;
     updateLeafletArrayPolygon();
     syncTreeLayersToLeaflet();
   });
+  leafletArrayHandle = moveHandle;
 
-  leafletArrayHandle = handle;
+  // Rotate handle — offset along column direction from array centre
+  const rot_rad = arrayRotDeg * Math.PI / 180;
+  const rDist   = COLS * COL_SPACING / 2 + 3;
+  const rhEX    = rDist * Math.cos(rot_rad) + arraySceneX;
+  const rhEY    = rDist * Math.sin(rot_rad) + arraySceneY;
+  const rotLL   = enuToLatLng(rhEX, rhEY, arrayOriginLat, arrayOriginLng);
+  const rotIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:20px;height:20px;background:#38bdf8;border:2px solid #fff;border-radius:50%;' +
+          'margin:-10px 0 0 -10px;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
+          'font-size:11px;color:#fff;font-weight:bold;user-select:none">↻</div>',
+    iconSize: [0, 0],
+  });
+  const rotHandle = L.marker([rotLL.lat, rotLL.lng], {
+    draggable: true, icon: rotIcon, zIndexOffset: 1001,
+  }).addTo(leafletInstance);
+  rotHandle.on('drag', function () {
+    const ll = rotHandle.getLatLng();
+    const pos = latLngToENU(ll.lat, ll.lng, arrayOriginLat, arrayOriginLng);
+    arrayRotDeg = Math.atan2(pos.y - arraySceneY, pos.x - arraySceneX) * 180 / Math.PI;
+    recomputeTreeShadow();
+    updateLeafletArrayPolygon();
+    scheduleUpdate();
+  });
+  leafletArrayRotHandle = rotHandle;
 }
 
 function toggleOSMMap() {
@@ -3008,7 +3136,9 @@ document.getElementById('heatmapMonth')?.addEventListener('change', drawHeatmap)
 // Google Maps buttons
 document.getElementById('toggleGoogleMapBtn').addEventListener('click', toggleOSMMap);
 document.getElementById('centerBosheiBtn').addEventListener('click', () => {
-  if (leafletInstance) leafletInstance.setView([arrayOriginLat, arrayOriginLng], 19);
+  if (!leafletInstance) return;
+  const center = enuToLatLng(arraySceneX, arraySceneY, arrayOriginLat, arrayOriginLng);
+  leafletInstance.setView([center.lat, center.lng], 19);
 });
 
 // Resize canvases on window resize
