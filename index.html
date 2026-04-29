@@ -317,10 +317,18 @@
         </table>
       </div>
       <div style="font-size:0.69rem;color:#4b5563;margin-top:7px;">
-        STC ref: 72&times;340W = 24.48 kW &nbsp;&middot;&nbsp;
+        STC ref: <span id="stcRefLabel">72&times;340W = 24.48 kW</span> &nbsp;&middot;&nbsp;
         <span style="color:#4ade80">&#9733; best total</span> &nbsp;&middot;&nbsp;
         SP = series-parallel &nbsp;|&nbsp; TCT = vertical cross-tied
       </div>
+    </div>
+
+    <!-- Wiring Configurations panel -->
+    <div class="card">
+      <h3>&#9067; Wiring Configurations
+        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">&nbsp;enable/disable &middot; set installation cost</span>
+      </h3>
+      <div id="wiringConfigsPanel" style="font-size:0.77rem"></div>
     </div>
 
     <div class="card">
@@ -1542,8 +1550,18 @@ function applyInverterClipping(mpp, spec) {
 const FEED_IN_FACTOR  = 0.70;  // feed-in ≈ 70 % of APX spot (no saldering / direct feed-in)
 const PRICE_SALDERING    = 0.26;  // €/kWh — kept for reference / heatmap € fallback
 const PRICE_NO_SALDERING = 0.08;  // €/kWh — kept for reference / heatmap € fallback
-const CONFIG_COST = { A:850, B:850, C:850, D:650, E:650, F:1205, G:1805, H:850, I:850, J:850, K:850, L:900, M:900 }; // € installed cost
+let CONFIG_COST = { A:850, B:850, C:850, D:650, E:650, F:1205, G:1805, H:850, I:850, J:850, K:850, L:900, M:900 }; // € installed cost
 const MIN_ROI_DISPLAY_YEARS = 5;
+
+// Set of config IDs that appear in the comparison table and yearly simulation.
+// Users can toggle individual configs on/off via the Wiring Configs panel.
+let activeConfigs = null; // null = all configs active; Set<string> when filtered
+
+/** Returns the currently active subset of CONFIGS (respecting user toggles). */
+function getActiveConfigs() {
+  if (!activeConfigs) return CONFIGS;
+  return CONFIGS.filter(c => activeConfigs.has(c.id));
+}
 
 // ── Battery storage constants (64 kWh system, already paid for) ──────────────
 // Battery is optional and capex is excluded from all savings calculations.
@@ -1628,8 +1646,10 @@ function reinitArrayDimensions(rows, cols, sections, sectionDiv, colSpacing, row
   shade            = Array.from({length: ROWS}, () => Array(COLS).fill(1.0));
   irr              = Array.from({length: ROWS}, () => Array(COLS).fill(1.0));
 
-  // Rebuild config list
+  // Rebuild config list and reset activeConfigs for new dimensions
   buildConfigs();
+  // Reset activeConfigs so all new configs are active (old IDs may not exist)
+  activeConfigs = null;
 
   // Reset highlighted config to first available one
   if (!CONFIGS.some(c => c.id === highlightedConfig)) {
@@ -1647,8 +1667,9 @@ function reinitArrayDimensions(rows, cols, sections, sectionDiv, colSpacing, row
   drawSceneMap();
   fullUpdate();
 
-  // Update the dimensions UI to reflect the live state
+  // Update the dimensions UI and wiring config panel to reflect the live state
   _syncArrayDimsUI();
+  _renderWiringConfigsPanel();
 }
 
 /** Push the current ROWS/COLS/SECTIONS/spacing values back into the Array Dimensions UI. */
@@ -1678,6 +1699,96 @@ function _syncArrayDimsUI() {
         <input type="number" class="dim-sec-az" min="0" max="360" value="${sec.azimuth}"
                style="width:60px" title="Azimuth in degrees CW from North (180=South, 225≈SW)">
       </div>`);
+  });
+}
+
+/**
+ * Render the Wiring Configurations panel with toggle checkboxes and cost inputs.
+ * Called after CONFIGS changes (buildConfigs) or activeConfigs/CONFIG_COST are restored.
+ */
+function _renderWiringConfigsPanel() {
+  const container = document.getElementById('wiringConfigsPanel');
+  if (!container) return;
+
+  // Update STC reference label to reflect current panel count
+  const stcRef = document.getElementById('stcRefLabel');
+  if (stcRef) {
+    const total = ROWS * COLS;
+    const stcKw = (PNL.Pmax * total / 1000).toFixed(2);
+    stcRef.textContent = `${total}\u00d7${PNL.Pmax} W = ${stcKw} kW`;
+  }
+
+  let html = `<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px">
+    <button class="btn" id="wcEnableAllBtn" style="font-size:0.72rem">&#10003; All</button>
+    <button class="btn" id="wcDisableAllBtn" style="font-size:0.72rem">&#9633; None</button>
+  </div>
+  <div style="display:grid;grid-template-columns:auto 1fr auto;gap:5px 8px;align-items:center">`;
+
+  CONFIGS.forEach(cfg => {
+    const isActive = !activeConfigs || activeConfigs.has(cfg.id);
+    const cost = CONFIG_COST[cfg.id] ?? '';
+    html += `
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+        <input type="checkbox" class="wc-toggle" data-cfgid="${cfg.id}" ${isActive ? 'checked' : ''}
+               style="accent-color:${cfg.cfgColor};width:13px;height:13px">
+        <span class="cfg-dot" style="background:${cfg.cfgColor};width:8px;height:8px;border-radius:50%;display:inline-block"></span>
+      </label>
+      <span style="color:${isActive ? '#e5e7eb' : '#4b5563'};font-size:0.75rem">${cfg.short}</span>
+      <label style="display:flex;align-items:center;gap:4px;font-size:0.72rem;color:#9ca3af">
+        €<input type="number" class="wc-cost" data-cfgid="${cfg.id}"
+                min="0" max="999999" step="50" value="${cost}"
+                style="width:68px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 4px">
+      </label>`;
+  });
+
+  html += '</div>';
+  container.innerHTML = html;
+
+  // Wire toggle checkboxes
+  container.querySelectorAll('.wc-toggle').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const checkedIds = Array.from(container.querySelectorAll('.wc-toggle:checked')).map(el => el.dataset.cfgid);
+      activeConfigs = checkedIds.length < CONFIGS.length ? new Set(checkedIds) : null;
+      // Dim unchecked config labels
+      container.querySelectorAll('.wc-toggle').forEach(el => {
+        const span = el.closest('label').nextElementSibling;
+        if (span) span.style.color = el.checked ? '#e5e7eb' : '#4b5563';
+      });
+      // Ensure highlighted config is still active
+      if (activeConfigs && !activeConfigs.has(highlightedConfig)) {
+        const firstActive = getActiveConfigs()[0];
+        if (firstActive) highlightedConfig = firstActive.id;
+      }
+      fullUpdate();
+      scheduleSaveProject();
+    });
+  });
+
+  // Wire cost inputs
+  container.querySelectorAll('.wc-cost').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const v = parseFloat(inp.value);
+      if (Number.isFinite(v) && v >= 0) CONFIG_COST[inp.dataset.cfgid] = v;
+      scheduleSaveProject();
+    });
+  });
+
+  // Enable / disable all buttons
+  const enableAll = document.getElementById('wcEnableAllBtn');
+  const disableAll = document.getElementById('wcDisableAllBtn');
+  if (enableAll) enableAll.addEventListener('click', () => {
+    activeConfigs = null;
+    _renderWiringConfigsPanel();
+    fullUpdate();
+    scheduleSaveProject();
+  });
+  if (disableAll) disableAll.addEventListener('click', () => {
+    // Keep at least one active to avoid empty comparisons
+    const first = CONFIGS[0];
+    activeConfigs = new Set([first.id]);
+    _renderWiringConfigsPanel();
+    fullUpdate();
+    scheduleSaveProject();
   });
 }
 
@@ -2301,7 +2412,7 @@ function computeConfig(id) {
 }
 
 function computeAll() {
-  return CONFIGS.map(cfg => {
+  return getActiveConfigs().map(cfg => {
     const mpptResults=computeConfig(cfg.id);
     const totalP=mpptResults.reduce((s,r)=>s+r.mpp.P, 0);
     return {...cfg, mpptResults, totalP};
@@ -2661,6 +2772,12 @@ function snapshotProject(meta = {}) {
       Object.entries(INVERTER_SPECS).map(([k, v]) => [k, { ...v }])
     ),
 
+    // Wiring config active flags and per-config installation cost
+    wiringConfigs: {
+      active: activeConfigs ? Array.from(activeConfigs) : null, // null = all active
+      cost:   { ...CONFIG_COST },
+    },
+
     // Shade overlays
     manualShade: manualShade.map(row => row.slice()),
     shadeLevel: shadeLevel,
@@ -2819,6 +2936,21 @@ function applyProject(p) {
       : 0;
     deselectTree();
     updateTreeCountLabel();
+  }
+
+  // ── Wiring config active flags and per-config cost ─
+  if (p.wiringConfigs) {
+    if (Array.isArray(p.wiringConfigs.active)) {
+      activeConfigs = new Set(p.wiringConfigs.active.filter(id => CONFIGS.some(c => c.id === id)));
+    } else {
+      activeConfigs = null; // null = all active
+    }
+    if (p.wiringConfigs.cost && typeof p.wiringConfigs.cost === 'object') {
+      for (const [id, cost] of Object.entries(p.wiringConfigs.cost)) {
+        if (Number.isFinite(cost)) CONFIG_COST[id] = cost;
+      }
+    }
+    _renderWiringConfigsPanel();
   }
 
   // ── UI controls (date/time/toggles) ─
@@ -3907,8 +4039,10 @@ function runYearlySimulation() {
     for (let c = 0; c < COLS; c++)
       PANEL_POS.push(panelScenePos(r, c));
 
-  // Slim CONFIGS copy — strip UI-only properties (colors, labels) to reduce transfer size
-  const CONFIGS_slim = CONFIGS.map(cfg => {
+  // Slim CONFIGS copy — strip UI-only properties (colors, labels) to reduce transfer size.
+  // Only active configs are sent to reduce simulation work.
+  const simConfigs = getActiveConfigs();
+  const CONFIGS_slim = simConfigs.map(cfg => {
     const spec = INVERTER_SPECS[cfg.id] || null;
     return {
       id: cfg.id,
@@ -3924,18 +4058,18 @@ function runYearlySimulation() {
   const chunk = Math.ceil(365 / nWorkers);
   const aggEnergy = {};
   const aggNoShade = {};
-  CONFIGS.forEach(cfg => { aggEnergy[cfg.id] = new Float64Array(12); aggNoShade[cfg.id] = new Float64Array(12); });
+  simConfigs.forEach(cfg => { aggEnergy[cfg.id] = new Float64Array(12); aggNoShade[cfg.id] = new Float64Array(12); });
   const aggPanelEnergy = new Float64Array(12 * ROWS * COLS);
   const aggNoShadePanelEnergy = new Float64Array(12 * ROWS * COLS);
   const aggRevenueDynamic = {};
   const aggNoShadeRevenueDynamic = {};
-  CONFIGS.forEach(cfg => {
+  simConfigs.forEach(cfg => {
     aggRevenueDynamic[cfg.id] = new Float64Array(12);
     aggNoShadeRevenueDynamic[cfg.id] = new Float64Array(12);
   });
   // Aggregate hourly PV arrays for battery economic simulation
   const aggHourlyKwh = {};
-  CONFIGS.forEach(cfg => { aggHourlyKwh[cfg.id] = new Float64Array(8760); });
+  simConfigs.forEach(cfg => { aggHourlyKwh[cfg.id] = new Float64Array(8760); });
   let doneWorkers = 0;
   const completedDoys = new Array(nWorkers).fill(0);
 
@@ -3965,7 +4099,7 @@ function runYearlySimulation() {
         document.getElementById('simStatusLabel').textContent = `Day ${totalDone}/365 (${pct}%)…`;
       } else if (msg.type === 'done') {
         // Accumulate energy
-        CONFIGS.forEach(cfg => {
+        simConfigs.forEach(cfg => {
           for (let m = 0; m < 12; m++) {
             aggEnergy[cfg.id][m] += msg.monthlyEnergy[cfg.id][m];
             aggNoShade[cfg.id][m] += msg.noShadeEnergy[cfg.id][m];
@@ -3975,7 +4109,7 @@ function runYearlySimulation() {
           aggPanelEnergy[i] += msg.panelEnergyByMonth[i];
           aggNoShadePanelEnergy[i] += msg.noShadePanelEnergyByMonth[i];
         }
-        CONFIGS.forEach(cfg => {
+        simConfigs.forEach(cfg => {
           for (let m = 0; m < 12; m++) {
             aggRevenueDynamic[cfg.id][m] += msg.configRevenueDynamic[cfg.id][m] || 0;
             aggNoShadeRevenueDynamic[cfg.id][m] += msg.noShadeRevenueDynamic[cfg.id][m] || 0;
@@ -3983,7 +4117,7 @@ function runYearlySimulation() {
         });
         // Accumulate hourly PV kWh arrays (non-overlapping DOY ranges — just add)
         if (msg.hourlyKwh) {
-          CONFIGS.forEach(cfg => {
+          simConfigs.forEach(cfg => {
             const arr = msg.hourlyKwh[cfg.id];
             if (arr) for (let h = 0; h < 8760; h++) aggHourlyKwh[cfg.id][h] += arr[h];
           });
@@ -3994,15 +4128,15 @@ function runYearlySimulation() {
           URL.revokeObjectURL(blobUrl);
           document.getElementById('simStatusLabel').textContent = 'Complete ✓';
           const result = {}, noShadeResult = {};
-          CONFIGS.forEach(cfg => {
+          simConfigs.forEach(cfg => {
             result[cfg.id] = Array.from(aggEnergy[cfg.id]);
             noShadeResult[cfg.id] = Array.from(aggNoShade[cfg.id]);
           });
           displaySimResults(result, noShadeResult, useWeather,
             Array.from(aggPanelEnergy), Array.from(aggNoShadePanelEnergy),
-            Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggRevenueDynamic[cfg.id])])),
-            Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggNoShadeRevenueDynamic[cfg.id])])),
-            Object.fromEntries(CONFIGS.map(cfg => [cfg.id, Array.from(aggHourlyKwh[cfg.id])])));
+            Object.fromEntries(simConfigs.map(cfg => [cfg.id, Array.from(aggRevenueDynamic[cfg.id])])),
+            Object.fromEntries(simConfigs.map(cfg => [cfg.id, Array.from(aggNoShadeRevenueDynamic[cfg.id])])),
+            Object.fromEntries(simConfigs.map(cfg => [cfg.id, Array.from(aggHourlyKwh[cfg.id])])));
         }
       }
     };
@@ -5025,8 +5159,9 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
   badge.style.display = weatherMode ? 'block' : 'none';
 
   // ── Table ──────────────────────────────────────────────────────────────
+  const simCfgs = getActiveConfigs().filter(c => monthlyEnergy[c.id]);
   const yearlyTotals = {};
-  CONFIGS.forEach(cfg => {
+  simCfgs.forEach(cfg => {
     yearlyTotals[cfg.id] = monthlyEnergy[cfg.id].reduce((a, b) => a + b, 0);
   });
   const maxYearly = Math.max(...Object.values(yearlyTotals));
@@ -5037,7 +5172,7 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
   // Saldering ON  → full APX rate (offset consumption at spot price)
   // Saldering OFF → APX × FEED_IN_FACTOR (lower wholesale feed-in tariff)
   const yearlyRevenue = {};
-  CONFIGS.forEach(cfg => {
+  simCfgs.forEach(cfg => {
     const dynRev = revenueDynamic && revenueDynamic[cfg.id]
       ? revenueDynamic[cfg.id].reduce((a,b)=>a+b,0)
       : yearlyTotals[cfg.id] * PRICE_SALDERING; // fallback if worker result missing
@@ -5046,7 +5181,7 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
 
   // Yearly no-shade revenues per config — same dynamic pricing logic
   const yearlyNSRevenue = {};
-  CONFIGS.forEach(cfg => {
+  simCfgs.forEach(cfg => {
     const dynNSRev = noShadeRevenueDynamic && noShadeRevenueDynamic[cfg.id]
       ? noShadeRevenueDynamic[cfg.id].reduce((a,b)=>a+b,0)
       : (noShadeEnergy ? noShadeEnergy[cfg.id].reduce((a,b)=>a+b,0) : yearlyTotals[cfg.id]) * PRICE_SALDERING;
@@ -5056,7 +5191,7 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
   const maxRevenue = Math.max(...Object.values(yearlyRevenue));
 
   let html = '';
-  CONFIGS.forEach(cfg => {
+  simCfgs.forEach(cfg => {
     const tot   = yearlyTotals[cfg.id];
     const noShade = noShadeEnergy ? noShadeEnergy[cfg.id].reduce((a,b)=>a+b,0) : tot;
     const pctNSNum = noShade > 0 ? (tot/noShade)*100 : 100;
@@ -5095,7 +5230,7 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
 
   cc.fillStyle = '#111827'; cc.fillRect(0, 0, mW, mc.height);
 
-  const allMonthlyVals = CONFIGS.flatMap(cfg => monthlyEnergy[cfg.id]);
+  const allMonthlyVals = simCfgs.flatMap(cfg => monthlyEnergy[cfg.id]);
   const maxM = niceMax(Math.max(...allMonthlyVals, 1), 100);
 
   // Grid lines
@@ -5109,9 +5244,9 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
 
   const months    = ['J','F','M','A','M','J','J','A','S','O','N','D'];
   const barGroupW = pw / 12;
-  const barW      = barGroupW / (CONFIGS.length + 1);
+  const barW      = barGroupW / (simCfgs.length + 1);
 
-  CONFIGS.forEach((cfg, ci) => {
+  simCfgs.forEach((cfg, ci) => {
     cc.fillStyle = cfg.cfgColor;
     for (let m = 0; m < 12; m++) {
       const val = monthlyEnergy[cfg.id][m];
@@ -5135,7 +5270,7 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
 
   // Legend
   let lx = ML;
-  CONFIGS.forEach(cfg => {
+  simCfgs.forEach(cfg => {
     cc.fillStyle = cfg.cfgColor;
     cc.fillRect(lx, 6, 8, 8);
     cc.fillStyle = '#9ca3af'; cc.font = '8px sans-serif'; cc.textAlign = 'left';
@@ -5678,8 +5813,9 @@ document.getElementById('econBatSizeSelect').addEventListener('change', () => {
   // automatic migration from the legacy trees-only key when needed.
   loadProjectFromStorage();
 
-  // Initialise the Array Dimensions UI to show the current (possibly restored) values.
+  // Initialise the Array Dimensions UI and Wiring Configs panel.
   _syncArrayDimsUI();
+  _renderWiringConfigsPanel();
 
   fullUpdate();
 
