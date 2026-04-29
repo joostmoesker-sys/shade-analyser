@@ -359,6 +359,10 @@
           <input type="checkbox" id="econGridPrechargeToggle" style="accent-color:#fbbf24;width:13px;height:13px">
           Grid Pre-charge <span style="color:#fbbf24;font-size:.7rem">(80% round-trip, low-PV days only)</span>
         </label>
+        <label>
+          <input type="checkbox" id="econZeroExportToggle" style="accent-color:#f87171;width:13px;height:13px">
+          Zero export <span style="color:#f87171;font-size:.7rem">(no selling to grid — curtail surplus PV)</span>
+        </label>
 
         <button class="btn" id="runEconBtn" style="border-color:#4ade80;color:#4ade80;margin-left:auto">&#9654; Run Economic Analysis</button>
         <span id="econStatusLabel" style="font-size:0.74rem;color:#6b7280">Requires yearly sim first</span>
@@ -3346,13 +3350,14 @@ function generateYearlyTariffs() {
  * @param {Float64Array} pvHourly   — kWh/hour PV output for this config
  * @param {Float64Array} loadHourly — kWh/hour house load
  * @param {Float64Array} tariffs    — €/kWh buy tariff, hourly
- * @param {object}  opts            — { useBattery, useGridPrecharge, batCapKwh, sellFactor }
+ * @param {object}  opts            — { useBattery, useGridPrecharge, zeroExport, batCapKwh, sellFactor }
  * @returns rich result object with all monetary flows and kWh breakdowns
  */
 function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
   const {
     useBattery          = true,
     useGridPrecharge    = false,
+    zeroExport          = false,  // if true: no selling to grid (curtail surplus PV, skip battery-sell hours)
     batCapKwh           = BATTERY_CAPACITY_KWH,
     sellFactor          = SELL_PRICE_FACTOR_DEF,
   } = opts;
@@ -3459,8 +3464,8 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
       }
     }
 
-    // ── 3. Remaining PV surplus → export ────────────────────────────────
-    if (residualPv > 1e-4) {
+    // ── 3. Remaining PV surplus → export (or curtail if zero-export) ────────
+    if (!zeroExport && residualPv > 1e-4) {
       exportPv  += residualPv;
       revExport += residualPv * sellPrice;
     }
@@ -3488,7 +3493,7 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
       }
 
       // ── 6. After-sundown sell to grid (time-shifting) ────────────────────
-      if (useBattery && isSellHour[h]) {
+      if (!zeroExport && useBattery && isSellHour[h]) {
         const minSoc   = batCapKwh * MIN_SOC_SELL;
         const avail    = soc - minSoc;
         if (avail > 1e-4) {
@@ -3594,7 +3599,7 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
         const dg   = Math.min(rLoad / DISCHARGE_EFF, Math.max(0, (trSoc - minS) / DISCHARGE_EFF), MAX_BATTERY_POWER_KW);
         trSoc -= dg; rLoad -= dg * DISCHARGE_EFF;
       }
-      if (useBattery && isSellHour[h]) {
+      if (!zeroExport && useBattery && isSellHour[h]) {
         const minS = batCapKwh * MIN_SOC_SELL;
         if (trSoc > minS + 1e-4) {
           const sg = Math.min(trSoc - minS, MAX_BATTERY_POWER_KW);
@@ -3647,11 +3652,12 @@ function runEconSim() {
   const batCapKwh   = parseFloat(document.getElementById('econBatSizeSelect').value);
   const useBattery  = document.getElementById('econBatteryToggle').checked;
   const useGridPrecharge = document.getElementById('econGridPrechargeToggle').checked;
+  const zeroExport  = document.getElementById('econZeroExportToggle').checked;
 
   const loadProfile    = precomputeYearlyLoad(baseDayKwh, hpWinterKwh);
   const tariffProfile  = generateYearlyTariffs();
 
-  const opts = { useBattery, useGridPrecharge, batCapKwh, sellFactor };
+  const opts = { useBattery, useGridPrecharge, zeroExport, batCapKwh, sellFactor };
 
   // Run for all configs
   const econResults = {};
@@ -4297,6 +4303,9 @@ document.getElementById('econBatteryToggle').addEventListener('change', () => {
   if (lastEconResults) setTimeout(runEconSim, 20);
 });
 document.getElementById('econGridPrechargeToggle').addEventListener('change', () => {
+  if (lastEconResults) setTimeout(runEconSim, 20);
+});
+document.getElementById('econZeroExportToggle').addEventListener('change', () => {
   if (lastEconResults) setTimeout(runEconSim, 20);
 });
 document.getElementById('econBatSizeSelect').addEventListener('change', () => {
