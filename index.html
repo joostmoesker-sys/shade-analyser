@@ -2670,12 +2670,19 @@ function updateLeafletShadows() {
   leafletShadowLayers.forEach(l => l.remove());
   leafletShadowLayers = [];
 
+  const foliageFactor = FOLIAGE[buildDateFromUI().getMonth()];
+
+  // Sync canopy circle radii to current foliage factor so they always match the shadow size
+  leafletTreeLayers.forEach(({ treeId, circle }) => {
+    const tree = sceneTrees.find(t => t.id === treeId);
+    if (tree) circle.setRadius(tree.crownRadius * foliageFactor);
+  });
+
   if (sceneTrees.length === 0 || lastSunPos.altitude <= 0.5) return;
 
   const az_rad  = lastSunPos.azimuth  * Math.PI / 180;
   const tan_alt = Math.tan(lastSunPos.altitude * Math.PI / 180);
   const sin_alt = Math.sin(lastSunPos.altitude * Math.PI / 180);
-  const foliageFactor = FOLIAGE[buildDateFromUI().getMonth()];
 
   // Shadow direction unit vectors (ENU: x=East, y=North)
   const ux = -Math.sin(az_rad); // along shadow, East component
