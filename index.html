@@ -336,31 +336,7 @@
           <canvas id="kcChart" height="38"></canvas>
         </div>
         <p class="sim-note" id="simNoteText"></p>
-        <div id="heatmapSection" style="margin-top:14px;display:none">
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
-            <span style="font-size:0.78rem;font-weight:600;color:#9ca3af">&#128200; Panel Heatmap</span>
-            <select id="heatmapMetric" style="background:#111827;color:#9ca3af;border:1px solid #374151;border-radius:5px;padding:3px 7px;font-size:0.75rem">
-              <option value="kwh">kWh / panel</option>
-              <option value="eur">€ / panel</option>
-            </select>
-            <select id="heatmapMonth" style="background:#111827;color:#9ca3af;border:1px solid #374151;border-radius:5px;padding:3px 7px;font-size:0.75rem">
-              <option value="-1">All Year</option>
-              <option value="0">January</option><option value="1">February</option>
-              <option value="2">March</option><option value="3">April</option>
-              <option value="4">May</option><option value="5">June</option>
-              <option value="6">July</option><option value="7">August</option>
-              <option value="8">September</option><option value="9">October</option>
-              <option value="10">November</option><option value="11">December</option>
-            </select>
-            <span id="heatmapRangeLabel" style="font-size:0.7rem;color:#4b5563"></span>
-          </div>
-          <canvas id="heatmapCanvas" style="display:block;width:100%;max-width:700px;border-radius:6px"></canvas>
-          <div id="heatmapLegendBar" style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:0.7rem;color:#6b7280">
-            <span>Low</span>
-            <canvas id="heatmapLegendCanvas" width="180" height="14" style="border-radius:3px"></canvas>
-            <span>High</span>
-          </div>
-        </div>
+
       </div>
     </div>
 
@@ -4150,110 +4126,7 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
       'Revenue uses dynamic APX/EPEX hourly prices 2025 — saldering: full APX rate; feed-in: APX × 0.70.';
   }
 
-  // Show and draw heatmap
-  const hmSection = document.getElementById('heatmapSection');
-  if (hmSection) hmSection.style.display = 'block';
-  setTimeout(drawHeatmap, 0);
-
   document.getElementById('simResultsDiv').style.display = 'block';
-}
-
-// ── Panel production heatmap ───────────────────────────────────────────────
-function heatColor(t) {
-  // t in [0,1]: 0=dark blue, 0.5=yellow, 1=bright green
-  t = Math.max(0, Math.min(1, t));
-  if (t < 0.5) {
-    const s = t * 2;
-    return `rgb(${Math.round(20+s*235)},${Math.round(20+s*210)},${Math.round(80-s*60)})`;
-  } else {
-    const s = (t - 0.5) * 2;
-    return `rgb(${Math.round(255-s*100)},${Math.round(230-s*40)},${Math.round(20)})`;
-  }
-}
-
-function drawHeatmap() {
-  const section = document.getElementById('heatmapSection');
-  if (!section || section.style.display === 'none') return;
-  if (!lastSimPanelEnergy) return;
-
-  const metric = document.getElementById('heatmapMetric').value;
-  const monthSel = parseInt(document.getElementById('heatmapMonth').value);
-  const useSald = document.getElementById('salderingToggle')?.checked ?? true;
-
-  // Gather per-panel values
-  const vals = new Float64Array(ROWS * COLS);
-  if (monthSel === -1) {
-    // All year
-    for (let m = 0; m < 12; m++) {
-      for (let i = 0; i < ROWS * COLS; i++) {
-        vals[i] += lastSimPanelEnergy[m * ROWS * COLS + i];
-      }
-    }
-  } else {
-    for (let i = 0; i < ROWS * COLS; i++) {
-      vals[i] = lastSimPanelEnergy[monthSel * ROWS * COLS + i];
-    }
-  }
-
-  // Convert to € if needed — use average APX price as proxy for per-panel value
-  if (metric === 'eur') {
-    // Average of all monthly-hourly APX prices
-    const avgApx = HOURLY_APX_PRICE_2025.reduce((s,row)=>s+row.reduce((a,b)=>a+b,0),0) / (12*24);
-    const price = useSald ? avgApx : avgApx * FEED_IN_FACTOR;
-    for (let i = 0; i < ROWS * COLS; i++) vals[i] *= price;
-  }
-
-  const maxVal = Math.max(...vals, 0.001);
-  const minVal = Math.min(...vals);
-  const range  = maxVal - minVal;
-  const unit   = metric === 'kwh' ? 'kWh' : '€';
-  const decimals = metric === 'kwh' ? 1 : 2;
-
-  document.getElementById('heatmapRangeLabel').textContent =
-    `${minVal.toFixed(decimals)} – ${maxVal.toFixed(decimals)} ${unit}/panel`;
-
-  // Draw on heatmap canvas (same coordinate system as arrayCanvas)
-  const hc = document.getElementById('heatmapCanvas');
-  hc.width  = canvas.width;
-  hc.height = canvas.height;
-  const hx  = hc.getContext('2d');
-
-  hx.fillStyle = '#0d1117'; hx.fillRect(0, 0, hc.width, hc.height);
-
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const i   = r * COLS + c;
-      const t   = range > 0.0001 ? (vals[i] - minVal) / range : 0.5;
-      const rct = panelRect(r, c);
-      hx.fillStyle = heatColor(t);
-      drawRoundRect(hx, rct.x, rct.y, rct.w, rct.h, 3); hx.fill();
-      // Text: white with dark stroke for readability on any background
-      const label = vals[i].toFixed(decimals);
-      hx.font = '9px sans-serif'; hx.textAlign = 'center';
-      hx.strokeStyle = 'rgba(0,0,0,0.85)'; hx.lineWidth = 2.5;
-      hx.strokeText(label, rct.x+rct.w/2, rct.y+rct.h/2+3);
-      hx.fillStyle = '#ffffff'; hx.fillText(label, rct.x+rct.w/2, rct.y+rct.h/2+3);
-    }
-  }
-
-  // Row/col labels (reuse same style as arrayCanvas)
-  hx.fillStyle = '#6b7280'; hx.font = '10px sans-serif'; hx.textAlign = 'right';
-  for (let r = 0; r < ROWS; r++) {
-    const rct = panelRect(r, 0);
-    hx.fillText(`R${r+1}`, rct.x - 4, rct.y + rct.h/2 + 3);
-  }
-  hx.fillStyle = '#6b7280'; hx.font = '10px sans-serif'; hx.textAlign = 'center';
-  for (let c = 0; c < COLS; c++) {
-    const rct = panelRect(0, c);
-    hx.fillText(c+1, rct.x + rct.w/2, rct.y - 4);
-  }
-
-  // Legend bar with min/max labels
-  const lc = document.getElementById('heatmapLegendCanvas');
-  const lx = lc.getContext('2d');
-  const grad = lx.createLinearGradient(0, 0, 180, 0);
-  for (let s = 0; s <= 10; s++) grad.addColorStop(s/10, heatColor(s/10));
-  lx.fillStyle = grad; lx.fillRect(0, 0, 180, 14);
 }
 
 // ── Update cycle ───────────────────────────────────────────────────────────
@@ -4426,10 +4299,7 @@ document.getElementById('abortSimBtn').addEventListener('click', () => {
 const salEl = document.getElementById('salderingToggle');
 if (salEl) salEl.addEventListener('change', () => {
   if (lastSimResults) displaySimResults(lastSimResults, lastSimNoShade, lastSimWeather);
-  else drawHeatmap();
 });
-document.getElementById('heatmapMetric')?.addEventListener('change', drawHeatmap);
-document.getElementById('heatmapMonth')?.addEventListener('change', drawHeatmap);
 
 // Google Maps buttons
 document.getElementById('toggleGoogleMapBtn').addEventListener('click', toggleOSMMap);
