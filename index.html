@@ -381,6 +381,10 @@
           <input type="checkbox" id="econGridPrechargeToggle" style="accent-color:#fbbf24;width:13px;height:13px">
           Grid Pre-charge <span style="color:#fbbf24;font-size:.7rem">(80% round-trip, low-PV days only)</span>
         </label>
+        <label>
+          <input type="checkbox" id="econSimpleDischargeToggle" style="accent-color:#a78bfa;width:13px;height:13px">
+          Simple 3.6 kW discharge <span style="color:#a78bfa;font-size:.7rem">(load &gt; PV → drain at 3.6 kW to 5% SOC, no sell/precharge)</span>
+        </label>
         <button class="btn" id="runEconBtn" style="border-color:#4ade80;color:#4ade80;margin-left:auto">&#9654; Run Economic Analysis</button>
         <span id="econStatusLabel" style="font-size:0.74rem;color:#6b7280">Requires yearly sim first</span>
       </div>
@@ -1321,8 +1325,8 @@ const MIN_ROI_DISPLAY_YEARS = 5;
 // ── Battery storage constants (64 kWh system, already paid for) ──────────────
 // Battery is optional and capex is excluded from all savings calculations.
 const BATTERY_CAPACITY_KWH   = 64;
-const MIN_SOC_SELL            = 0.25;  // 25% SOC reserve during sell-to-grid strategy (16 kWh)
-const MIN_SOC_SELF            = 0.10;  // 10% minimum for self-use discharge
+const MIN_SOC_SELL            = 0.05;  // 5% SOC floor for sell-to-grid strategy (3.2 kWh on 64 kWh)
+const MIN_SOC_SELF            = 0.05;  // 5% SOC floor for self-use discharge
 const CHARGE_EFF_PV           = 0.95;  // PV → battery one-way efficiency
 const DISCHARGE_EFF           = 0.95;  // battery → load/grid one-way efficiency
 const GRID_ROUNDTRIP_EFF      = 0.80;  // grid → battery → grid round-trip efficiency
@@ -3321,24 +3325,30 @@ function generateYearlyTariffs() {
  *  1. PV covers load directly (self-consumption).
  *  2. Surplus PV → charge battery (up to capacity / power limit).
  *  3. Remaining surplus PV → export to grid at sell tariff.
- *  4. Load deficit → discharge battery for self-use (down to MIN_SOC_SELF).
- *  5. Remaining deficit → import from grid at buy tariff.
- *  6. After-sundown + premium-price hour: sell from battery to grid (down to MIN_SOC_SELL=25%).
- *  7. Optional grid pre-charge: buy cheap energy for next-day deficit.
+ *  [Smart mode] 4. Load deficit → discharge battery for self-use (down to 5% SOC).
+ *  [Smart mode] 5. Remaining deficit → import from grid at buy tariff.
+ *  [Smart mode] 6. After-sundown + premium-price hour: sell battery to grid (down to 5% SOC).
+ *  [Smart mode] 7. Optional grid pre-charge: buy cheap energy for next-day deficit.
+ *  [Simple mode] 4. Load deficit → discharge at 3.6 kW fixed power down to 5% SOC.
+ *  [Simple mode] 5. Import remainder from grid (no sell-to-grid, no precharge).
  *
  * @param {Float64Array} pvHourly   — kWh/hour PV output for this config
  * @param {Float64Array} loadHourly — kWh/hour house load
  * @param {Float64Array} tariffs    — €/kWh buy tariff, hourly
- * @param {object}  opts            — { useBattery, useGridPrecharge, batCapKwh, sellFactor }
+ * @param {object}  opts            — { useBattery, useGridPrecharge, useSimpleDischarge, batCapKwh, sellFactor }
  * @returns rich result object with all monetary flows and kWh breakdowns
  */
 function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
   const {
-    useBattery       = true,
-    useGridPrecharge = false,
-    batCapKwh        = BATTERY_CAPACITY_KWH,
-    sellFactor       = SELL_PRICE_FACTOR_DEF,
+    useBattery          = true,
+    useGridPrecharge    = false,
+    useSimpleDischarge  = false,  // simple 3.6 kW discharge-only mode (no sell/precharge)
+    batCapKwh           = BATTERY_CAPACITY_KWH,
+    sellFactor          = SELL_PRICE_FACTOR_DEF,
   } = opts;
+
+  // Fixed discharge power for simple mode (kW)
+  const SIMPLE_DISCHARGE_KW = 3.6;
 
   const nH   = 8760;
   const nDays = 365;
@@ -3448,49 +3458,73 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
       revExport += residualPv * sellPrice;
     }
 
-    // ── 4. Load deficit → discharge battery (self-use) ──────────────────
-    if (useBattery && residualLoad > 1e-4) {
-      const minSoc   = batCapKwh * MIN_SOC_SELF;
-      const avail    = (soc - minSoc) / DISCHARGE_EFF;
-      const dischGross = Math.min(residualLoad / DISCHARGE_EFF, Math.max(0, avail), MAX_BATTERY_POWER_KW);
-      if (dischGross > 0) {
-        const dischNet = dischGross * DISCHARGE_EFF;
-        soc          -= dischGross;
-        batKwhOut    += dischGross;
-        selfBattery  += dischNet;
-        residualLoad -= dischNet;
+    // ── 4+5. Discharge battery / import from grid ────────────────────────
+    if (useSimpleDischarge) {
+      // Simple mode: fixed 3.6 kW discharge when load > PV, down to 5% SOC
+      if (useBattery && residualLoad > 1e-4) {
+        const minSoc   = batCapKwh * 0.05;
+        const avail    = (soc - minSoc) * DISCHARGE_EFF;
+        // Discharge at exactly 3.6 kW (= 3.6 kWh/h) but never more than deficit or available
+        const dischNet = Math.min(residualLoad, SIMPLE_DISCHARGE_KW, Math.max(0, avail));
+        if (dischNet > 0) {
+          const dischGross = dischNet / DISCHARGE_EFF;
+          soc          -= dischGross;
+          batKwhOut    += dischGross;
+          selfBattery  += dischNet;
+          residualLoad -= dischNet;
+        }
       }
-    }
-
-    // ── 5. Remaining load → import from grid ────────────────────────────
-    if (residualLoad > 1e-4) {
-      importGrid += residualLoad;
-      costLoad   += residualLoad * buyPrice;
-    }
-
-    // ── 6. After-sundown sell to grid (time-shifting) ────────────────────
-    if (useBattery && isSellHour[h]) {
-      const minSoc   = batCapKwh * MIN_SOC_SELL;
-      const avail    = soc - minSoc;
-      if (avail > 1e-4) {
-        const sellGross = Math.min(avail, MAX_BATTERY_POWER_KW);
-        const sellNet   = sellGross * DISCHARGE_EFF;
-        soc          -= sellGross;
-        batKwhOut    += sellGross;
-        exportBat    += sellNet;
-        revExport    += sellNet * sellPrice;
+      if (residualLoad > 1e-4) {
+        importGrid += residualLoad;
+        costLoad   += residualLoad * buyPrice;
       }
-    }
+    } else {
+      // ── Smart mode ────────────────────────────────────────────────────────
 
-    // ── 7. Grid pre-charge ───────────────────────────────────────────────
-    if (useBattery && gridChargeKwh[h] > 1e-4) {
-      const space  = batCapKwh - soc;
-      const buyKwh = Math.min(gridChargeKwh[h], space / GRID_ROUNDTRIP_EFF, MAX_BATTERY_POWER_KW);
-      if (buyKwh > 0) {
-        soc          += buyKwh * GRID_ROUNDTRIP_EFF;
-        batKwhIn     += buyKwh;
-        importPreChg += buyKwh;
-        costPreCharge += buyKwh * buyPrice;
+      // ── 4. Load deficit → discharge battery (self-use) ──────────────────
+      if (useBattery && residualLoad > 1e-4) {
+        const minSoc   = batCapKwh * MIN_SOC_SELF;
+        const avail    = (soc - minSoc) / DISCHARGE_EFF;
+        const dischGross = Math.min(residualLoad / DISCHARGE_EFF, Math.max(0, avail), MAX_BATTERY_POWER_KW);
+        if (dischGross > 0) {
+          const dischNet = dischGross * DISCHARGE_EFF;
+          soc          -= dischGross;
+          batKwhOut    += dischGross;
+          selfBattery  += dischNet;
+          residualLoad -= dischNet;
+        }
+      }
+
+      // ── 5. Remaining load → import from grid ────────────────────────────
+      if (residualLoad > 1e-4) {
+        importGrid += residualLoad;
+        costLoad   += residualLoad * buyPrice;
+      }
+
+      // ── 6. After-sundown sell to grid (time-shifting) ────────────────────
+      if (useBattery && isSellHour[h]) {
+        const minSoc   = batCapKwh * MIN_SOC_SELL;
+        const avail    = soc - minSoc;
+        if (avail > 1e-4) {
+          const sellGross = Math.min(avail, MAX_BATTERY_POWER_KW);
+          const sellNet   = sellGross * DISCHARGE_EFF;
+          soc          -= sellGross;
+          batKwhOut    += sellGross;
+          exportBat    += sellNet;
+          revExport    += sellNet * sellPrice;
+        }
+      }
+
+      // ── 7. Grid pre-charge ───────────────────────────────────────────────
+      if (useBattery && gridChargeKwh[h] > 1e-4) {
+        const space  = batCapKwh - soc;
+        const buyKwh = Math.min(gridChargeKwh[h], space / GRID_ROUNDTRIP_EFF, MAX_BATTERY_POWER_KW);
+        if (buyKwh > 0) {
+          soc          += buyKwh * GRID_ROUNDTRIP_EFF;
+          batKwhIn     += buyKwh;
+          importPreChg += buyKwh;
+          costPreCharge += buyKwh * buyPrice;
+        }
       }
     }
 
@@ -3571,11 +3605,18 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
         trSoc += ch * CHARGE_EFF_PV; rPv -= ch;
       }
       if (useBattery && rLoad > 1e-4) {
-        const minS = batCapKwh * MIN_SOC_SELF;
-        const dg   = Math.min(rLoad / DISCHARGE_EFF, Math.max(0, (trSoc - minS) / DISCHARGE_EFF), MAX_BATTERY_POWER_KW);
-        trSoc -= dg; rLoad -= dg * DISCHARGE_EFF;
+        if (useSimpleDischarge) {
+          const minS = batCapKwh * 0.05;
+          const avail = (trSoc - minS) * DISCHARGE_EFF;
+          const dnet  = Math.min(rLoad, SIMPLE_DISCHARGE_KW, Math.max(0, avail));
+          trSoc -= dnet / DISCHARGE_EFF;
+        } else {
+          const minS = batCapKwh * MIN_SOC_SELF;
+          const dg   = Math.min(rLoad / DISCHARGE_EFF, Math.max(0, (trSoc - minS) / DISCHARGE_EFF), MAX_BATTERY_POWER_KW);
+          trSoc -= dg; rLoad -= dg * DISCHARGE_EFF;
+        }
       }
-      if (useBattery && isSellHour[h]) {
+      if (!useSimpleDischarge && useBattery && isSellHour[h]) {
         const minS = batCapKwh * MIN_SOC_SELL;
         if (trSoc > minS + 1e-4) {
           const sg = Math.min(trSoc - minS, MAX_BATTERY_POWER_KW);
@@ -3628,11 +3669,12 @@ function runEconSim() {
   const batCapKwh   = parseFloat(document.getElementById('econBatSizeSelect').value);
   const useBattery  = document.getElementById('econBatteryToggle').checked;
   const useGridPrecharge = document.getElementById('econGridPrechargeToggle').checked;
+  const useSimpleDischarge = document.getElementById('econSimpleDischargeToggle').checked;
 
   const loadProfile    = precomputeYearlyLoad(baseDayKwh, hpWinterKwh);
   const tariffProfile  = generateYearlyTariffs();
 
-  const opts = { useBattery, useGridPrecharge, batCapKwh, sellFactor };
+  const opts = { useBattery, useGridPrecharge, useSimpleDischarge, batCapKwh, sellFactor };
 
   // Run for all configs
   const econResults = {};
@@ -3778,13 +3820,13 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
       sc2.fillStyle = '#6b7280'; sc2.font = '8px sans-serif'; sc2.textAlign = 'right';
       sc2.fillText((i / 4 * batCapKwh).toFixed(0) + ' kWh', SML - 3, y + 3);
     }
-    // MIN_SOC_SELL reference line
+    // 5% SOC floor reference line
     const minSocY = SMT + sph - (MIN_SOC_SELL) * sph;
     sc2.strokeStyle = '#ef444460'; sc2.lineWidth = 1; sc2.setLineDash([3, 3]);
     sc2.beginPath(); sc2.moveTo(SML, minSocY); sc2.lineTo(SML + spw, minSocY); sc2.stroke();
     sc2.setLineDash([]);
     sc2.fillStyle = '#ef4444'; sc2.font = '8px sans-serif'; sc2.textAlign = 'left';
-    sc2.fillText('25% SOC floor', SML + 3, minSocY - 3);
+    sc2.fillText('5% SOC floor', SML + 3, minSocY - 3);
 
     const traceCols = ['#60a5fa', '#fb923c'];
     bestEcon.socTrace.forEach(({ label, soc }, si) => {
@@ -3827,7 +3869,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
     `Base load ${document.getElementById('econBaseLoadSlider').value} kWh/d + ` +
     `HP winter ${document.getElementById('econHpSlider').value} kWh/d (electrical). ` +
     `PV→battery efficiency: ${CHARGE_EFF_PV * 100 | 0}%/${DISCHARGE_EFF * 100 | 0}%. ` +
-    `No battery degradation. Heat pump COP not modeled. 25% SOC floor for time-shift selling.`;
+    `No battery degradation. Heat pump COP not modeled. 5% SOC floor for all discharge strategies.`;
 
   document.getElementById('econResultsDiv').style.display = 'block';
   document.getElementById('econStatusLabel').textContent = `Done ✓ (${elapsedMs} ms)`;
@@ -4359,6 +4401,9 @@ document.getElementById('econBatteryToggle').addEventListener('change', () => {
   if (lastEconResults) setTimeout(runEconSim, 20);
 });
 document.getElementById('econGridPrechargeToggle').addEventListener('change', () => {
+  if (lastEconResults) setTimeout(runEconSim, 20);
+});
+document.getElementById('econSimpleDischargeToggle').addEventListener('change', () => {
   if (lastEconResults) setTimeout(runEconSim, 20);
 });
 document.getElementById('econBatSizeSelect').addEventListener('change', () => {
