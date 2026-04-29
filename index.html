@@ -2416,7 +2416,7 @@ let arrayOriginLng = BOSHEI_LNG;
 // Array position (ENU metres from origin) and rotation (degrees CCW from East)
 let arraySceneX = 0;    // array centre East offset (m)
 let arraySceneY = 0;    // array centre North offset (m)
-let arrayRotDeg = 180;  // 180° default — corrected to match physical array orientation
+let arrayRotDeg = 315;  // 315° CCW from East = facing SW (azimuth 225° from North)
 
 function latLngToENU(lat, lng, refLat, refLng) {
   const dLat = (lat - refLat) * Math.PI / 180;
