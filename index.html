@@ -87,6 +87,7 @@
     .specs-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); gap: 6px; font-size:.78rem; color:#9ca3af; }
 
     /* ── Scene map ──────────────────────────────────────────────────────────── */
+    #googleMap { width:100%; height:300px; border-radius:6px; display:none; }
     #mapCanvas { display:block; border-radius:6px; cursor:crosshair; touch-action:none; width:100%; max-width:700px; }
     .map-ctrls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; font-size:0.77rem; }
     .tree-props-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; font-size:0.77rem;
@@ -103,9 +104,7 @@
     #monthlyChart { display:block; }
     .sim-note { font-size:0.68rem; color:#4b5563; margin-top:6px; }
 
-    /* ── 3D preview ──────────────────────────────────────────────────────────── */
-    #previewCanvas { display:block; border-radius:6px; width:100%; }
-    .preview-legend { display:flex; gap:10px; flex-wrap:wrap; font-size:0.71rem; color:#6b7280; margin-top:6px; }
+
   </style>
 </head>
 <body>
@@ -192,12 +191,18 @@
           &nbsp;top-down &middot; click empty area = add tree &middot; click tree = select &amp; drag
         </span>
       </h3>
+      <div id="googleMap"></div>
+      <div id="googleMapError" style="display:none;padding:10px;background:#1a0808;border:1px solid #ef4444;border-radius:6px;color:#ef4444;font-size:0.78rem;margin-bottom:6px">
+        ⚠ Google Maps could not be loaded. Using canvas view instead. <a href="https://console.cloud.google.com/google/maps-apis/" target="_blank" style="color:#f87171">Get API key →</a>
+      </div>
       <canvas id="mapCanvas" height="300"></canvas>
       <div class="map-ctrls">
+        <button class="btn map-mode-btn" id="toggleGoogleMapBtn">🗺 Use Google Maps</button>
+        <button class="btn" id="centerBosheiBtn" style="display:none">📍 Boshei 4</button>
         <button class="btn" id="clearTreesBtn">&#127795; Clear Trees</button>
         <span id="treeCountLabel" style="color:#6b7280;font-size:0.75rem">No trees</span>
         <span style="flex:1"></span>
-        <span style="font-size:0.71rem;color:#4b5563">&#9632; = 10 m</span>
+        <span id="mapScaleLabel" style="font-size:0.71rem;color:#4b5563">&#9632; = 10 m</span>
       </div>
       <div class="tree-props-row" id="treePropsRow" style="display:none">
         <label>H:</label>
@@ -209,6 +214,9 @@
         <button class="btn" id="deleteTreeBtn" style="margin-left:6px;border-color:#ef4444;color:#ef4444">&#10005; Delete</button>
       </div>
       <p class="instructions">Shadows from trees are automatically applied to the array based on current date &amp; time.</p>
+      <div id="foliageBadge" style="display:inline-flex;align-items:center;gap:5px;font-size:0.72rem;color:#4ade80;background:#0a1f0a;border:1px solid #166534;border-radius:5px;padding:3px 8px;margin-top:6px">
+        🌿 <span id="foliageBadgeText">Jan: 25% canopy</span>
+      </div>
     </div>
 
     <!-- Panel specs -->
@@ -275,18 +283,30 @@
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:0.77rem;color:#9ca3af">
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
           <input type="checkbox" id="weatherToggle" checked style="accent-color:#38bdf8;width:13px;height:13px">
-          Weather-adjusted &nbsp;<span style="color:#38bdf8">(PVGIS/KNMI Kc, Neer NL)</span>
+          Weather-adjusted &nbsp;<span style="color:#38bdf8">(Cloud Correction 2025 — KNMI/PVGIS Kc, Neer NL)</span>
         </label>
+        <select id="perfModeSelect" style="background:#111827;color:#9ca3af;border:1px solid #374151;border-radius:5px;padding:3px 7px;font-size:0.75rem">
+          <option value="auto" selected>Auto Workers</option>
+          <option value="1">1 Worker (Safe)</option>
+          <option value="4">4 Workers</option>
+          <option value="8">8 Workers</option>
+        </select>
         <span id="simModeLabel" style="font-size:0.71rem;color:#4b5563"></span>
+      </div>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:0.77rem;color:#9ca3af">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input type="checkbox" id="salderingToggle" checked style="accent-color:#4ade80;width:13px;height:13px">
+          Saldering (net metering) &nbsp;<span style="color:#4ade80;font-size:.7rem">€0.26/kWh ON / €0.08 OFF</span>
+        </label>
       </div>
       <div id="simResultsDiv" style="display:none">
         <div id="simWeatherBadge" style="display:none;margin-bottom:8px;font-size:0.72rem;color:#38bdf8;background:#0c2233;border:1px solid #1e4060;border-radius:5px;padding:5px 10px">
-          &#9729; Weather-adjusted — cloud-correction Kc applied per month (PVGIS SARAH-3 / KNMI 1991–2020, Neer NL)
+          ☁ Using 2025 KNMI/PVGIS data — beam/diffuse split applied per month
         </div>
         <div class="comp-wrap">
           <table class="comp-table">
             <thead><tr>
-              <th>Config</th><th>Yearly kWh</th><th>% of best</th><th>Avg kWh/day</th>
+              <th>Config</th><th>Yearly kWh</th><th>% of best</th><th title="Higher % = better shade management">% No-Shade</th><th>Avg kWh/day</th><th>Est. Revenue</th><th>ROI</th>
             </tr></thead>
             <tbody id="yearlyTableBody"></tbody>
           </table>
@@ -300,24 +320,35 @@
       </div>
     </div>
 
-    <!-- 3D Scene Preview -->
-    <div class="card">
-      <h3>&#128301; 3D Scene Preview
-        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">
-          &nbsp;isometric &middot; updates with time &amp; scene layout
-        </span>
-      </h3>
-      <canvas id="previewCanvas" height="260"></canvas>
-      <div class="preview-legend">
-        <span><span style="display:inline-block;width:10px;height:10px;background:#60a5fa;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Top section (R1–5)</span>
-        <span><span style="display:inline-block;width:10px;height:10px;background:#f97316;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Bottom section (R6–8)</span>
-        <span><span style="display:inline-block;width:10px;height:10px;background:#4ade80;border-radius:50%;vertical-align:middle;margin-right:3px"></span>Trees</span>
-        <span><span style="display:inline-block;width:10px;height:10px;background:#fbbf24;border-radius:50%;vertical-align:middle;margin-right:3px"></span>Sun</span>
-      </div>
-    </div>
 
   </div>
 </div>
+
+<!--
+  ╔══════════════════════════════════════════════════════════════════════════╗
+  ║  GOOGLE MAPS SETUP — ACTION REQUIRED TO ENABLE GOOGLE MAPS MODE         ║
+  ║  1. Go to https://console.cloud.google.com/google/maps-apis/            ║
+  ║  2. Create/select a project and enable "Maps JavaScript API"            ║
+  ║  3. Create an API key and replace YOUR_GOOGLE_MAPS_API_KEY below        ║
+  ║  Without a valid key the tool falls back to canvas map automatically.   ║
+  ╚══════════════════════════════════════════════════════════════════════════╝
+-->
+<script>
+(function() {
+  window._googleMapReady = false;
+  window._googleMapError = false;
+  window.initGoogleMap = function() { window._googleMapReady = true; };
+  var s = document.createElement('script');
+  s.src = 'https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&callback=initGoogleMap&loading=async';
+  s.async = true; s.defer = true;
+  s.onerror = function() {
+    window._googleMapError = true;
+    var btn = document.getElementById('toggleGoogleMapBtn');
+    if (btn) btn.title = 'Google Maps unavailable (API key missing or invalid)';
+  };
+  document.head.appendChild(s);
+})();
+</script>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
      Simulation Web Worker source — type="text/x-worker" prevents execution.
@@ -327,10 +358,11 @@
 'use strict';
 // ── Constants received via the 'run' postMessage ───────────────────────────
 let ROWS, COLS, SECTION_DIV, STC_IRRAD, BYPASS_VD, NEER_LAT;
-let PNL, SECTIONS, CONFIGS, MONTHLY_KC;
+let PNL, SECTIONS, CONFIGS, MONTHLY_KC, FOLIAGE;
 let MAX_SHADOW_LEN, MAX_SHADOW_AXIS;
 let PANEL_POS;   // precomputed flat [{x,y}], length ROWS*COLS
 let DOY_TO_MONTH; // precomputed int[365], 0-11
+let INVERTER_SPECS_W; // inverter specs for clipping
 
 // ── DST for Neer NL, 2024 reference year ───────────────────────────────────
 // Spring forward: March 31 = DOY 91; Fall back: October 27 = DOY 301.
@@ -400,6 +432,7 @@ function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
 // Quantisation factor: 4000 → 0.25‰ steps over G ∈ [0,1].
 // At this resolution the MPP power error is negligible (<0.05% for realistic IV curves).
 const G_CACHE_QUANTISATION = 4000;
+const DIFFUSE_SHADE_FACTOR = 0.85; // diffuse sky irradiance fraction retained when beam-blocked
 let _ivCache; // Map<int, curve>, reset each timestep
 
 function cachedPanelIV(G) {
@@ -534,10 +567,14 @@ self.onmessage = function(e) {
   PNL=d.PNL; SECTIONS=d.SECTIONS; CONFIGS=d.CONFIGS; MONTHLY_KC=d.MONTHLY_KC;
   MAX_SHADOW_LEN=d.MAX_SHADOW_LEN; MAX_SHADOW_AXIS=d.MAX_SHADOW_AXIS;
   DOY_TO_MONTH=d.DOY_TO_MONTH; PANEL_POS=d.PANEL_POS;
+  FOLIAGE = d.FOLIAGE || [1,1,1,1,1,1,1,1,1,1,1,1];
+  INVERTER_SPECS_W = d.INVERTER_SPECS || {};
 
   const sceneTrees = d.sceneTrees;
   const shadeLevel = d.shadeLevel;
   const useWeather = d.useWeather;
+  const doyStart = d.doyStart || 1;
+  const doyEnd = d.doyEnd || 365;
 
   // Working arrays: flat Float32Array (index = r*COLS+c)
   _irr   = new Float32Array(ROWS * COLS);
@@ -547,13 +584,22 @@ self.onmessage = function(e) {
   // monthlyEnergy[cfgId][0-11] in kWh
   const monthlyEnergy = {};
   CONFIGS.forEach(cfg => { monthlyEnergy[cfg.id] = new Float64Array(12); });
+  
+  // No-shade baseline energy
+  const noShadeEnergy = {};
+  CONFIGS.forEach(cfg => { noShadeEnergy[cfg.id] = new Float64Array(12); });
 
   const hasTrees = sceneTrees.length > 0;
 
-  for (let doy = 1; doy <= 365; doy++) {
+  for (let doy = doyStart; doy <= doyEnd; doy++) {
     const month = DOY_TO_MONTH[doy - 1];
     const kc    = useWeather ? MONTHLY_KC[month] : 1.0;
     const dst   = isDSTdoy(doy);
+    
+    // Apply foliage factor for current month
+    const foliageFactor = FOLIAGE[month];
+    const adjSceneTrees = foliageFactor === 1.0 ? sceneTrees : 
+      sceneTrees.map(t => ({...t, crownRadius: t.crownRadius * foliageFactor}));
 
     for (let hour = 0; hour < 24; hour++) {
       // Use the mid-hour instant for trapezoidal numerical integration
@@ -570,14 +616,29 @@ self.onmessage = function(e) {
         Math.min(1, poaIrradiance(cs.dni, cs.dhi, cs.ghi, sp.altitude, sp.azimuth,
           SECTIONS[1].tilt, SECTIONS[1].azimuth) * kc / STC_IRRAD),
       ];
+      
+      // Compute beam fraction for each section
+      const beamFrac = [
+        frac[0] > 0 ? Math.min(1, Math.max(0, cs.dni * Math.max(0, 
+          Math.cos(sp.altitude*Math.PI/180)*Math.sin(sp.azimuth*Math.PI/180)*Math.sin(SECTIONS[0].tilt*Math.PI/180)*Math.sin(SECTIONS[0].azimuth*Math.PI/180) +
+          Math.cos(sp.altitude*Math.PI/180)*Math.cos(sp.azimuth*Math.PI/180)*Math.sin(SECTIONS[0].tilt*Math.PI/180)*Math.cos(SECTIONS[0].azimuth*Math.PI/180) +
+          Math.sin(sp.altitude*Math.PI/180)*Math.cos(SECTIONS[0].tilt*Math.PI/180)
+        ) * kc / STC_IRRAD) / frac[0]) : 0.5,
+        frac[1] > 0 ? Math.min(1, Math.max(0, cs.dni * Math.max(0,
+          Math.cos(sp.altitude*Math.PI/180)*Math.sin(sp.azimuth*Math.PI/180)*Math.sin(SECTIONS[1].tilt*Math.PI/180)*Math.sin(SECTIONS[1].azimuth*Math.PI/180) +
+          Math.cos(sp.altitude*Math.PI/180)*Math.cos(sp.azimuth*Math.PI/180)*Math.sin(SECTIONS[1].tilt*Math.PI/180)*Math.cos(SECTIONS[1].azimuth*Math.PI/180) +
+          Math.sin(sp.altitude*Math.PI/180)*Math.cos(SECTIONS[1].tilt*Math.PI/180)
+        ) * kc / STC_IRRAD) / frac[1]) : 0.5,
+      ];
 
       // Fill flat irr[] (section boundary at SECTION_DIV)
       for (let r=0; r<ROWS; r++) {
-        const f = r <= SECTION_DIV ? frac[0] : frac[1];
+        const sIdx = r <= SECTION_DIV ? 0 : 1;
+        const f = frac[sIdx];
         for (let c=0; c<COLS; c++) _irr[r*COLS+c] = f;
       }
 
-      // Tree shadow into flat shade[]
+      // Tree shadow into flat shade[] with beam/diffuse split
       if (!hasTrees) {
         _shade.fill(1);
       } else {
@@ -585,11 +646,18 @@ self.onmessage = function(e) {
         const tan_alt = Math.tan(sp.altitude * Math.PI / 180);
         for (let i=0; i<ROWS*COLS; i++) {
           const pp = PANEL_POS[i];
+          const r = Math.floor(i / COLS);
+          const sIdx = r <= SECTION_DIV ? 0 : 1;
+          const bf = beamFrac[sIdx];
           let blocked = false;
-          for (const tree of sceneTrees) {
+          for (const tree of adjSceneTrees) {
             if (panelInTreeShadow(pp.x, pp.y, tree, az_rad, tan_alt)) { blocked=true; break; }
           }
-          _shade[i] = blocked ? shadeLevel : 1;
+          if (blocked) {
+            _shade[i] = shadeLevel * bf + (1.0 - bf) * DIFFUSE_SHADE_FACTOR;
+          } else {
+            _shade[i] = 1;
+          }
         }
       }
 
@@ -597,24 +665,68 @@ self.onmessage = function(e) {
       // (2 section fracs × blocked/unblocked), so this is near-free.
       _ivCache.clear();
 
-      // Accumulate 1-hour energy for every config (W × 1 h / 1000 = kWh)
+      // Accumulate 1-hour energy for every config with inverter clipping (W × 1 h / 1000 = kWh)
       for (const cfg of CONFIGS) {
-        let power = 0;
-        for (const block of cfg.blocks) power += findMPP(computeBlockIV_sim(block)).P;
-        monthlyEnergy[cfg.id][month] += power / 1000;
+        const spec = INVERTER_SPECS_W[cfg.id] || null;
+        let totalP = 0;
+        for (const block of cfg.blocks) {
+          const mpp = findMPP(computeBlockIV_sim(block));
+          let blockP = mpp.P;
+          // Apply inverter clipping per MPPT
+          if (spec) {
+            const {P,V,I} = mpp;
+            if (V < spec.VmpptMin || V > spec.VmpptMax) blockP = 0;
+            else if (I > spec.ImaxPerMppt) blockP = V * spec.ImaxPerMppt;
+          }
+          totalP += blockP;
+        }
+        // Apply total power limit
+        if (spec && spec.totalPowerW && totalP > spec.totalPowerW) totalP = spec.totalPowerW;
+        monthlyEnergy[cfg.id][month] += totalP / 1000;
+      }
+      
+      // Compute no-shade baseline (only if trees exist)
+      if (hasTrees) {
+        const savedShade = new Float32Array(_shade);
+        _shade.fill(1);
+        _ivCache.clear();
+        for (const cfg of CONFIGS) {
+          const spec = INVERTER_SPECS_W[cfg.id] || null;
+          let totalP = 0;
+          for (const block of cfg.blocks) {
+            const mpp = findMPP(computeBlockIV_sim(block));
+            let blockP = mpp.P;
+            if (spec) {
+              const {P,V,I} = mpp;
+              if (V < spec.VmpptMin || V > spec.VmpptMax) blockP = 0;
+              else if (I > spec.ImaxPerMppt) blockP = V * spec.ImaxPerMppt;
+            }
+            totalP += blockP;
+          }
+          if (spec && spec.totalPowerW && totalP > spec.totalPowerW) totalP = spec.totalPowerW;
+          noShadeEnergy[cfg.id][month] += totalP / 1000;
+        }
+        _shade.set(savedShade);
+      } else {
+        // No trees: no-shade equals shaded
+        for (const cfg of CONFIGS) {
+          noShadeEnergy[cfg.id][month] = monthlyEnergy[cfg.id][month];
+        }
       }
     }
 
     // Post progress every 10 days so the UI progress bar stays responsive
-    if (doy % 10 === 0 || doy === 365) {
-      self.postMessage({ type: 'progress', doy, pct: (doy / 365 * 100) | 0 });
+    if (doy % 10 === 0 || doy === doyEnd) {
+      self.postMessage({ type: 'progress', doy, pct: ((doy - doyStart + 1) / (doyEnd - doyStart + 1) * 100) | 0 });
     }
   }
 
   // Convert Float64Arrays to plain arrays for structured-clone transfer
   const result = {};
   CONFIGS.forEach(cfg => { result[cfg.id] = Array.from(monthlyEnergy[cfg.id]); });
-  self.postMessage({ type: 'done', monthlyEnergy: result });
+  const noShadeResult = {};
+  CONFIGS.forEach(cfg => { noShadeResult[cfg.id] = Array.from(noShadeEnergy[cfg.id]); });
+  self.postMessage({ type: 'done', monthlyEnergy: result, noShadeEnergy: noShadeResult });
 };
 </script>
 
@@ -675,6 +787,12 @@ const MONTHLY_KC = [
   0.35, // Dec — shortest days, heavy overcast
 ];
 
+// Monthly foliage factor for NL deciduous trees
+// Jan(0): 0.25 bare, Feb(1): 0.25, Mar(2): 0.25, Apr(3): 0.55 budding,
+// May–Sep (4–8): 1.00 full canopy, Oct(9): 0.70 partial drop,
+// Nov(10): 0.30 mostly bare, Dec(11): 0.30
+const FOLIAGE = [0.25, 0.25, 0.25, 0.55, 1.00, 1.00, 1.00, 1.00, 1.00, 0.70, 0.30, 0.30];
+
 // ── Block structure helpers ────────────────────────────────────────────────
 const ROW_GROUPS = [[0,1],[2,4],[5,7]];        // 2+3+3 rows: 1–2 | 3–5 | 6–8 (configs A/B)
 const ROW_GROUPS4 = [[0,1],[2,3],[4,5],[6,7]]; // 2+2+2+2 rows (config F)
@@ -715,12 +833,47 @@ const CONFIGS = [
     blocks: DE_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
-    id:'F', label:'Option F', short:'F \u2014 4\u00d718',
-    desc:'4 MPPTs \u00b7 2 rows \u00d7 9 cols = 18 panels per MPPT in SP, row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138',
+    id:'F', label:'Option F', short:'F \u2014 4\u00d718 15kW',
+    desc:'4 MPPTs \u00b7 same topology as A/B (2\u00d79 = 18 panels SP per MPPT) \u00b7 10 kW total inverter limit',
     cfgColor:'#22d3ee', mpptColors:COL4,
     blocks: ROW_GROUPS4.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
+  {
+    id:'G', label:'Option G', short:'G \u2014 4\u00d718 15kW',
+    desc:'4 MPPTs \u00b7 same topology as F (2\u00d79 = 18 panels SP per MPPT) \u00b7 15 kW total inverter limit',
+    cfgColor:'#f59e0b', mpptColors:COL4,
+    blocks: ROW_GROUPS4.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
+  },
 ];
+
+// ── Inverter specs per configuration (WP6) ─────────────────────────────────
+const INVERTER_SPECS = {
+  A: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:27, totalPowerW:null },
+  B: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:27, totalPowerW:null },
+  C: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:27, totalPowerW:null },
+  D: { VmpptMin:75,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
+  E: { VmpptMin:75,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
+  F: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:10000 },
+  G: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:15000 },
+};
+
+/**
+ * Apply inverter MPPT constraints to a raw MPP result.
+ * @returns {P,V,I,clipped}
+ */
+function applyInverterClipping(mpp, spec) {
+  if (!spec) return { ...mpp, clipped: false };
+  let { P, V, I } = mpp;
+  if (V < spec.VmpptMin || V > spec.VmpptMax) return { P:0, V, I:0, clipped: true };
+  if (I > spec.ImaxPerMppt) { I = spec.ImaxPerMppt; P = V * I; return { P, V, I, clipped: true }; }
+  return { P, V, I, clipped: false };
+}
+
+// Economic constants (WP8) — Dutch 2025 energy prices
+const PRICE_SALDERING    = 0.26;  // €/kWh retail net-metering
+const PRICE_NO_SALDERING = 0.08;  // €/kWh feed-in
+const CONFIG_COST = { A:850, B:850, C:850, D:650, E:650, F:1205, G:1805 }; // € installed cost
+const MIN_ROI_DISPLAY_YEARS = 5;
 
 // ── State ──────────────────────────────────────────────────────────────────
 let highlightedConfig = 'A';
@@ -735,6 +888,7 @@ let irr = Array.from({length:ROWS}, () => Array(COLS).fill(1.0));
 let shadeLevel = 0.05;
 let isPainting = false, paintMode = 'shade';
 let lastSunPos = { altitude: 0, azimuth: 180 }; // updated by updateIrradiance
+let lastSimResults = null, lastSimNoShade = null, lastSimWeather = false;
 
 /** Combine manual + tree shade into the shade[][] array used by physics */
 function combineShadeMaps() {
@@ -1286,10 +1440,20 @@ function findMPP(curve) {
 
 function computeConfig(id) {
   const cfg=CONFIGS.find(c=>c.id===id);
-  return cfg.blocks.map((block,i) => {
+  const spec = INVERTER_SPECS[id] || null;
+  const mpptResults = cfg.blocks.map((block,i) => {
     const curve=computeBlockIV(block);
-    return {label:block.label, curve, mpp:findMPP(curve), color:cfg.mpptColors[i%cfg.mpptColors.length]};
+    const rawMpp = findMPP(curve);
+    const mpp = applyInverterClipping(rawMpp, spec);
+    return {label:block.label, curve, mpp, color:cfg.mpptColors[i%cfg.mpptColors.length], clipped:mpp.clipped};
   });
+  // Apply total power limit if set
+  let totalP = mpptResults.reduce((s,r) => s + r.mpp.P, 0);
+  if (spec && spec.totalPowerW && totalP > spec.totalPowerW) {
+    const scale = spec.totalPowerW / totalP;
+    mpptResults.forEach(r => { r.mpp = { ...r.mpp, P: r.mpp.P * scale }; r.clipped = true; });
+  }
+  return mpptResults;
 }
 
 function computeAll() {
@@ -1312,6 +1476,7 @@ function updateComparisonTable(allResults) {
     const sel=res.id===highlightedConfig?' class="selected"':'';
     const pct=((res.totalP/stcMax)*100).toFixed(1);
     const pctBest=((res.totalP/maxP)*100).toFixed(1);
+    const isClipped = res.mpptResults.some(m=>m.clipped);
     const bars=res.mpptResults.map((m,i)=>{
       const h=Math.max(3,Math.round((m.mpp.P/maxMpptP)*20));
       const tip=`${m.label}: ${m.mpp.P.toFixed(0)} W @ ${m.mpp.V.toFixed(1)} V / ${m.mpp.I.toFixed(2)} A`;
@@ -1319,7 +1484,7 @@ function updateComparisonTable(allResults) {
     }).join('');
     html+=`<tr${sel} data-cfgid="${res.id}" style="--cfg-color:${res.cfgColor}">
       <td class="cfg-name"><span class="cfg-dot" style="background:${res.cfgColor}"></span>${res.short}</td>
-      <td class="${isBest?'best-val':''}">${(res.totalP/1000).toFixed(3)} kW ${isBest?'\u2605':''}</td>
+      <td class="${isBest?'best-val':''}">${(res.totalP/1000).toFixed(3)} kW ${isBest?'\u2605':''} ${isClipped?'<span style="color:#f59e0b;font-size:0.65rem">(clipped)</span>':''}</td>
       <td>${pct}%</td>
       <td>${pctBest}%</td>
       <td><div class="mini-bars">${bars}</div></td>
@@ -1459,7 +1624,6 @@ function addTree(x, y) {
   selectTree(t.id);
   recomputeTreeShadow();
   drawSceneMap();
-  draw3DPreview();
 }
 
 function selectTree(id) {
@@ -1506,12 +1670,25 @@ function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
 function recomputeTreeShadow() {
   const treeShade = Array.from({length:ROWS}, () => Array(COLS).fill(1.0));
   if (sceneTrees.length > 0 && lastSunPos.altitude > 0.5) {
+    // Get current month's foliage factor
+    const currentDate = buildDateFromUI();
+    const currentMonth = currentDate.getMonth();
+    const foliageFactor = FOLIAGE[currentMonth];
+    const adjTrees = foliageFactor === 1.0 ? sceneTrees :
+      sceneTrees.map(t => ({ ...t, crownRadius: t.crownRadius * foliageFactor }));
+    
+    // Update foliage badge
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const foliagePct = Math.round(FOLIAGE[currentMonth] * 100);
+    const fbText = document.getElementById('foliageBadgeText');
+    if (fbText) fbText.textContent = `${monthNames[currentMonth]}: ${foliagePct}% canopy`;
+    
     const az_rad  = lastSunPos.azimuth  * Math.PI / 180;
     const tan_alt = Math.tan(lastSunPos.altitude * Math.PI / 180); // altitude already > 0.5°
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const pos = panelScenePos(r, c);
-        for (const tree of sceneTrees) {
+        for (const tree of adjTrees) {
           if (panelInTreeShadow(pos.x, pos.y, tree, az_rad, tan_alt)) {
             treeShade[r][c] = shadeLevel;
             break;
@@ -1620,6 +1797,7 @@ function drawMapArray() {
 function drawMapTreeShadows() {
   const az_rad  = lastSunPos.azimuth  * Math.PI / 180;
   const tan_alt = Math.tan(lastSunPos.altitude * Math.PI / 180); // altitude already > 0.5°
+  const foliageFactor = FOLIAGE[buildDateFromUI().getMonth()];
 
   mapCtx.save(); mapCtx.globalAlpha = 0.35;
   sceneTrees.forEach(tree => {
@@ -1629,8 +1807,8 @@ function drawMapTreeShadows() {
     const {mx: ex, my: ey} = sceneToMap(scx, scy);
     const {mx: tx, my: ty} = sceneToMap(tree.x, tree.y);
 
-    const rp = tree.crownRadius * MAP_SCALE;
-    const ra = Math.min(tree.crownRadius / tan_alt, MAX_SHADOW_AXIS) * MAP_SCALE;
+    const rp = tree.crownRadius * foliageFactor * MAP_SCALE;
+    const ra = Math.min(tree.crownRadius * foliageFactor / tan_alt, MAX_SHADOW_AXIS) * MAP_SCALE;
     const screenAngle = Math.atan2(ey - ty, ex - tx);
 
     mapCtx.save();
@@ -1744,7 +1922,6 @@ mapCanvas.addEventListener('mousemove', e => {
   recomputeTreeShadow();
   drawSceneMap();
   scheduleUpdate();
-  draw3DPreview();
 });
 
 mapCanvas.addEventListener('mouseup',    () => { mapDragTree = null; });
@@ -1776,7 +1953,6 @@ mapCanvas.addEventListener('touchmove', e => {
   recomputeTreeShadow();
   drawSceneMap();
   scheduleUpdate();
-  draw3DPreview();
 }, {passive:false});
 
 mapCanvas.addEventListener('touchend', () => { mapDragTree = null; });
@@ -1790,175 +1966,156 @@ function resizeMapCanvas() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 3D ISOMETRIC PREVIEW
+// GOOGLE MAPS INTEGRATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-const previewCanvas = document.getElementById('previewCanvas');
-const pCtx          = previewCanvas.getContext('2d');
-const ISO_SCALE     = 7;   // pixels per metre in isometric view
-const PANEL_ELEV    = 1.5; // visual elevation (m) for panel slab
+let googleMapInstance = null;
+let googleMapActive   = false;
+let googleMapMarkers  = []; // [{treeId, marker}]
+let googleArrayRect   = null;
 
-/** Project scene coords (X=East, Y=North, Z=Up) to canvas 2D. */
-function isoProject(X, Y, Z) {
-  const sx = (X - Y)       * 0.866 * ISO_SCALE;
-  const sy = -(X + Y)      * 0.5   * ISO_SCALE - Z * ISO_SCALE;
-  return { sx, sy };
+// Boshei 4, Neer, Netherlands — public GPS coordinates for map centering (±5 m precision)
+const BOSHEI_LAT = 51.271;
+const BOSHEI_LNG = 5.990;
+const EARTH_RADIUS_M = 6371000;
+const MAPS_API_RETRY_DELAY_MS = 800;
+const MAPS_API_MAX_RETRIES    = 15;
+
+function latLngToENU(lat, lng, refLat, refLng) {
+  const dLat = (lat - refLat) * Math.PI / 180;
+  const dLng = (lng - refLng) * Math.PI / 180;
+  return { x: dLng * EARTH_RADIUS_M * Math.cos(refLat * Math.PI / 180),
+           y: dLat * EARTH_RADIUS_M };
 }
-function isoToCanvas(X, Y, Z) {
-  const {sx, sy} = isoProject(X, Y, Z);
-  return { px: previewCanvas.width/2 + sx,
-           py: previewCanvas.height * 0.62 + sy };
+function enuToLatLng(x, y, refLat, refLng) {
+  return {
+    lat: refLat + (y / EARTH_RADIUS_M) * 180 / Math.PI,
+    lng: refLng + (x / (EARTH_RADIUS_M * Math.cos(refLat * Math.PI / 180))) * 180 / Math.PI
+  };
 }
 
-function draw3DPreview() {
-  const W = previewCanvas.width, H = previewCanvas.height;
-  pCtx.clearRect(0, 0, W, H);
-
-  // Sky gradient
-  const sky = pCtx.createLinearGradient(0, 0, 0, H * 0.6);
-  sky.addColorStop(0, '#0c1e3c'); sky.addColorStop(1, '#1a3a5c');
-  pCtx.fillStyle = sky; pCtx.fillRect(0, 0, W, H);
-
-  // Ground plane
-  const gnd = pCtx.createLinearGradient(0, H * 0.5, 0, H);
-  gnd.addColorStop(0, '#0c1f0d'); gnd.addColorStop(1, '#091408');
-  pCtx.fillStyle = gnd; pCtx.fillRect(0, H * 0.5, W, H * 0.5);
-
-  // Ground grid
-  pCtx.strokeStyle = '#182818'; pCtx.lineWidth = 0.5;
-  for (let i = -12; i <= 12; i++) {
-    const a = isoToCanvas(i * 2, -12, 0), b = isoToCanvas(i * 2, 12, 0);
-    const c = isoToCanvas(-12, i * 2, 0), d = isoToCanvas(12, i * 2, 0);
-    pCtx.beginPath(); pCtx.moveTo(a.px, a.py); pCtx.lineTo(b.px, b.py); pCtx.stroke();
-    pCtx.beginPath(); pCtx.moveTo(c.px, c.py); pCtx.lineTo(d.px, d.py); pCtx.stroke();
-  }
-
-  // Sun direction indicator
-  if (lastSunPos.altitude > 0.5) draw3DSun();
-
-  // Draw trees (behind panels if to north/east)
-  const treesNorth = sceneTrees.filter(t => t.y > 0);
-  const treesSouth = sceneTrees.filter(t => t.y <= 0);
-  treesNorth.forEach(t => draw3DTree(t));
-
-  // Panel array — draw back rows first (painter's algorithm)
-  for (let r = ROWS - 1; r >= 0; r--) {
-    for (let c = 0; c < COLS; c++) {
-      draw3DPanel(r, c);
+let _mapsToggleRetries = 0;
+function toggleGoogleMap() {
+  if (!window.google || !window.google.maps) {
+    if (window._googleMapError || _mapsToggleRetries >= MAPS_API_MAX_RETRIES) {
+      _mapsToggleRetries = 0; // reset so next button press can retry
+      document.getElementById('googleMapError').style.display = 'block';
+    } else {
+      _mapsToggleRetries++;
+      setTimeout(toggleGoogleMap, MAPS_API_RETRY_DELAY_MS);
     }
+    return;
   }
-
-  treesSouth.forEach(t => draw3DTree(t));
-}
-
-function draw3DPanel(r, c) {
-  const pos  = panelScenePos(r, c);
-  const si   = sectionOf(r);
-  const sect = SECTIONS[si];
-  const G    = effectiveG(r, c);
-  const baseColor = sect.color;
-
-  // Panel is a flat horizontal rectangle at PANEL_ELEV, tilted slightly by section
-  // Determine tilt for visual: top section slopes up toward back, bottom slopes down
-  const tiltZ = si === 0 ? 0.18 * (r - 2) * ROW_SPACING : -0.1 * (r - 5) * ROW_SPACING;
-
-  const hw = COL_SPACING * 0.43, hh = ROW_SPACING * 0.43;
-  // 4 corners of panel: NW, NE, SE, SW in scene
-  const corners = [
-    [-hw, +hh, PANEL_ELEV + tiltZ + 0.1],
-    [+hw, +hh, PANEL_ELEV + tiltZ + 0.1],
-    [+hw, -hh, PANEL_ELEV + tiltZ],
-    [-hw, -hh, PANEL_ELEV + tiltZ],
-  ].map(([dx, dy, dz]) => isoToCanvas(pos.x + dx, pos.y + dy, dz));
-
-  pCtx.beginPath();
-  pCtx.moveTo(corners[0].px, corners[0].py);
-  corners.slice(1).forEach(p => pCtx.lineTo(p.px, p.py));
-  pCtx.closePath();
-
-  const shadeAmt = 1 - G * 0.75 - 0.15;
-  pCtx.fillStyle = blendHex(baseColor, '#0a0a0a', shadeAmt);
-  pCtx.fill();
-  pCtx.strokeStyle = baseColor + '44'; pCtx.lineWidth = 0.5;
-  pCtx.stroke();
-
-  // Cell lines
-  if (G > 0.1) {
-    pCtx.strokeStyle = `rgba(255,255,255,${0.06 + G * 0.08})`; pCtx.lineWidth = 0.4;
-    const m01 = midPt(corners[0], corners[1]), m23 = midPt(corners[2], corners[3]);
-    pCtx.beginPath(); pCtx.moveTo(m01.px, m01.py); pCtx.lineTo(m23.px, m23.py); pCtx.stroke();
-    const m12 = midPt(corners[1], corners[2]), m30 = midPt(corners[3], corners[0]);
-    pCtx.beginPath(); pCtx.moveTo(m12.px, m12.py); pCtx.lineTo(m30.px, m30.py); pCtx.stroke();
+  _mapsToggleRetries = 0; // reset on successful Maps availability
+  googleMapActive = !googleMapActive;
+  const btn       = document.getElementById('toggleGoogleMapBtn');
+  const mapDiv    = document.getElementById('googleMap');
+  const canvas    = document.getElementById('mapCanvas');
+  const centerBtn = document.getElementById('centerBosheiBtn');
+  const scaleLabel = document.getElementById('mapScaleLabel');
+  if (googleMapActive) {
+    canvas.style.display  = 'none';
+    mapDiv.style.display  = 'block';
+    if (centerBtn)  centerBtn.style.display  = 'inline-block';
+    if (scaleLabel) scaleLabel.style.display = 'none';
+    btn.textContent = '🗺 Canvas Map';
+    if (!googleMapInstance) initGoogleMapsView();
+    else syncTreeMarkersToMap();
+  } else {
+    canvas.style.display  = 'block';
+    mapDiv.style.display  = 'none';
+    if (centerBtn)  centerBtn.style.display  = 'none';
+    if (scaleLabel) scaleLabel.style.display = '';
+    btn.textContent = '🗺 Use Google Maps';
+    drawSceneMap();
   }
 }
 
-function midPt(a, b) { return { px:(a.px+b.px)/2, py:(a.py+b.py)/2 }; }
+function initGoogleMapsView() {
+  const mapDiv = document.getElementById('googleMap');
+  googleMapInstance = new google.maps.Map(mapDiv, {
+    center: { lat: BOSHEI_LAT, lng: BOSHEI_LNG },
+    zoom: 19,
+    mapTypeId: 'satellite',
+    tilt: 0,
+    disableDefaultUI: false,
+    mapTypeControl: true,
+  });
 
-function draw3DTree(tree) {
-  const trunkH = tree.height * 0.55;
-  const crownH = tree.height - trunkH;
+  // PV array footprint rectangle
+  // Physical size: COLS*COL_SPACING wide × ROWS*ROW_SPACING tall (in metres)
+  const halfW = (COLS * COL_SPACING) / 2;
+  const halfH = (ROWS * ROW_SPACING) / 2;
+  const sw = enuToLatLng(-halfW, -halfH, BOSHEI_LAT, BOSHEI_LNG);
+  const ne = enuToLatLng(+halfW, +halfH, BOSHEI_LAT, BOSHEI_LNG);
+  googleArrayRect = new google.maps.Rectangle({
+    bounds: { south: sw.lat, west: sw.lng, north: ne.lat, east: ne.lng },
+    map: googleMapInstance,
+    fillColor: '#e94560', fillOpacity: 0.25,
+    strokeColor: '#e94560', strokeWeight: 2,
+    draggable: true, editable: false,
+  });
+  googleArrayRect.addListener('dragend', updateSceneFromMap);
 
-  // Trunk: vertical line
-  const base  = isoToCanvas(tree.x, tree.y, 0);
-  const trunk = isoToCanvas(tree.x, tree.y, trunkH);
-  pCtx.strokeStyle = '#713f12'; pCtx.lineWidth = Math.max(1.5, tree.crownRadius * 1.2);
-  pCtx.beginPath(); pCtx.moveTo(base.px, base.py); pCtx.lineTo(trunk.px, trunk.py); pCtx.stroke();
-
-  // Crown: ellipse-like blob using arc (projected circle)
-  const topC = isoToCanvas(tree.x, tree.y, trunkH + crownH * 0.5);
-  const r3d  = tree.crownRadius * ISO_SCALE;
-  // In isometric, a horizontal circle projects to an ellipse with X:Y ratio = cos(30°):sin(30°) = 0.866:0.5
-  const rx = r3d * 0.866 * 1.6, ry = r3d * 0.5 * 1.6;
-
-  const isSel = tree.id === selectedTreeId;
-  const gr = pCtx.createRadialGradient(topC.px - rx*0.3, topC.py - ry*0.4, 0,
-                                       topC.px, topC.py, Math.max(rx, ry));
-  gr.addColorStop(0, isSel ? '#86efac' : '#4ade80');
-  gr.addColorStop(0.7, isSel ? '#16a34a' : '#15803d');
-  gr.addColorStop(1, '#052e16');
-  pCtx.fillStyle = gr;
-  pCtx.beginPath(); pCtx.ellipse(topC.px, topC.py, rx, ry, 0, 0, 2*Math.PI); pCtx.fill();
-
-  if (isSel) {
-    pCtx.strokeStyle = '#fbbf24'; pCtx.lineWidth = 1.5;
-    pCtx.beginPath(); pCtx.ellipse(topC.px, topC.py, rx + 3, ry + 2, 0, 0, 2*Math.PI); pCtx.stroke();
-  }
+  syncTreeMarkersToMap();
+  googleMapInstance.addListener('click', (e) => {
+    const pos = latLngToENU(e.latLng.lat(), e.latLng.lng(), BOSHEI_LAT, BOSHEI_LNG);
+    const center = getArrayMapCenter();
+    addTree(pos.x - center.x, pos.y - center.y);
+    syncTreeMarkersToMap();
+  });
 }
 
-function draw3DSun() {
-  const altR = lastSunPos.altitude * Math.PI / 180;
-  const azR  = lastSunPos.azimuth  * Math.PI / 180;
-  const dist = 18; // scene metres out in sun direction for indicator
-  const sX = dist * Math.sin(azR), sY = dist * Math.cos(azR);
-  const sZ = dist * Math.tan(altR);
-  const sp = isoToCanvas(sX, sY, Math.min(sZ, 20));
-
-  // Rays
-  pCtx.strokeStyle = '#fbbf2488'; pCtx.lineWidth = 0.8;
-  for (let i = 0; i < 8; i++) {
-    const a = i * Math.PI / 4;
-    pCtx.beginPath();
-    pCtx.moveTo(sp.px + Math.cos(a) * 8, sp.py + Math.sin(a) * 8);
-    pCtx.lineTo(sp.px + Math.cos(a) * 14, sp.py + Math.sin(a) * 14);
-    pCtx.stroke();
-  }
-  // Sun disc
-  pCtx.fillStyle = '#fbbf24';
-  pCtx.beginPath(); pCtx.arc(sp.px, sp.py, 7, 0, 2*Math.PI); pCtx.fill();
-
-  // Direction line from array to sun
-  const orig = isoToCanvas(0, 0, PANEL_ELEV);
-  pCtx.strokeStyle = '#fbbf2422'; pCtx.lineWidth = 1;
-  pCtx.setLineDash([4,4]);
-  pCtx.beginPath(); pCtx.moveTo(orig.px, orig.py); pCtx.lineTo(sp.px, sp.py); pCtx.stroke();
-  pCtx.setLineDash([]);
+function getArrayMapCenter() {
+  if (!googleArrayRect) return { x: 0, y: 0 };
+  const b = googleArrayRect.getBounds();
+  const cLat = (b.getSouthWest().lat() + b.getNorthEast().lat()) / 2;
+  const cLng = (b.getSouthWest().lng() + b.getNorthEast().lng()) / 2;
+  return latLngToENU(cLat, cLng, BOSHEI_LAT, BOSHEI_LNG);
 }
 
-function resizePreviewCanvas() {
-  const W = Math.min(previewCanvas.parentElement.clientWidth - 28, 900);
-  previewCanvas.width  = W;
-  previewCanvas.height = Math.round(W * 0.38);
-  draw3DPreview();
+function syncTreeMarkersToMap() {
+  if (!googleMapInstance) return;
+  // Remove stale markers
+  googleMapMarkers.forEach(m => m.marker.setMap(null));
+  googleMapMarkers = [];
+  const center = getArrayMapCenter();
+  sceneTrees.forEach(tree => {
+    const pos = enuToLatLng(tree.x + center.x, tree.y + center.y, BOSHEI_LAT, BOSHEI_LNG);
+    const marker = new google.maps.Marker({
+      position: { lat: pos.lat, lng: pos.lng },
+      map: googleMapInstance,
+      draggable: true,
+      title: `Tree H=${tree.height}m Cr=${tree.crownRadius}m`,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: tree.crownRadius * 3,
+        fillColor: '#4ade80', fillOpacity: 0.7,
+        strokeColor: '#16a34a', strokeWeight: 1.5,
+      }
+    });
+    marker.addListener('click', () => { selectTree(tree.id); });
+    marker.addListener('dragend', (e) => {
+      const c2 = getArrayMapCenter();
+      const np = latLngToENU(e.latLng.lat(), e.latLng.lng(), BOSHEI_LAT, BOSHEI_LNG);
+      tree.x = np.x - c2.x; tree.y = np.y - c2.y;
+      recomputeTreeShadow(); scheduleUpdate();
+    });
+    googleMapMarkers.push({ treeId: tree.id, marker });
+  });
+}
+
+function updateSceneFromMap() {
+  // Array dragged — recompute tree positions relative to new array center
+  const c = getArrayMapCenter();
+  sceneTrees.forEach(tree => {
+    const gm = googleMapMarkers.find(m => m.treeId === tree.id);
+    if (!gm) return;
+    const lp = gm.marker.getPosition();
+    const np = latLngToENU(lp.lat(), lp.lng(), BOSHEI_LAT, BOSHEI_LNG);
+    tree.x = np.x - c.x; tree.y = np.y - c.y;
+  });
+  recomputeTreeShadow(); scheduleUpdate();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1966,12 +2123,13 @@ function resizePreviewCanvas() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 let simWorker = null; // non-null while simulation is running
+let _simWorkers = []; // array of workers for multi-worker mode
 
 /**
- * Run the yearly simulation in a dedicated Web Worker.
+ * Run the yearly simulation in dedicated Web Workers.
  *
  * Performance improvements over the previous single-threaded approach:
- *   1. Web Worker  — runs on a separate CPU thread; UI stays perfectly responsive.
+ *   1. Multi-Worker parallelism — distributes DOY range across multiple CPU threads.
  *   2. G-memoisation — cachedPanelIV() caches panelIV by quantised G key.
  *      Per-timestep there are only 2–4 unique G values (2 section fracs ×
  *      blocked/unblocked shade), so ~340 Newton-iteration calls collapse to ≤4.
@@ -1984,6 +2142,10 @@ function runYearlySimulation() {
   if (simWorker) return; // already running
 
   const useWeather = document.getElementById('weatherToggle').checked;
+  const modeVal = document.getElementById('perfModeSelect')?.value || 'auto';
+  const nCPU = navigator.hardwareConcurrency || 4;
+  const nWorkers = modeVal === 'auto' ? Math.min(nCPU, 4) : parseInt(modeVal);
+  console.info(`Sim: using ${nWorkers} worker(s)`);
 
   const runBtn   = document.getElementById('runSimBtn');
   const abortBtn = document.getElementById('abortSimBtn');
@@ -1996,7 +2158,7 @@ function runYearlySimulation() {
   document.getElementById('simProgressFill').style.width   = '0%';
   document.getElementById('simStatusLabel').textContent    = 'Initialising…';
   document.getElementById('simModeLabel').textContent =
-    useWeather ? '☁ weather-adjusted' : '☀ clear-sky only';
+    useWeather ? `☁ weather-adjusted · ${nWorkers} worker${nWorkers>1?'s':''}` : `☀ clear-sky only · ${nWorkers} worker${nWorkers>1?'s':''}`;
 
   // Precompute DOY → month (0-11) lookup for 2024 reference year
   const DOY_TO_MONTH = new Array(365);
@@ -2010,54 +2172,95 @@ function runYearlySimulation() {
       PANEL_POS.push(panelScenePos(r, c));
 
   // Slim CONFIGS copy — strip UI-only properties (colors, labels) to reduce transfer size
-  const CONFIGS_slim = CONFIGS.map(cfg => ({
-    id: cfg.id,
-    blocks: cfg.blocks.map(b => ({ r0:b.r0, r1:b.r1, c0:b.c0, c1:b.c1, topo:b.topo })),
-  }));
-
-  // Spawn worker from inline <script type="text/x-worker"> source block
-  const src     = document.getElementById('simWorkerSrc').textContent;
-  const blobUrl = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
-  simWorker = new Worker(blobUrl);
-  URL.revokeObjectURL(blobUrl); // safe to revoke once Worker is created
-
-  simWorker.onerror = (err) => {
-    console.error('Sim worker error:', err);
-    _cleanupSimWorker();
-    document.getElementById('simStatusLabel').textContent = 'Worker error — see console.';
-  };
-
-  simWorker.onmessage = (e) => {
-    const msg = e.data;
-    if (msg.type === 'progress') {
-      document.getElementById('simProgressFill').style.width = msg.pct + '%';
-      document.getElementById('simStatusLabel').textContent  =
-        `Day ${msg.doy}/365 (${msg.pct}%)…`;
-    } else if (msg.type === 'done') {
-      _cleanupSimWorker();
-      document.getElementById('simStatusLabel').textContent = 'Complete ✓';
-      displaySimResults(msg.monthlyEnergy, useWeather);
-    }
-  };
-
-  // Send all needed data to the worker (structured-clone transfer)
-  simWorker.postMessage({
-    type: 'run',
-    ROWS, COLS, SECTION_DIV, STC_IRRAD, BYPASS_VD, NEER_LAT,
-    PNL: { ...PNL },
-    SECTIONS: SECTIONS.map(s => ({ tilt: s.tilt, azimuth: s.azimuth })),
-    CONFIGS:  CONFIGS_slim,
-    MONTHLY_KC: [...MONTHLY_KC],
-    MAX_SHADOW_LEN, MAX_SHADOW_AXIS,
-    sceneTrees: sceneTrees.map(t => ({ x:t.x, y:t.y, height:t.height, crownRadius:t.crownRadius })),
-    shadeLevel, useWeather,
-    DOY_TO_MONTH, PANEL_POS,
+  const CONFIGS_slim = CONFIGS.map(cfg => {
+    const spec = INVERTER_SPECS[cfg.id] || null;
+    return {
+      id: cfg.id,
+      blocks: cfg.blocks.map(b => ({ r0:b.r0, r1:b.r1, c0:b.c0, c1:b.c1, topo:b.topo })),
+      totalPowerW: spec?.totalPowerW ?? null,
+    };
   });
+
+  // Multi-worker setup
+  const chunk = Math.ceil(365 / nWorkers);
+  const aggEnergy = {};
+  const aggNoShade = {};
+  CONFIGS.forEach(cfg => { aggEnergy[cfg.id] = new Float64Array(12); aggNoShade[cfg.id] = new Float64Array(12); });
+  let doneWorkers = 0;
+  const completedDoys = new Array(nWorkers).fill(0);
+
+  const src = document.getElementById('simWorkerSrc').textContent;
+  const blobUrl = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
+
+  for (let w = 0; w < nWorkers; w++) {
+    const doyStart = w * chunk + 1;
+    const doyEnd = Math.min((w + 1) * chunk, 365);
+    
+    const worker = new Worker(blobUrl);
+    _simWorkers.push(worker);
+
+    worker.onerror = (err) => {
+      console.error(`Sim worker ${w} error:`, err);
+      _cleanupAllSimWorkers();
+      document.getElementById('simStatusLabel').textContent = 'Worker error — see console.';
+    };
+
+    worker.onmessage = (e) => {
+      const msg = e.data;
+      if (msg.type === 'progress') {
+        completedDoys[w] = msg.doy - doyStart + 1;
+        const totalDone = completedDoys.reduce((s,v)=>s+v,0);
+        const pct = Math.floor(totalDone / 365 * 100);
+        document.getElementById('simProgressFill').style.width = pct + '%';
+        document.getElementById('simStatusLabel').textContent = `Day ${totalDone}/365 (${pct}%)…`;
+      } else if (msg.type === 'done') {
+        // Accumulate energy
+        CONFIGS.forEach(cfg => {
+          for (let m = 0; m < 12; m++) {
+            aggEnergy[cfg.id][m] += msg.monthlyEnergy[cfg.id][m];
+            aggNoShade[cfg.id][m] += msg.noShadeEnergy[cfg.id][m];
+          }
+        });
+        doneWorkers++;
+        if (doneWorkers === nWorkers) {
+          _cleanupAllSimWorkers();
+          URL.revokeObjectURL(blobUrl);
+          document.getElementById('simStatusLabel').textContent = 'Complete ✓';
+          const result = {}, noShadeResult = {};
+          CONFIGS.forEach(cfg => {
+            result[cfg.id] = Array.from(aggEnergy[cfg.id]);
+            noShadeResult[cfg.id] = Array.from(aggNoShade[cfg.id]);
+          });
+          displaySimResults(result, noShadeResult, useWeather);
+        }
+      }
+    };
+
+    // Send all needed data to the worker (structured-clone transfer)
+    worker.postMessage({
+      type: 'run',
+      ROWS, COLS, SECTION_DIV, STC_IRRAD, BYPASS_VD, NEER_LAT,
+      PNL: { ...PNL },
+      SECTIONS: SECTIONS.map(s => ({ tilt: s.tilt, azimuth: s.azimuth })),
+      CONFIGS:  CONFIGS_slim,
+      MONTHLY_KC: [...MONTHLY_KC],
+      FOLIAGE: [...FOLIAGE],
+      MAX_SHADOW_LEN, MAX_SHADOW_AXIS,
+      sceneTrees: sceneTrees.map(t => ({ x:t.x, y:t.y, height:t.height, crownRadius:t.crownRadius })),
+      shadeLevel, useWeather,
+      DOY_TO_MONTH, PANEL_POS,
+      INVERTER_SPECS: { ...INVERTER_SPECS },
+      doyStart, doyEnd,
+    });
+  }
+  simWorker = _simWorkers[0]; // keep reference for abort
 }
 
-/** Terminate the worker and reset simulation-UI state. */
-function _cleanupSimWorker() {
-  if (simWorker) { simWorker.terminate(); simWorker = null; }
+/** Terminate all workers and reset simulation-UI state. */
+function _cleanupAllSimWorkers() {
+  _simWorkers.forEach(w => w.terminate());
+  _simWorkers = [];
+  simWorker = null;
   document.getElementById('simProgressWrap').style.display = 'none';
   document.getElementById('abortSimBtn').style.display     = 'none';
   const runBtn = document.getElementById('runSimBtn');
@@ -2065,7 +2268,15 @@ function _cleanupSimWorker() {
   runBtn.textContent = '↺ Re-run Yearly Sim';
 }
 
-function displaySimResults(monthlyEnergy, weatherMode) {
+function formatROI(cost, annualProfit) {
+  if (!cost || annualProfit <= 0) return '—';
+  const yrs = cost / annualProfit;
+  return yrs < MIN_ROI_DISPLAY_YEARS ? `&lt; ${MIN_ROI_DISPLAY_YEARS} yrs` : yrs.toFixed(1) + ' yrs';
+}
+
+function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode) {
+  lastSimResults = monthlyEnergy; lastSimNoShade = noShadeEnergy; lastSimWeather = weatherMode;
+  
   // ── Badge ──────────────────────────────────────────────────────────────
   const badge = document.getElementById('simWeatherBadge');
   badge.style.display = weatherMode ? 'block' : 'none';
@@ -2076,18 +2287,30 @@ function displaySimResults(monthlyEnergy, weatherMode) {
     yearlyTotals[cfg.id] = monthlyEnergy[cfg.id].reduce((a, b) => a + b, 0);
   });
   const maxYearly = Math.max(...Object.values(yearlyTotals));
+  
+  const useSaldering = document.getElementById('salderingToggle')?.checked ?? true;
+  const pricePerKwh = useSaldering ? PRICE_SALDERING : PRICE_NO_SALDERING;
 
   let html = '';
   CONFIGS.forEach(cfg => {
     const tot   = yearlyTotals[cfg.id];
+    const noShade = noShadeEnergy ? noShadeEnergy[cfg.id].reduce((a,b)=>a+b,0) : tot;
+    const pctNSNum = noShade > 0 ? (tot/noShade)*100 : 100;
+    const pctNS = pctNSNum.toFixed(1);
+    const nsColor = pctNSNum>=95?'#4ade80':pctNSNum>=85?'#fbbf24':'#ef4444';
     const pct   = ((tot / maxYearly) * 100).toFixed(1);
     const daily = (tot / 365).toFixed(2);
     const best  = tot / maxYearly >= 0.9999;
+    const profit = (tot * pricePerKwh).toFixed(0);
+    const roiStr = formatROI(CONFIG_COST[cfg.id], tot * pricePerKwh);
     html += `<tr>
       <td class="cfg-name"><span class="cfg-dot" style="background:${cfg.cfgColor}"></span>${cfg.short}</td>
       <td class="${best ? 'best-val' : ''}">${tot.toFixed(0)} ${best ? '★' : ''}</td>
       <td>${pct}%</td>
+      <td style="color:${nsColor}">${pctNS}%</td>
       <td>${daily}</td>
+      <td style="color:#4ade80">€${profit}</td>
+      <td style="color:#fb923c">${roiStr}</td>
     </tr>`;
   });
   document.getElementById('yearlyTableBody').innerHTML = html;
@@ -2183,14 +2406,14 @@ function displaySimResults(monthlyEnergy, weatherMode) {
   const note = document.getElementById('simNoteText');
   if (weatherMode) {
     note.textContent =
-      'Weather-adjusted estimate: PVGIS SARAH-3 / KNMI monthly cloud-correction Kc applied ' +
+      'Weather-adjusted estimate: PVGIS SARAH-3 / KNMI monthly cloud-correction Kc applied with beam/diffuse split ' +
       '(365 days × 1-hour steps). Further losses (inverter, wiring, soiling ~15–20%) ' +
-      'not included. Tree shade from current scene is applied.';
+      'not included. Tree shade (with foliage seasonality) from current scene is applied. Prices: €0.26/kWh (saldering) / €0.08/kWh (feed-in).';
   } else {
     note.textContent =
       'Clear-sky estimate (no cloud losses, 365 days × 1-hour steps). ' +
       'Enable "Weather-adjusted" for a realistic yield estimate. ' +
-      'Tree shade from current scene is applied.';
+      'Tree shade from current scene is applied. Prices: €0.26/kWh (saldering) / €0.08/kWh (feed-in).';
   }
 
   document.getElementById('simResultsDiv').style.display = 'block';
@@ -2210,7 +2433,6 @@ function heavyUpdate(){
   updatePowerDetail(hlRes.mpptResults);
   updateChart(hlRes.mpptResults);
   drawSceneMap();
-  draw3DPreview();
 }
 function fullUpdate(){drawArray();heavyUpdate();}
 
@@ -2274,7 +2496,6 @@ document.getElementById('clearTreesBtn').addEventListener('click', () => {
   updateTreeCountLabel();
   recomputeTreeShadow();
   drawSceneMap();
-  draw3DPreview();
   fullUpdate();
 });
 
@@ -2286,7 +2507,6 @@ document.getElementById('deleteTreeBtn').addEventListener('click', () => {
   updateTreeCountLabel();
   recomputeTreeShadow();
   drawSceneMap();
-  draw3DPreview();
   fullUpdate();
 });
 
@@ -2298,7 +2518,6 @@ document.getElementById('treeHeightSlider').addEventListener('input', function (
   document.getElementById('treeHeightVal').textContent = t.height + ' m';
   recomputeTreeShadow();
   drawSceneMap();
-  draw3DPreview();
   scheduleUpdate();
 });
 
@@ -2310,7 +2529,6 @@ document.getElementById('treeCrownSlider').addEventListener('input', function ()
   document.getElementById('treeCrownVal').textContent = t.crownRadius + ' m';
   recomputeTreeShadow();
   drawSceneMap();
-  draw3DPreview();
   scheduleUpdate();
 });
 
@@ -2322,14 +2540,25 @@ document.getElementById('runSimBtn').addEventListener('click', () => {
 // Abort simulation button
 document.getElementById('abortSimBtn').addEventListener('click', () => {
   if (!simWorker) return;
-  _cleanupSimWorker();
+  _cleanupAllSimWorkers();
   document.getElementById('simStatusLabel').textContent = 'Aborted.';
+});
+
+// Saldering toggle
+const salEl = document.getElementById('salderingToggle');
+if (salEl) salEl.addEventListener('change', () => {
+  if (lastSimResults) displaySimResults(lastSimResults, lastSimNoShade, lastSimWeather);
+});
+
+// Google Maps buttons
+document.getElementById('toggleGoogleMapBtn').addEventListener('click', toggleGoogleMap);
+document.getElementById('centerBosheiBtn').addEventListener('click', () => {
+  if (googleMapInstance) googleMapInstance.setCenter({ lat: BOSHEI_LAT, lng: BOSHEI_LNG });
 });
 
 // Resize canvases on window resize
 window.addEventListener('resize', () => {
   resizeMapCanvas();
-  resizePreviewCanvas();
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────
@@ -2349,7 +2578,6 @@ window.addEventListener('resize', () => {
 
   // Size and draw new canvases
   resizeMapCanvas();
-  resizePreviewCanvas();
 
   fullUpdate();
 })();
