@@ -246,6 +246,83 @@
       </div>
     </div>
 
+    <!-- Site Location -->
+    <div class="card">
+      <h3>&#127759; Site Location
+        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">&nbsp;lat &middot; lon &middot; timezone</span>
+      </h3>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;font-size:0.78rem;margin-bottom:8px">
+        <label>Latitude (°N)
+          <input type="number" id="siteLat" min="-90" max="90" step="0.01" value="51.27"
+                 style="width:72px;margin-left:5px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+        </label>
+        <label>Longitude (°E)
+          <input type="number" id="siteLon" min="-180" max="180" step="0.01" value="5.99"
+                 style="width:72px;margin-left:5px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+        </label>
+        <label>UTC offset winter
+          <input type="number" id="siteUtcW" min="-12" max="14" step="0.5" value="1"
+                 style="width:52px;margin-left:5px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+        </label>
+        <label style="display:flex;align-items:center;gap:5px">
+          <input type="checkbox" id="siteHasDst" checked style="accent-color:#38bdf8">
+          <span>DST (+1 hr)</span>
+        </label>
+        <label id="siteDstLabel">DST start DOY
+          <input type="number" id="siteDstStart" min="1" max="365" step="1" value="91"
+                 style="width:52px;margin-left:5px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px"
+                 title="Day-of-year when clocks spring forward">
+        </label>
+        <label id="siteDstEndLabel">end DOY
+          <input type="number" id="siteDstEnd" min="1" max="365" step="1" value="301"
+                 style="width:52px;margin-left:5px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px"
+                 title="Day-of-year when clocks fall back">
+        </label>
+      </div>
+      <div style="margin-bottom:8px">
+        <label style="font-size:0.75rem;color:#9ca3af">Site name</label>
+        <input type="text" id="siteName" value="Neer, Netherlands" maxlength="60"
+               style="width:200px;margin-left:6px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px;font-size:0.78rem">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <span style="font-size:0.72rem;color:#6b7280">Presets:</span>
+        <button class="btn site-preset" data-preset="neer"      style="font-size:0.7rem">Neer NL</button>
+        <button class="btn site-preset" data-preset="amsterdam" style="font-size:0.7rem">Amsterdam</button>
+        <button class="btn site-preset" data-preset="berlin"    style="font-size:0.7rem">Berlin</button>
+        <button class="btn site-preset" data-preset="madrid"    style="font-size:0.7rem">Madrid</button>
+        <button class="btn site-preset" data-preset="london"    style="font-size:0.7rem">London</button>
+        <button class="btn site-preset" data-preset="dubai"     style="font-size:0.7rem">Dubai</button>
+        <button class="btn site-preset" data-preset="sydney"    style="font-size:0.7rem">Sydney</button>
+      </div>
+      <button class="btn" id="applySiteBtn" style="border-color:#4ade80;color:#4ade80">&#10003; Apply Site</button>
+      <span id="siteStatusLabel" style="font-size:0.72rem;color:#6b7280;margin-left:8px"></span>
+    </div>
+
+    <!-- Climate (Kc + foliage) -->
+    <div class="card">
+      <h3>&#9729; Climate / Kc
+        <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400">&nbsp;monthly cloud-correction &middot; foliage</span>
+      </h3>
+      <div style="margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:0.72rem;color:#6b7280">Kc presets:</span>
+        <button class="btn kc-preset" data-preset="nl"      style="font-size:0.7rem">NL (default)</button>
+        <button class="btn kc-preset" data-preset="de"      style="font-size:0.7rem">Germany</button>
+        <button class="btn kc-preset" data-preset="es"      style="font-size:0.7rem">Spain</button>
+        <button class="btn kc-preset" data-preset="uk"      style="font-size:0.7rem">UK</button>
+        <button class="btn kc-preset" data-preset="sunny"   style="font-size:0.7rem">Sunny</button>
+        <button class="btn kc-preset" data-preset="flat"    style="font-size:0.7rem">Flat 0.55</button>
+      </div>
+      <div id="kcInputGrid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px 6px;font-size:0.73rem;margin-bottom:8px"></div>
+      <div style="margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:0.72rem;color:#6b7280">Foliage:</span>
+        <button class="btn" id="foliageNLBtn"        style="font-size:0.7rem">NL deciduous</button>
+        <button class="btn" id="foliageEvergreenBtn" style="font-size:0.7rem">Evergreen</button>
+        <button class="btn" id="foliageNoneBtn"      style="font-size:0.7rem">No trees</button>
+      </div>
+      <div id="foliageInputGrid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px 6px;font-size:0.73rem;margin-bottom:8px"></div>
+      <button class="btn" id="applyClimateBtn" style="border-color:#4ade80;color:#4ade80">&#10003; Apply Climate</button>
+    </div>
+
     <!-- Array Dimensions -->
     <div class="card">
       <h3>&#9632; Array Dimensions
@@ -604,14 +681,13 @@ let DOY_TO_MONTH; // precomputed int[365], 0-11
 let INVERTER_SPECS_W; // inverter specs for clipping
 let DYNAMIC_PRICES; // Float64, length 12*24, flat [month*24+hour]
 
-// ── DST for Neer NL, 2024 reference year ───────────────────────────────────
-// Spring forward: March 31 = DOY 91; Fall back: October 27 = DOY 301.
-// Neer uses CET (UTC+1) in winter and CEST (UTC+2) in summer.
-const NEER_LON          = 5.99;  // degrees East
-const UTC_OFFSET_WINTER = 1;     // CET  (Central European Time)
-const UTC_OFFSET_SUMMER = 2;     // CEST (Central European Summer Time)
-const DST_START_DOY     = 91;    // March 31, 2024 (last Sunday of March)
-const DST_END_DOY       = 301;   // October 27, 2024 (last Sunday of October)
+// ── Site timezone — overwritten by main thread when site changes ──────────
+// Defaults match Neer, NL so the worker is self-contained if old data is sent.
+let SITE_LON          = 5.99;  // degrees East (from main thread)
+let UTC_OFFSET_WINTER = 1;     // CET  (Central European Time)
+let UTC_OFFSET_SUMMER = 2;     // CEST (Central European Summer Time)
+let DST_START_DOY     = 91;    // March 31 (last Sunday of March in NL)
+let DST_END_DOY       = 301;   // October 27 (last Sunday of October in NL)
 
 function isDSTdoy(doy) { return doy >= DST_START_DOY && doy < DST_END_DOY; }
 
@@ -624,7 +700,7 @@ function solarPosition(doy, clockHour, dst) {
               - 0.006758*Math.cos(2*B) + 0.000907*Math.sin(2*B)
               - 0.002697*Math.cos(3*B) + 0.001480*Math.sin(3*B);
   const utcOff = dst ? UTC_OFFSET_SUMMER : UTC_OFFSET_WINTER;
-  const solarH = clockHour + ET/60 + (NEER_LON - 15*utcOff) / 15;
+  const solarH = clockHour + ET/60 + (SITE_LON - 15*utcOff) / 15;
   const omega  = (solarH - 12) * 15 * Math.PI / 180;
   const sinAlt = Math.sin(dec)*Math.sin(NEER_LAT) + Math.cos(dec)*Math.cos(NEER_LAT)*Math.cos(omega);
   const alt    = Math.asin(Math.max(-1, Math.min(1, sinAlt)));
@@ -986,6 +1062,12 @@ self.onmessage = function(e) {
   FOLIAGE = d.FOLIAGE || [1,1,1,1,1,1,1,1,1,1,1,1];
   INVERTER_SPECS_W = d.INVERTER_SPECS || {};
   DYNAMIC_PRICES = d.DYNAMIC_PRICES || null;
+  // Site timezone — fall back to NL defaults so old cached messages still work
+  if (d.SITE_LON          != null) SITE_LON          = d.SITE_LON;
+  if (d.UTC_OFFSET_WINTER != null) UTC_OFFSET_WINTER = d.UTC_OFFSET_WINTER;
+  if (d.UTC_OFFSET_SUMMER != null) UTC_OFFSET_SUMMER = d.UTC_OFFSET_SUMMER;
+  if (d.DST_START_DOY     != null) DST_START_DOY     = d.DST_START_DOY;
+  if (d.DST_END_DOY       != null) DST_END_DOY       = d.DST_END_DOY;
 
   const sceneTrees = d.sceneTrees;
   const shadeLevel = d.shadeLevel;
@@ -1213,9 +1295,29 @@ function recomputePanelDerivedParams() {
 }
 recomputePanelDerivedParams();
 
-// ── Location (Neer, Netherlands) ───────────────────────────────────────────
-const NEER = { lat: 51.27, lon: 5.99 };   // degrees
-const NEER_LAT = NEER.lat * Math.PI / 180; // radians
+// ── Site location (mutable — editable via the Site card) ──────────────────
+// NEER_LAT is kept as the variable name used everywhere in the solar maths
+// (including what is passed to workers); SITE.lon feeds the timezone correction.
+let SITE = {
+  name: 'Neer, Netherlands',
+  lat:  51.27,   // degrees North
+  lon:  5.99,    // degrees East
+  utcOffsetWinter: 1,   // CET   (UTC+1)
+  utcOffsetSummer: 2,   // CEST  (UTC+2)
+  dstStartDoy:     91,  // March 31 — spring forward
+  dstEndDoy:       301, // October 27 — fall back
+  hasDst:          true,
+};
+let NEER_LAT = SITE.lat * Math.PI / 180; // radians — kept for legacy compat
+
+/** Recompute NEER_LAT from SITE.lat after a site change. */
+function recomputeSiteDerived() {
+  NEER_LAT = SITE.lat * Math.PI / 180;
+}
+
+// Keep a legacy alias so any remaining NEER.lat / NEER.lon references in helper
+// functions work without a full search-and-replace.
+const NEER = SITE;
 
 // ── Physical sections ──────────────────────────────────────────────────────
 // rowMin/rowMax are inclusive (0-indexed).
@@ -1243,13 +1345,12 @@ const COL5 = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490', '#164e63'];
 const COL6 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24'];
 const COL8 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171'];
 
-// ── Monthly cloud-correction factors (Kc) for Neer, NL ────────────────────
+// ── Monthly cloud-correction factors (Kc) — editable via Climate card ─────
 // Kc = actual POA irradiance / clear-sky POA irradiance, per calendar month.
-// Derived from PVGIS SARAH-3 dataset (2005–2023) combined with KNMI climate
-// normals (1991–2020) for the Neer area (51.27°N, 5.99°E).
-// Captures the Netherlands' characteristic cloud-heavy winters and
-// moderately sunny summers.  Annual Kc ≈ 0.57 weighted by irradiance.
-const MONTHLY_KC = [
+// Default values are derived from PVGIS SARAH-3 dataset (2005–2023) combined
+// with KNMI climate normals (1991–2020) for Neer, NL (51.27°N, 5.99°E).
+// Annual Kc ≈ 0.57 weighted by irradiance.
+let MONTHLY_KC = [
   0.40, // Jan — frequent fog & low cloud
   0.45, // Feb
   0.52, // Mar
@@ -1264,10 +1365,9 @@ const MONTHLY_KC = [
   0.35, // Dec — shortest days, heavy overcast
 ];
 
-// Monthly foliage factor for NL deciduous trees
-// Jan–Mar: mostly bare (25% residual); Apr: partial leaf-out (55%);
-// May–Sep: full canopy; Oct: partial drop (70%); Nov–Dec: mostly bare.
-const FOLIAGE = [0.25, 0.25, 0.25, 0.55, 1.00, 1.00, 1.00, 1.00, 1.00, 0.70, 0.30, 0.30];
+// Monthly foliage factor for deciduous trees (editable via Climate card)
+// Default: NL deciduous profile — Jan–Mar: mostly bare (25%); Apr: 55%; May–Sep: full; Oct: 70%; Nov–Dec: bare.
+let FOLIAGE = [0.25, 0.25, 0.25, 0.55, 1.00, 1.00, 1.00, 1.00, 1.00, 0.70, 0.30, 0.30];
 
 // ── Dutch APX/EPEX hourly price profile 2025 (€/kWh, indicative) ──────────
 // Represents typical wholesale spot prices for NL 2025:
@@ -2114,23 +2214,26 @@ function applyPaint(pos) {
   scheduleUpdate();
 }
 
-// ── Solar position & irradiance — Neer, Netherlands ────────────────────────
+// ── Solar position & irradiance ───────────────────────────────────────────
 
 function dayOfYear(date) {
   return Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
 }
 
-/** Netherlands DST: last Sunday of March → last Sunday of October */
+/**
+ * DST check: uses SITE.dstStartDoy / dstEndDoy when hasDst is true.
+ * Falls back to a calendar-based last-Sunday-of-March / October rule if the
+ * DOY-based fields are absent (backward compat).
+ */
 function isDST(date) {
-  const y = date.getFullYear();
-  const lastSunMar = new Date(y, 2, 31); lastSunMar.setDate(31 - lastSunMar.getDay()); lastSunMar.setHours(2,0,0,0);
-  const lastSunOct = new Date(y, 9, 31); lastSunOct.setDate(31 - lastSunOct.getDay()); lastSunOct.setHours(3,0,0,0);
-  return date >= lastSunMar && date < lastSunOct;
+  if (!SITE.hasDst) return false;
+  const doy = dayOfYear(date);
+  return doy >= SITE.dstStartDoy && doy < SITE.dstEndDoy;
 }
 
 /**
  * Returns { altitude_deg, azimuth_deg (from North CW) }
- * for Neer, Netherlands at the given Date (wall-clock = Netherlands local time).
+ * for the configured SITE at the given Date (wall-clock = local time).
  */
 function solarPosition(date) {
   const n = dayOfYear(date);
@@ -2145,9 +2248,9 @@ function solarPosition(date) {
               - 0.006758*Math.cos(2*B) + 0.000907*Math.sin(2*B)
               - 0.002697*Math.cos(3*B) + 0.001480*Math.sin(3*B);
 
-  const utcOff = isDST(date) ? 2 : 1;
+  const utcOff = isDST(date) ? SITE.utcOffsetSummer : SITE.utcOffsetWinter;
   const clock  = date.getHours() + date.getMinutes()/60;
-  const solarH = clock + ET/60 + (NEER.lon - 15*utcOff) / 15;
+  const solarH = clock + ET/60 + (SITE.lon - 15*utcOff) / 15;
   const omega  = (solarH - 12) * 15 * Math.PI / 180; // hour angle (rad)
 
   const sinAlt = Math.sin(dec)*Math.sin(NEER_LAT) + Math.cos(dec)*Math.cos(NEER_LAT)*Math.cos(omega);
@@ -2230,8 +2333,8 @@ function sunriseSunset(n) {
   const ET = 229.18*(0.000075 + 0.001868*Math.cos(B) - 0.032077*Math.sin(B)
              - 0.014615*Math.cos(2*B) - 0.04089*Math.sin(2*B));
   const date = new Date();
-  const utcOff = isDST(date) ? 2 : 1;
-  const correction = -ET/60 - (NEER.lon - 15*utcOff)/15;
+  const utcOff = isDST(date) ? SITE.utcOffsetSummer : SITE.utcOffsetWinter;
+  const correction = -ET/60 - (SITE.lon - 15*utcOff)/15;
   return {
     rise:  12 - omega0/15 + correction,
     set:   12 + omega0/15 + correction,
@@ -2798,7 +2901,16 @@ function snapshotProject(meta = {}) {
     savedAt: new Date().toISOString(),
     name: meta.name || 'Untitled project',
 
-    site: { lat: NEER.lat, lon: NEER.lon, name: 'Neer, Netherlands' },
+    site: {
+      lat:              SITE.lat,
+      lon:              SITE.lon,
+      name:             SITE.name,
+      utcOffsetWinter:  SITE.utcOffsetWinter,
+      utcOffsetSummer:  SITE.utcOffsetSummer,
+      dstStartDoy:      SITE.dstStartDoy,
+      dstEndDoy:        SITE.dstEndDoy,
+      hasDst:           SITE.hasDst,
+    },
 
     panel: { ...PNL, bypassVd: BYPASS_VD },
 
@@ -2844,6 +2956,11 @@ function snapshotProject(meta = {}) {
       weatherToggle: checked('weatherToggle'),
       salderingToggle: checked('salderingToggle'),
       highlightedConfig: highlightedConfig,
+    },
+
+    climate: {
+      monthlyKc:     [...MONTHLY_KC],
+      monthlyFoliage: [...FOLIAGE],
     },
 
     economic: {
@@ -2927,8 +3044,31 @@ function applyProject(p) {
     }
   }
 
-  if (p.site && (p.site.lat !== NEER.lat || p.site.lon !== NEER.lon)) {
-    warnings.push(`Project site (${p.site.lat},${p.site.lon}) differs from app site; site change ignored in this build.`);
+  // ── Site location ─
+  if (p.site && typeof p.site === 'object') {
+    const s = p.site;
+    if (Number.isFinite(s.lat))             SITE.lat              = s.lat;
+    if (Number.isFinite(s.lon))             SITE.lon              = s.lon;
+    if (typeof s.name === 'string')         SITE.name             = s.name;
+    if (Number.isFinite(s.utcOffsetWinter)) SITE.utcOffsetWinter  = s.utcOffsetWinter;
+    if (Number.isFinite(s.utcOffsetSummer)) SITE.utcOffsetSummer  = s.utcOffsetSummer;
+    if (Number.isFinite(s.dstStartDoy))     SITE.dstStartDoy      = s.dstStartDoy;
+    if (Number.isFinite(s.dstEndDoy))       SITE.dstEndDoy        = s.dstEndDoy;
+    if (typeof s.hasDst === 'boolean')      SITE.hasDst           = s.hasDst;
+    recomputeSiteDerived();
+    _syncSiteUI();
+  }
+
+  // ── Climate (Kc and foliage) ─
+  if (p.climate && typeof p.climate === 'object') {
+    if (Array.isArray(p.climate.monthlyKc) && p.climate.monthlyKc.length === 12) {
+      const kc = p.climate.monthlyKc.map(Number);
+      if (kc.every(Number.isFinite)) { MONTHLY_KC.splice(0, 12, ...kc); _syncClimateUI(); }
+    }
+    if (Array.isArray(p.climate.monthlyFoliage) && p.climate.monthlyFoliage.length === 12) {
+      const f = p.climate.monthlyFoliage.map(Number);
+      if (f.every(Number.isFinite)) { FOLIAGE.splice(0, 12, ...f); _syncClimateUI(); }
+    }
   }
 
   // ── Array transform (scene position / rotation) ─
@@ -4210,6 +4350,12 @@ function runYearlySimulation() {
     worker.postMessage({
       type: 'run',
       ROWS, COLS, SECTION_DIV, STC_IRRAD, BYPASS_VD, NEER_LAT,
+      // Site timezone — passed explicitly so the worker uses the current SITE settings
+      SITE_LON:          SITE.lon,
+      UTC_OFFSET_WINTER: SITE.utcOffsetWinter,
+      UTC_OFFSET_SUMMER: SITE.hasDst ? SITE.utcOffsetSummer : SITE.utcOffsetWinter,
+      DST_START_DOY:     SITE.hasDst ? SITE.dstStartDoy : 400, // >365 → DST never applies
+      DST_END_DOY:       SITE.hasDst ? SITE.dstEndDoy   : 400,
       PNL: { ...PNL },
       SECTIONS: SECTIONS.map(s => ({ tilt: s.tilt, azimuth: s.azimuth })),
       CONFIGS:  CONFIGS_slim,
@@ -5482,6 +5628,167 @@ document.getElementById('loadTreesBtn').addEventListener('click', () => {
   }
 });
 
+// ── Site Location editor ─────────────────────────────────────────────────
+
+const SITE_PRESETS = {
+  neer:      { name:'Neer, Netherlands',   lat:51.27,  lon:5.99,   utcOffsetWinter:1, utcOffsetSummer:2, dstStartDoy:91,  dstEndDoy:301, hasDst:true  },
+  amsterdam: { name:'Amsterdam, NL',        lat:52.37,  lon:4.90,   utcOffsetWinter:1, utcOffsetSummer:2, dstStartDoy:91,  dstEndDoy:301, hasDst:true  },
+  berlin:    { name:'Berlin, Germany',      lat:52.52,  lon:13.40,  utcOffsetWinter:1, utcOffsetSummer:2, dstStartDoy:91,  dstEndDoy:301, hasDst:true  },
+  madrid:    { name:'Madrid, Spain',        lat:40.42,  lon:-3.70,  utcOffsetWinter:1, utcOffsetSummer:2, dstStartDoy:91,  dstEndDoy:301, hasDst:true  },
+  london:    { name:'London, UK',           lat:51.50,  lon:-0.12,  utcOffsetWinter:0, utcOffsetSummer:1, dstStartDoy:91,  dstEndDoy:301, hasDst:true  },
+  dubai:     { name:'Dubai, UAE',           lat:25.20,  lon:55.27,  utcOffsetWinter:4, utcOffsetSummer:4, dstStartDoy:400, dstEndDoy:400, hasDst:false },
+  sydney:    { name:'Sydney, Australia',    lat:-33.87, lon:151.21, utcOffsetWinter:10,utcOffsetSummer:11,dstStartDoy:304, dstEndDoy:91,  hasDst:true  },
+};
+
+/** Push current SITE values back into the Site Location UI controls. */
+function _syncSiteUI() {
+  const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  const setC = (id, v) => { const el = document.getElementById(id); if (el) el.checked = v; };
+  setV('siteLat',      SITE.lat);
+  setV('siteLon',      SITE.lon);
+  setV('siteUtcW',     SITE.utcOffsetWinter);
+  setV('siteDstStart', SITE.dstStartDoy);
+  setV('siteDstEnd',   SITE.dstEndDoy);
+  setV('siteName',     SITE.name);
+  setC('siteHasDst',   SITE.hasDst);
+  const dstLabel = document.getElementById('siteDstLabel');
+  const dstEndLabel = document.getElementById('siteDstEndLabel');
+  if (dstLabel) dstLabel.style.display = SITE.hasDst ? '' : 'none';
+  if (dstEndLabel) dstEndLabel.style.display = SITE.hasDst ? '' : 'none';
+}
+
+/** Apply Site UI → SITE → recompute → fullUpdate. */
+function _applySiteFromUI() {
+  const getN  = id => parseFloat(document.getElementById(id).value);
+  const getI  = id => parseInt(document.getElementById(id).value, 10);
+  const getB  = id => document.getElementById(id).checked;
+  const getS  = id => document.getElementById(id).value.trim();
+
+  const lat = getN('siteLat'), lon = getN('siteLon');
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90)   { alert('Latitude must be between −90 and 90.'); return; }
+  if (!Number.isFinite(lon) || lon < -180 || lon > 180) { alert('Longitude must be between −180 and 180.'); return; }
+  const utcW    = getN('siteUtcW');
+  const hasDst  = getB('siteHasDst');
+  const dstS    = getI('siteDstStart');
+  const dstE    = getI('siteDstEnd');
+
+  SITE.lat              = lat;
+  SITE.lon              = lon;
+  SITE.name             = getS('siteName') || 'Custom site';
+  SITE.utcOffsetWinter  = utcW;
+  SITE.utcOffsetSummer  = hasDst ? utcW + 1 : utcW;
+  SITE.hasDst           = hasDst;
+  SITE.dstStartDoy      = hasDst ? dstS : 400;
+  SITE.dstEndDoy        = hasDst ? dstE : 400;
+
+  recomputeSiteDerived();
+
+  const label = document.getElementById('siteStatusLabel');
+  if (label) { label.style.color = '#4ade80'; label.textContent = `Applied: ${SITE.name} (${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E)`; }
+
+  fullUpdate();
+  scheduleSaveProject();
+}
+
+document.getElementById('applySiteBtn').addEventListener('click', _applySiteFromUI);
+
+document.getElementById('siteHasDst').addEventListener('change', function() {
+  const dstLabel = document.getElementById('siteDstLabel');
+  const dstEndLabel = document.getElementById('siteDstEndLabel');
+  if (dstLabel) dstLabel.style.display = this.checked ? '' : 'none';
+  if (dstEndLabel) dstEndLabel.style.display = this.checked ? '' : 'none';
+});
+
+document.querySelectorAll('.site-preset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = SITE_PRESETS[btn.dataset.preset];
+    if (!p) return;
+    Object.assign(SITE, p);
+    recomputeSiteDerived();
+    _syncSiteUI();
+    _applySiteFromUI();
+  });
+});
+
+// ── Climate / Kc editor ───────────────────────────────────────────────────
+
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+const KC_PRESETS = {
+  nl:    [0.40,0.45,0.52,0.58,0.62,0.62,0.61,0.62,0.57,0.49,0.41,0.35],
+  de:    [0.42,0.47,0.53,0.59,0.63,0.63,0.62,0.63,0.57,0.50,0.43,0.38],
+  es:    [0.60,0.64,0.69,0.73,0.76,0.80,0.82,0.81,0.75,0.68,0.62,0.58],
+  uk:    [0.35,0.40,0.48,0.55,0.60,0.59,0.58,0.58,0.52,0.44,0.36,0.31],
+  sunny: [0.75,0.78,0.82,0.85,0.87,0.90,0.92,0.91,0.87,0.83,0.77,0.73],
+  flat:  [0.55,0.55,0.55,0.55,0.55,0.55,0.55,0.55,0.55,0.55,0.55,0.55],
+};
+
+const FOLIAGE_PRESETS = {
+  nl:        [0.25,0.25,0.25,0.55,1.00,1.00,1.00,1.00,1.00,0.70,0.30,0.30],
+  evergreen: [1.00,1.00,1.00,1.00,1.00,1.00,1.00,1.00,1.00,1.00,1.00,1.00],
+  none:      [0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00],
+};
+
+/** Build/refresh the 12-input grids for Kc and foliage. */
+function _syncClimateUI() {
+  _buildInputGrid('kcInputGrid', MONTHLY_KC, 'kc-inp', 0, 1, 0.01, v => v.toFixed(2));
+  _buildInputGrid('foliageInputGrid', FOLIAGE, 'fol-inp', 0, 1, 0.05, v => v.toFixed(2));
+}
+
+function _buildInputGrid(containerId, dataArr, cls, min, max, step, fmt) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  // Reuse existing inputs (avoids losing focus during live typing) or rebuild
+  const existing = container.querySelectorAll(`input.${cls}`);
+  if (existing.length === 12) {
+    existing.forEach((inp, i) => { if (document.activeElement !== inp) inp.value = fmt(dataArr[i]); });
+    return;
+  }
+  container.innerHTML = '';
+  MONTHS_SHORT.forEach((m, i) => {
+    const label = document.createElement('label');
+    label.style.cssText = 'display:flex;flex-direction:column;gap:1px;align-items:center';
+    label.innerHTML = `<span style="color:#6b7280;font-size:0.68rem">${m}</span>
+      <input type="number" class="${cls}" data-idx="${i}" min="${min}" max="${max}" step="${step}" value="${fmt(dataArr[i])}"
+             style="width:52px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 4px;text-align:center">`;
+    container.appendChild(label);
+  });
+}
+
+document.getElementById('applyClimateBtn').addEventListener('click', () => {
+  const kcInputs  = document.querySelectorAll('.kc-inp');
+  const folInputs = document.querySelectorAll('.fol-inp');
+  let valid = true;
+  kcInputs.forEach((inp, i) => {
+    const v = parseFloat(inp.value);
+    if (!Number.isFinite(v) || v < 0 || v > 1) { valid = false; return; }
+    MONTHLY_KC[i] = v;
+  });
+  folInputs.forEach((inp, i) => {
+    const v = parseFloat(inp.value);
+    if (!Number.isFinite(v) || v < 0 || v > 1) { valid = false; return; }
+    FOLIAGE[i] = v;
+  });
+  if (!valid) { alert('All Kc and foliage values must be between 0 and 1.'); return; }
+  fullUpdate();
+  scheduleSaveProject();
+});
+
+document.querySelectorAll('.kc-preset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = KC_PRESETS[btn.dataset.preset];
+    if (!p) return;
+    MONTHLY_KC.splice(0, 12, ...p);
+    _syncClimateUI();
+    fullUpdate();
+    scheduleSaveProject();
+  });
+});
+
+document.getElementById('foliageNLBtn').addEventListener('click',        () => { FOLIAGE.splice(0, 12, ...FOLIAGE_PRESETS.nl);        _syncClimateUI(); fullUpdate(); scheduleSaveProject(); });
+document.getElementById('foliageEvergreenBtn').addEventListener('click', () => { FOLIAGE.splice(0, 12, ...FOLIAGE_PRESETS.evergreen); _syncClimateUI(); fullUpdate(); scheduleSaveProject(); });
+document.getElementById('foliageNoneBtn').addEventListener('click',      () => { FOLIAGE.splice(0, 12, ...FOLIAGE_PRESETS.none);       _syncClimateUI(); fullUpdate(); scheduleSaveProject(); });
+
 // ── Panel Parameters editor ───────────────────────────────────────────────
 
 const LUCKSOLAR_340W = { Pmax:340, Vmp:34.52, Imp:9.85, Voc:40.98, Isc:10.28, Ns:60, n:1.2, Rs:0.28, Rsh:350 };
@@ -5937,7 +6244,9 @@ document.getElementById('econBatSizeSelect').addEventListener('change', () => {
   // automatic migration from the legacy trees-only key when needed.
   loadProjectFromStorage();
 
-  // Initialise the Array Dimensions UI, Wiring Configs panel, and Panel editor.
+  // Initialise all settings UI panels (after loadProjectFromStorage may have changed values)
+  _syncSiteUI();
+  _syncClimateUI();
   _syncArrayDimsUI();
   _renderWiringConfigsPanel();
   _syncPanelEditorUI();
