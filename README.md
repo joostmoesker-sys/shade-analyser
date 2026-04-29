@@ -258,9 +258,9 @@ The **Economic Forecast** panel (at the bottom of the right column) lets you eva
 1. **PV → load** (direct self-consumption, highest priority)
 2. **Surplus PV → battery** (charge at 95% efficiency, up to 15 kW)
 3. **Remaining surplus PV → grid** (at sell tariff)
-4. **Battery → load** (discharge for self-use when PV insufficient, down to 10% SOC)
+4. **Battery → load** (discharge for self-use when PV insufficient, down to 5% SOC)
 5. **Grid → load** (import only what battery cannot cover)
-6. **After sundown, during top-6 most expensive hours per day**: sell from battery to grid down to **25% SOC** (16 kWh reserve) — time-shifts stored solar to high-price periods
+6. **After sundown, during top-6 most expensive hours per day**: sell from battery to grid down to **5% SOC** — time-shifts stored solar to high-price periods
 7. **Optional grid pre-charge**: on days where next-day PV < next-day load, charge battery during 4 cheapest hours at (deficit / 0.80) kWh
 
 ### House Load Model

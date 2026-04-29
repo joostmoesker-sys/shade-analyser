@@ -3325,11 +3325,11 @@ function generateYearlyTariffs() {
  *  1. PV covers load directly (self-consumption).
  *  2. Surplus PV → charge battery (up to capacity / power limit).
  *  3. Remaining surplus PV → export to grid at sell tariff.
- *  [Smart mode] 4. Load deficit → discharge battery for self-use (down to 5% SOC).
+ *  [Smart mode] 4. Load deficit → discharge battery for self-use (down to MIN_SOC_SELF).
  *  [Smart mode] 5. Remaining deficit → import from grid at buy tariff.
- *  [Smart mode] 6. After-sundown + premium-price hour: sell battery to grid (down to 5% SOC).
+ *  [Smart mode] 6. After-sundown + premium-price hour: sell battery to grid (down to MIN_SOC_SELL).
  *  [Smart mode] 7. Optional grid pre-charge: buy cheap energy for next-day deficit.
- *  [Simple mode] 4. Load deficit → discharge at 3.6 kW fixed power down to 5% SOC.
+ *  [Simple mode] 4. Load deficit → discharge at 3.6 kW fixed power down to MIN_SOC_SELF.
  *  [Simple mode] 5. Import remainder from grid (no sell-to-grid, no precharge).
  *
  * @param {Float64Array} pvHourly   — kWh/hour PV output for this config
@@ -3460,9 +3460,9 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
 
     // ── 4+5. Discharge battery / import from grid ────────────────────────
     if (useSimpleDischarge) {
-      // Simple mode: fixed 3.6 kW discharge when load > PV, down to 5% SOC
+      // Simple mode: fixed 3.6 kW discharge when load > PV, down to MIN_SOC_SELF
       if (useBattery && residualLoad > 1e-4) {
-        const minSoc   = batCapKwh * 0.05;
+        const minSoc   = batCapKwh * MIN_SOC_SELF;
         const avail    = (soc - minSoc) * DISCHARGE_EFF;
         // Discharge at exactly 3.6 kW (= 3.6 kWh/h) but never more than deficit or available
         const dischNet = Math.min(residualLoad, SIMPLE_DISCHARGE_KW, Math.max(0, avail));
@@ -3606,7 +3606,7 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
       }
       if (useBattery && rLoad > 1e-4) {
         if (useSimpleDischarge) {
-          const minS = batCapKwh * 0.05;
+          const minS = batCapKwh * MIN_SOC_SELF;
           const avail = (trSoc - minS) * DISCHARGE_EFF;
           const dnet  = Math.min(rLoad, SIMPLE_DISCHARGE_KW, Math.max(0, avail));
           trSoc -= dnet / DISCHARGE_EFF;
