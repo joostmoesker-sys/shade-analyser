@@ -4013,9 +4013,12 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
   const dp     = Array.from({ length: n + 1 }, () => new Float64Array(states).fill(-1e9));
   const policy = Array.from({ length: n },     () => new Uint8Array(states));
 
-  // Terminal value: small bonus for higher SOC at horizon end.
-  // 0.6 = assumed round-trip recovery fraction for future self-use; 0.3 = discount factor
-  // to avoid over-valuing stored energy relative to near-term dispatch opportunities.
+  // Terminal value: energy still stored at the end of the horizon is valued at
+  // average future price × selfUseMultiplier × 0.9.  The 0.9 discount accounts for
+  // uncertainty about whether the energy will actually be self-consumed beyond the
+  // horizon vs exported at a lower sell price.  The previous 0.6 × 0.3 = 0.18 factor
+  // was far too aggressive — it made the DP strongly prefer near-term export over
+  // saving for future self-use, propagating a myopic bias back through the 48 h plan.
   const avgFuturePrice = tariffSlice.slice(0, n).reduce((a, b) => a + b, 0) / n;
   // Baseline against which "high price" is judged for export decisions.
   // Using the horizon-average sell price + spread guarantees the gate can fire
@@ -4023,11 +4026,6 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
   // was mathematically unreachable for any sellFactor < 0.92).
   const exportThreshold = avgFuturePrice * sellFactor + (params.minProfitSpread || 0.06);
   for (let s = 0; s < states; s++) {
-    // Terminal value: energy still stored at the end of the horizon is assumed to be
-    // self-consumed in the future at average price × selfUseMultiplier (90% confidence).
-    // The previous 0.6×0.3 = 0.18 factor was far too aggressive — it made the DP
-    // strongly prefer near-term export over saving for future self-use, propagating
-    // a myopic bias back through the entire 48 h plan.
     dp[n][s] = s * socStep * avgFuturePrice * (params.selfUseMultiplier || 1.05) * 0.9;
   }
 
@@ -4102,7 +4100,7 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
   // Forward reconstruction: build optimal action plan from the executor's actual SOC
   // (passed in via `currentSoc`), not a fixed 50% — otherwise plan actions would
   // drift from physical reality after the first day.
-  const startSoc = (currentSoc != null && isFinite(currentSoc))
+  const startSoc = (currentSoc !== null && currentSoc !== undefined && isFinite(currentSoc))
     ? currentSoc
     : BATTERY_CAPACITY_KWH * 0.5;
   const initialS = Math.min(states - 1, Math.max(0, Math.round(startSoc / socStep)));
