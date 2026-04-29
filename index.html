@@ -438,13 +438,77 @@ function panelInTreeShadow(px, py, tree, az_rad, tan_alt) {
 // At this resolution the MPP power error is negligible (<0.05% for realistic IV curves).
 const G_CACHE_QUANTISATION = 4000;
 const DIFFUSE_SHADE_FACTOR = 0.85; // diffuse sky irradiance fraction retained when beam-blocked
-let _ivCache; // Map<int, curve>, reset each timestep
+let _ivCache;  // Map<int, curve>, reset each timestep
+let _hcCache;  // Map<int, curve> for half-cut shaded panels, reset each timestep
 
 function cachedPanelIV(G) {
   const key = Math.round(G * G_CACHE_QUANTISATION);
   let cv = _ivCache.get(key);
   if (!cv) { cv = panelIV_sim(G); _ivCache.set(key, cv); }
   return cv;
+}
+
+// ── Half-cut cell panel model ──────────────────────────────────────────────
+// The LS-M120-340W has 2 parallel half-strings of 60 cells each.
+// Each half-string: Isc/2, same Voc, Rs×2, Rsh×2, I0/2.
+// When one half is shaded, compute IV as parallel(halfString_shaded, halfString_full).
+
+function halfStringIV(G, nPts=40) {
+  if (G < 0.001) return [{V:0, I:0}];
+  const Iph2  = PNL.Isc * G / 2;         // half the photocurrent
+  const I02   = PNL.I0  / 2;             // half the saturation current
+  const Rs2   = PNL.Rs  * 2;             // series resistance per half-string
+  const Rsh2  = PNL.Rsh * 2;             // shunt resistance per half-string
+  const VocG  = PNL.Voc + PNL.nNsVt * Math.log(G);
+  const curve = [];
+  for (let k=0; k<=nPts; k++) {
+    const V = (k/nPts) * VocG;
+    let I = Iph2;
+    for (let it=0; it<15; it++) {
+      const x = Math.min((V + I*Rs2) / PNL.nNsVt, 80), ex = Math.exp(x);
+      const f  = I - Iph2 + I02*(ex-1) + (V + I*Rs2)/Rsh2;
+      const df = 1 + I02*ex*Rs2/PNL.nNsVt + Rs2/Rsh2;
+      const dI = f/df; I -= dI;
+      if (Math.abs(dI) < 1e-9) break;
+    }
+    curve.push({V, I: Math.max(0, I)});
+  }
+  return curve;
+}
+
+function halfCutPanelIV(G_s, G_u, nPts=40) {
+  // G_u: unshaded half-string G; G_s: shaded half-string G
+  if (G_u < 0.001) return [{V:0, I:0}];
+  const hs_u = halfStringIV(G_u, nPts);            // unshaded half
+  const fn_s = G_s > 0.001 ? makeIofV(halfStringIV(G_s, nPts)) : () => 0;
+  const fn_u = makeIofV(hs_u);
+  const maxV = hs_u[hs_u.length-1].V;
+  const result = [];
+  for (let k=0; k<=nPts; k++) {
+    const V = (k/nPts) * maxV;
+    result.push({V, I: fn_u(V) + fn_s(V)});
+  }
+  return result;
+}
+
+function cachedHalfCutPanelIV(G_s, G_u) {
+  const ks = Math.round(G_s * G_CACHE_QUANTISATION);
+  const ku = Math.round(G_u * G_CACHE_QUANTISATION);
+  const key = ks * 10000 + ku;
+  let cv = _hcCache.get(key);
+  if (!cv) { cv = halfCutPanelIV(G_s, G_u); _hcCache.set(key, cv); }
+  return cv;
+}
+
+// Returns the IV curve for panel at (r,c):
+// - If unshaded: standard cachedPanelIV (both halves at same G)
+// - If shaded: half-cut model with one half unshaded, one at shade*G
+function getPanelIV(r, c) {
+  const i  = r*COLS + c;
+  const sh = _shade[i];
+  const Gu = _irr[i];
+  if (sh >= 0.999 || Gu < 0.001) return cachedPanelIV(Math.max(0, Gu * sh));
+  return cachedHalfCutPanelIV(Gu * sh, Gu);
 }
 
 function panelIV_sim(G, nPts=40) {
@@ -489,6 +553,48 @@ function makeIofV(curve) {
     }
     return 0;
   };
+}
+
+// Half-cut aware series string: uses getPanelIV for each panel at (r, c0..c1)
+function stringIV_hc(r, c0, c1, nPts=100) {
+  const ivs = [];
+  for (let c=c0; c<=c1; c++) ivs.push(getPanelIV(r, c));
+  const fns    = ivs.map(iv => makeVofI(iv, true));
+  const maxIsc = Math.max(...ivs.map(iv => iv[0] ? iv[0].I : 0), 0.001);
+  const result = [];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of fns) V += fn(I);
+    result.push({V, I});
+  }
+  result.sort((a,b)=>a.V-b.V); return result;
+}
+
+// Half-cut aware V-TCT block
+function blockVTCT_hc(r0, r1, c0, c1, nPts=100) {
+  const secCurves = [];
+  for (let c=c0; c<=c1; c++) {
+    const rowFns = []; let maxVsec = 0;
+    for (let r=r0; r<=r1; r++) {
+      const piv = getPanelIV(r, c);
+      rowFns.push(makeIofV(piv));
+      if (piv.length > 1) maxVsec = Math.max(maxVsec, piv[piv.length-1].V);
+    }
+    const sec = [];
+    for (let k=0; k<=nPts; k++) {
+      const V=(k/nPts)*maxVsec; sec.push({V, I: rowFns.reduce((s,fn)=>s+fn(V), 0)});
+    }
+    secCurves.push(sec);
+  }
+  const VofI   = secCurves.map(cv => makeVofI(cv, false));
+  const maxIsc = Math.max(...secCurves.map(cv => cv[0] ? cv[0].I : 0), 0.001);
+  const result = [];
+  for (let k=nPts; k>=0; k--) {
+    const I=(k/nPts)*maxIsc; let V=0;
+    for (const fn of VofI) V += fn(I);
+    result.push({V, I});
+  }
+  result.sort((a,b)=>a.V-b.V); return result;
 }
 
 function stringIV_sim(Gs, nPts=100) {
@@ -547,11 +653,10 @@ function blockVTCT_sim(r0, r1, c0, c1, nPts=100) {
 function computeBlockIV_sim(block) {
   const {r0,r1,c0,c1,topo} = block;
   if (topo==='series' || (topo==='sp' && r0===r1))
-    return stringIV_sim(Array.from({length:c1-c0+1}, (_,i) => eG(r0, c0+i)));
+    return stringIV_hc(r0, c0, c1);
   if (topo==='sp')
-    return parallelIV_sim(Array.from({length:r1-r0+1}, (_,i) =>
-      stringIV_sim(Array.from({length:c1-c0+1}, (_,j) => eG(r0+i, c0+j)))));
-  if (topo==='v-tct') return blockVTCT_sim(r0, r1, c0, c1);
+    return parallelIV_sim(Array.from({length:r1-r0+1}, (_,i) => stringIV_hc(r0+i, c0, c1)));
+  if (topo==='v-tct') return blockVTCT_hc(r0, r1, c0, c1);
   return [{V:0, I:0}];
 }
 
@@ -586,6 +691,7 @@ self.onmessage = function(e) {
   _irr   = new Float32Array(ROWS * COLS);
   _shade = new Float32Array(ROWS * COLS).fill(1);
   _ivCache = new Map();
+  _hcCache = new Map();
 
   // monthlyEnergy[cfgId][0-11] in kWh
   const monthlyEnergy = {};
@@ -678,14 +784,19 @@ self.onmessage = function(e) {
         }
       }
 
-      // Reset G-cache; per-timestep there are at most 4 unique G values
-      // (2 section fracs × blocked/unblocked), so this is near-free.
+      // Reset G-caches; per-timestep there are at most a few unique G pairs.
       _ivCache.clear();
+      _hcCache.clear();
 
-      // Accumulate per-panel energy (irradiance × shade × Pmax / STC)
+      // Accumulate per-panel energy using half-cut model:
+      // when shaded, one half-string is at shade*G and the other at full G.
       const dynPrice = DYNAMIC_PRICES ? DYNAMIC_PRICES[month * 24 + hour] : 0;
       for (let i = 0; i < ROWS * COLS; i++) {
-        const ePanelKwh = _irr[i] * _shade[i] * PNL.Pmax / STC_IRRAD / 1000;
+        const sh = _shade[i];
+        const Gu = _irr[i];
+        // Half-cut: effective G = average of shaded half and unshaded half
+        const Geff = sh >= 0.999 ? Gu : (Gu * sh + Gu) / 2;
+        const ePanelKwh = Geff * PNL.Pmax / STC_IRRAD / 1000;
         panelEnergyByMonth[month * ROWS * COLS + i] += ePanelKwh;
       }
 
@@ -716,7 +827,7 @@ self.onmessage = function(e) {
         _shade.fill(1);
         _ivCache.clear();
         for (let i = 0; i < ROWS * COLS; i++) {
-          const ePanelKwh = _irr[i] * 1.0 * PNL.Pmax / STC_IRRAD / 1000;
+          const ePanelKwh = _irr[i] * PNL.Pmax / STC_IRRAD / 1000;
           noShadePanelEnergyByMonth[month * ROWS * COLS + i] += ePanelKwh;
         }
         for (const cfg of CONFIGS) {
@@ -830,9 +941,9 @@ const MONTHLY_KC = [
 ];
 
 // Monthly foliage factor for NL deciduous trees
-// Jan–Mar: mostly bare, Mar slight budding; Apr: full canopy by end of month;
-// May–Sep: 100%; Oct: partial drop; Nov–Dec: mostly bare.
-const FOLIAGE = [0.05, 0.05, 0.20, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 0.65, 0.15, 0.05];
+// Jan–Mar: mostly bare (25% residual); Apr: partial leaf-out (55%);
+// May–Sep: full canopy; Oct: partial drop (70%); Nov–Dec: mostly bare.
+const FOLIAGE = [0.25, 0.25, 0.25, 0.55, 1.00, 1.00, 1.00, 1.00, 1.00, 0.70, 0.30, 0.30];
 
 // ── Dutch APX/EPEX hourly price profile 2025 (€/kWh, indicative) ──────────
 // Represents typical wholesale spot prices for NL 2025:
@@ -2594,11 +2705,13 @@ function drawHeatmap() {
   }
 
   const maxVal = Math.max(...vals, 0.001);
-  const minVal = Math.min(...vals, 0);
+  const minVal = Math.min(...vals);
+  const range  = maxVal - minVal;
   const unit   = metric === 'kwh' ? 'kWh' : '€';
+  const decimals = metric === 'kwh' ? 1 : 2;
 
   document.getElementById('heatmapRangeLabel').textContent =
-    `${minVal.toFixed(metric==='kwh'?1:2)} – ${maxVal.toFixed(metric==='kwh'?1:2)} ${unit}/panel`;
+    `${minVal.toFixed(decimals)} – ${maxVal.toFixed(decimals)} ${unit}/panel`;
 
   // Draw on heatmap canvas (same coordinate system as arrayCanvas)
   const hc = document.getElementById('heatmapCanvas');
@@ -2611,12 +2724,16 @@ function drawHeatmap() {
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const i   = r * COLS + c;
-      const t   = maxVal > 0 ? vals[i] / maxVal : 0;
+      const t   = range > 0.0001 ? (vals[i] - minVal) / range : 0.5;
       const rct = panelRect(r, c);
       hx.fillStyle = heatColor(t);
       drawRoundRect(hx, rct.x, rct.y, rct.w, rct.h, 3); hx.fill();
-      hx.fillStyle = 'rgba(0,0,0,0.72)'; hx.font = '8px sans-serif'; hx.textAlign = 'center';
-      hx.fillText(vals[i].toFixed(metric==='kwh'?1:2), rct.x+rct.w/2, rct.y+rct.h/2+3);
+      // Text: white with dark stroke for readability on any background
+      const label = vals[i].toFixed(decimals);
+      hx.font = '9px sans-serif'; hx.textAlign = 'center';
+      hx.strokeStyle = 'rgba(0,0,0,0.85)'; hx.lineWidth = 2.5;
+      hx.strokeText(label, rct.x+rct.w/2, rct.y+rct.h/2+3);
+      hx.fillStyle = '#ffffff'; hx.fillText(label, rct.x+rct.w/2, rct.y+rct.h/2+3);
     }
   }
 
@@ -2632,7 +2749,7 @@ function drawHeatmap() {
     hx.fillText(c+1, rct.x + rct.w/2, rct.y - 4);
   }
 
-  // Legend bar
+  // Legend bar with min/max labels
   const lc = document.getElementById('heatmapLegendCanvas');
   const lx = lc.getContext('2d');
   const grad = lx.createLinearGradient(0, 0, 180, 0);
