@@ -326,6 +326,32 @@
     <div class="card">
       <h3>MPPT Detail &nbsp;&middot;&nbsp; <span id="detailCfgLabel" style="color:#38bdf8">Option A</span></h3>
       <div class="power-grid" id="powerGrid"></div>
+      <!-- Inverter / MPPT constraints editor -->
+      <div id="inverterSpecEditor" style="margin-top:10px;border-top:1px solid #1f2937;padding-top:8px">
+        <div style="font-size:0.72rem;color:#9ca3af;margin-bottom:7px">
+          &#9889; Inverter / MPPT constraints &mdash; <span id="inverterCfgLabel" style="color:#38bdf8"></span>
+          <span style="color:#4b5563"> &nbsp;(changes are applied live)</span>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;font-size:0.77rem">
+          <label style="display:flex;flex-direction:column;gap:2px">
+            <span style="color:#9ca3af">Vmpp min (V)</span>
+            <input type="number" id="invVmpptMin" min="1" max="2000" step="1" style="width:70px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:2px">
+            <span style="color:#9ca3af">Vmpp max (V)</span>
+            <input type="number" id="invVmpptMax" min="1" max="2000" step="1" style="width:70px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:2px">
+            <span style="color:#9ca3af">Imax/MPPT (A)</span>
+            <input type="number" id="invImaxPerMppt" min="0.5" max="200" step="0.5" style="width:70px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:2px" title="Maximum total AC/DC output power of the inverter (W). Leave blank or 0 for no limit.">
+            <span style="color:#9ca3af">AC limit (W)</span>
+            <input type="number" id="invTotalPowerW" min="0" max="200000" step="500" placeholder="none" style="width:80px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 5px">
+          </label>
+        </div>
+        <div id="invValidationWarn" style="margin-top:6px;font-size:0.73rem;line-height:1.5"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -2263,7 +2289,7 @@ function computeConfig(id) {
     const curve=computeBlockIV(block);
     const rawMpp = findMPP(curve);
     const mpp = applyInverterClipping(rawMpp, spec);
-    return {label:block.label, curve, mpp, color:cfg.mpptColors[i%cfg.mpptColors.length], clipped:mpp.clipped};
+    return {label:block.label, curve, rawMpp, mpp, color:cfg.mpptColors[i%cfg.mpptColors.length], clipped:mpp.clipped};
   });
   // Apply total power limit if set
   let totalP = mpptResults.reduce((s,r) => s + r.mpp.P, 0);
@@ -2339,7 +2365,85 @@ function updatePowerDetail(results) {
     </div>`;
   });
   document.getElementById('powerGrid').innerHTML=html;
+  updateInverterSpecEditor(results);
 }
+
+// ── Inverter / MPPT constraints editor ────────────────────────────────────
+
+/**
+ * Build a list of human-readable validation warnings for the given config
+ * based on the computed MPPT results and the inverter spec.
+ */
+function buildInverterValidation(id, mpptResults) {
+  const spec = INVERTER_SPECS[id];
+  if (!spec) return [];
+  const warns = [];
+  mpptResults.forEach((res, i) => {
+    const V = res.rawMpp ? res.rawMpp.V : res.mpp.V;
+    const I = res.rawMpp ? res.rawMpp.I : res.mpp.I;
+    if (V > 0 && V < spec.VmpptMin)
+      warns.push(`\u26a0 MPPT ${i+1}: Vmp ${V.toFixed(1)} V < Vmin ${spec.VmpptMin} V \u2014 string too short`);
+    if (V > spec.VmpptMax)
+      warns.push(`\u26a0 MPPT ${i+1}: Vmp ${V.toFixed(1)} V > Vmax ${spec.VmpptMax} V \u2014 string too long`);
+    if (I > spec.ImaxPerMppt)
+      warns.push(`\u26a0 MPPT ${i+1}: I ${I.toFixed(2)} A > Imax ${spec.ImaxPerMppt} A \u2014 current exceeded`);
+  });
+  // DC panel power vs AC limit
+  const totalPanelsPmax = PNL.Pmax * ROWS * COLS;
+  if (spec.totalPowerW && totalPanelsPmax > spec.totalPowerW * 1.5)
+    warns.push(`\u26a0 DC/AC ratio ${(totalPanelsPmax / spec.totalPowerW).toFixed(2)}\u00d7 \u2014 heavily oversized`);
+  return warns;
+}
+
+/**
+ * Populate the inverter spec editor fields and validation badges
+ * for the currently highlighted config.
+ */
+function updateInverterSpecEditor(mpptResults) {
+  const id = highlightedConfig;
+  const spec = INVERTER_SPECS[id] || {};
+  const $ = sel => document.getElementById(sel);
+
+  $('inverterCfgLabel').textContent = (CONFIGS.find(c => c.id === id) || {}).short || id;
+  $('invVmpptMin').value     = spec.VmpptMin  ?? '';
+  $('invVmpptMax').value     = spec.VmpptMax  ?? '';
+  $('invImaxPerMppt').value  = spec.ImaxPerMppt ?? '';
+  $('invTotalPowerW').value  = spec.totalPowerW || '';
+
+  const warns = buildInverterValidation(id, mpptResults || []);
+  $('invValidationWarn').innerHTML = warns.length
+    ? warns.map(w => `<div style="color:#f59e0b">${w}</div>`).join('')
+    : '<span style="color:#4ade80">\u2713 All MPPT constraints satisfied</span>';
+}
+
+// Wire inverter editor fields to INVERTER_SPECS — live update
+(function () {
+  function onInvChange() {
+    const id = highlightedConfig;
+    if (!INVERTER_SPECS[id]) return;
+    const parseW = id => {
+      const v = parseFloat(document.getElementById(id).value);
+      return isNaN(v) ? null : v;
+    };
+    const vMin = parseW('invVmpptMin');
+    const vMax = parseW('invVmpptMax');
+    const iMax = parseW('invImaxPerMppt');
+    const pW   = parseW('invTotalPowerW');
+    if (vMin !== null) INVERTER_SPECS[id].VmpptMin    = vMin;
+    if (vMax !== null) INVERTER_SPECS[id].VmpptMax    = vMax;
+    if (iMax !== null) INVERTER_SPECS[id].ImaxPerMppt = iMax;
+    INVERTER_SPECS[id].totalPowerW = pW;
+    // Recompute and refresh only what's needed (no full yearly sim)
+    const res = computeConfig(id);
+    updatePowerDetail(res);
+    updateComparisonTable(computeAll());
+    updateChart(res);
+    scheduleSaveProject();
+  }
+  ['invVmpptMin', 'invVmpptMax', 'invImaxPerMppt', 'invTotalPowerW'].forEach(elId => {
+    document.getElementById(elId).addEventListener('change', onInvChange);
+  });
+})();
 
 // ── Array annotation ───────────────────────────────────────────────────────
 function updateAnnotation() {
