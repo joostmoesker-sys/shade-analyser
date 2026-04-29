@@ -4006,13 +4006,16 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
 function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params) {
   const n      = Math.min(horizon, MAX_HORIZON_HOURS);
   const states = DP_SOC_STEPS;
-  const socStep = BATTERY_CAPACITY_KWH / (states - 1); // kWh per SOC bucket
+  // States 0..19 map to 0%..95% of capacity in 5% steps (spec: "0 to 19 → 0% to 95%")
+  const socStep = BATTERY_CAPACITY_KWH / states; // 64/20 = 3.2 kWh per 5% step
 
   // dp[t][s] = max future value reachable from hour t with SOC bucket s
   const dp     = Array.from({ length: n + 1 }, () => new Float64Array(states).fill(-1e9));
   const policy = Array.from({ length: n },     () => new Uint8Array(states));
 
-  // Terminal value: small bonus for higher SOC at horizon end
+  // Terminal value: small bonus for higher SOC at horizon end.
+  // 0.6 = assumed round-trip recovery fraction for future self-use; 0.3 = discount factor
+  // to avoid over-valuing stored energy relative to near-term dispatch opportunities.
   const avgFuturePrice = tariffSlice.slice(0, n).reduce((a, b) => a + b, 0) / n;
   for (let s = 0; s < states; s++) {
     dp[n][s] = s * socStep * avgFuturePrice * 0.6 * 0.3;
@@ -4026,23 +4029,26 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params) {
     const sell = buy * 0.85;
 
     for (let s = 0; s < states; s++) {
-      const curSoc = s * socStep;
-      let bestVal  = -1e9;
-      let bestAct  = 3; // default: idle
-
-      // ── Action 0: Charge (from PV surplus, or grid if precharge enabled) ──
-      const surplus = Math.max(0, pv - load);
+      const curSoc   = s * socStep;
       const spaceKwh = BATTERY_CAPACITY_KWH - curSoc;
-      const canChargePv   = Math.min(surplus, spaceKwh / CHARGE_EFF_PV, MAX_BATTERY_POWER_KW);
-      const canChargeGrid = params.allowGridPrecharge
-        ? Math.min(8, spaceKwh / GRID_ROUNDTRIP_EFF)
+      let bestVal    = -1e9;
+      let bestAct    = 3; // default: idle
+
+      // ── Action 0: Charge ───────────────────────────────────────────────────
+      // Work in "kWh stored in battery" throughout to avoid mixed-unit errors.
+      const surplus  = Math.max(0, pv - load);
+      // PV: kWh stored = input × one-way charge efficiency, capped by space and power limit
+      const pvStore  = Math.min(surplus * CHARGE_EFF_PV, spaceKwh, MAX_BATTERY_POWER_KW * CHARGE_EFF_PV);
+      // Grid (optional): kWh stored via grid round-trip efficiency (up to 8 kW draw from grid)
+      const gridStore = params.allowGridPrecharge
+        ? Math.min(8 * GRID_ROUNDTRIP_EFF, Math.max(0, spaceKwh - pvStore))
         : 0;
-      const canCharge = Math.min(canChargePv + canChargeGrid, spaceKwh / CHARGE_EFF_PV, MAX_BATTERY_POWER_KW);
-      if (canCharge > 0.05) {
-        const newSoc  = Math.min(BATTERY_CAPACITY_KWH, curSoc + canCharge * CHARGE_EFF_PV);
-        const newS    = Math.min(states - 1, Math.round(newSoc / socStep));
-        const gridPortion = Math.max(0, canCharge - surplus);
-        const gridCost    = gridPortion * buy;
+      const totalStore = pvStore + gridStore;
+      if (totalStore > 0.05) {
+        const newSoc = Math.min(BATTERY_CAPACITY_KWH, curSoc + totalStore);
+        const newS   = Math.min(states - 1, Math.round(newSoc / socStep));
+        // Grid cost: kWh drawn from grid = kWh stored / GRID_ROUNDTRIP_EFF
+        const gridCost = gridStore > 0 ? (gridStore / GRID_ROUNDTRIP_EFF) * buy : 0;
         const val = dp[t + 1][newS] - gridCost;
         if (val > bestVal) { bestVal = val; bestAct = 0; }
       }
@@ -4050,6 +4056,7 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params) {
       // ── Action 1: Discharge for self-use ──
       const deficit    = Math.max(0, load - pv);
       const selfAvail  = Math.max(0, curSoc - BATTERY_CAPACITY_KWH * MIN_SOC_SELF);
+      // canDisSelf = kWh delivered to load (= drawn × DISCHARGE_EFF)
       const canDisSelf = Math.min(deficit, selfAvail * DISCHARGE_EFF, MAX_BATTERY_POWER_KW);
       if (canDisSelf > 0.05) {
         const newSoc = Math.max(0, curSoc - canDisSelf / DISCHARGE_EFF);
@@ -4059,6 +4066,8 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params) {
       }
 
       // ── Action 2: Discharge for grid export (only if profitable) ──
+      // 0.92 = minimum sell/buy ratio before the 8% margin is recovered; ensures export
+      // only fires when sell price clearly exceeds round-trip cost plus the min spread.
       if (sell > buy * 0.92 + (params.minProfitSpread || 0.06)) {
         const expAvail  = Math.max(0, curSoc - BATTERY_CAPACITY_KWH * MIN_SOC_SELL);
         const canDisExp = Math.min(expAvail * DISCHARGE_EFF * 0.7, MAX_BATTERY_POWER_KW * 0.6);
@@ -4199,6 +4208,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
         // Optional grid pre-charge when DP recommends charging this hour
         if (usePrecharge && dpAction === 'charge') {
           const maxThisSlot = Math.min(8, (BATTERY_CAPACITY_KWH - soc) / GRID_ROUNDTRIP_EFF);
+          // Spread the needed energy across ~4 low-price hours to stay within power limits
           const needed = deficit / (4 * GRID_ROUNDTRIP_EFF);
           gridCharge = Math.min(maxThisSlot, needed);
           if (gridCharge > 1e-4) {

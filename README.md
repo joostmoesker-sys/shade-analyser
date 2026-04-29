@@ -365,7 +365,7 @@ It appears alongside V2 in the 🔋 Economic Forecast card and shows a **three-w
 
 - V3 typically outperforms V2 by **+5–12%** in battery-driven annual savings.
 - Largest gain with the 96 h horizon on days ahead of price spikes or prolonged cloudy periods.
-- Performance: even at 96 h horizon the full-year DP run takes < 300 ms.
+- Performance: even at 96 h horizon the full-year DP run takes < 300 ms on a modern mid-range laptop (Chrome/Firefox, single-threaded JS).
 
 ---
 
