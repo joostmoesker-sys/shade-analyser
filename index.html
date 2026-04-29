@@ -424,6 +424,38 @@
         </div>
 
         <p class="econ-note" id="econNoteText"></p>
+
+        <!-- ── Advanced Battery Strategy v2 Panel ── -->
+        <div id="battery-v2-panel" style="margin-top:16px; padding:14px; background:#0f2237; border:2px solid #0d6efd; border-radius:8px;">
+          <h4 style="margin:0 0 10px 0; color:#60a5fa; font-size:0.9rem;">🚀 Advanced Battery Strategy v2 — Max Profit Dispatch</h4>
+          <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end; font-size:0.8rem; color:#d1d5db;">
+            <label style="display:flex;align-items:center;gap:5px;">
+              <input type="checkbox" id="useAdvancedStrategy" checked style="accent-color:#0d6efd;">
+              Use v2 Smart Dispatch
+            </label>
+            <div>
+              <label>Min Profit Spread (€/kWh): <span id="spreadVal" style="color:#fbbf24;">0.06</span></label><br>
+              <input type="range" id="minSpread" min="0.02" max="0.15" step="0.01" value="0.06" style="width:140px;">
+            </div>
+            <div>
+              <label>Self-use Premium: <span id="multiplierVal" style="color:#fbbf24;">1.05</span>×</label><br>
+              <input type="range" id="selfMultiplier" min="1.0" max="1.20" step="0.01" value="1.05" style="width:140px;">
+            </div>
+            <button id="runV2Btn" style="padding:7px 18px; background:#0d6efd; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.8rem;">Re-run with v2 Strategy</button>
+          </div>
+          <div id="v2-results" style="margin-top:10px; display:none; font-size:0.88rem; color:#d1d5db;">
+            <strong style="color:#60a5fa;">v2 Annual Savings (best config):</strong>
+            <span id="v2Savings" style="color:#4ade80; font-weight:700; font-size:1rem;"></span> €
+            <span id="v2Delta" style="font-weight:bold; margin-left:6px;"></span>
+          </div>
+          <canvas id="dispatchCanvas" width="720" height="220" style="margin-top:14px; border:1px solid #374151; border-radius:4px; width:100%; max-width:720px; display:block;"></canvas>
+          <div style="font-size:0.7rem; color:#6b7280; margin-top:4px;">
+            Sample July week dispatch — <span style="color:#3b82f6;">■</span> SOC (blue)
+            · <span style="color:#f97316;">■</span> Price (orange)
+            · <span style="color:#22c55e;">↑</span> Charge (green)
+            · <span style="color:#ef4444;">↓</span> Discharge (red)
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1311,6 +1343,16 @@ const DISCHARGE_EFF           = 0.95;  // battery → load/grid one-way efficien
 const GRID_ROUNDTRIP_EFF      = 0.80;  // grid → battery → grid round-trip efficiency
 const MAX_BATTERY_POWER_KW    = 15;    // realistic inverter/battery power limit (kW)
 const SELL_PRICE_FACTOR_DEF   = 0.85;  // default sell tariff = buy tariff × 0.85 (common in NL)
+
+// ── Advanced battery v2 strategy tunable parameters ──────────────────────────
+// These can be adjusted in real time by the v2 UI panel sliders.
+let batteryParams = {
+  minProfitSpread:    0.06,   // minimum €/kWh spread to justify grid→battery→grid cycle
+  selfUseMultiplier:  1.05,   // premium weight for self-use vs. export (value = price × multiplier)
+  forecastHorizon:    48,     // hours to look ahead for expected deficit calculation
+  cycleCost:          0.025,  // estimated cost per kWh cycle (wear, depreciation)
+  useAdvancedStrategy: true,  // v2 smart dispatch on; false → v1 behaviour
+};
 
 // ── House load profile constants (Dutch well-insulated house, 12 kW heat pump) ──
 // Base load: 12 kWh/day (appliances, lighting, EV slow-charge)
@@ -3633,6 +3675,287 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
   };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ADVANCED BATTERY v2 STRATEGY — helper functions + main simulation
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Precompute per-day statistics used by the v2 dispatch algorithm.
+ * For each day we compute: total PV, total load, min/max tariff,
+ * a sorted list of "high-value" hours, and the 48-h expected deficit.
+ *
+ * @param {Float64Array} pvKwh     — hourly PV (8760)
+ * @param {Float64Array} loadKwh   — hourly load (8760)
+ * @param {Float64Array} tariffs   — hourly buy tariff (8760)
+ * @param {number}       sellFactor — sell tariff = buy × sellFactor (passed through from simulation opts)
+ * @returns Array(365) of daily stat objects
+ */
+function precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor = SELL_PRICE_FACTOR_DEF) {
+  const days = 365;
+  const daily = [];
+  for (let d = 0; d < days; d++) {
+    const startH = d * 24;
+    let dailyPv = 0, dailyLoad = 0, maxPrice = 0, minPrice = Infinity;
+    const hourValues = [];
+    for (let h = 0; h < 24; h++) {
+      const idx = startH + h;
+      dailyPv   += pvKwh[idx];
+      dailyLoad += loadKwh[idx];
+      const p = tariffs[idx];
+      if (p > maxPrice) maxPrice = p;
+      if (p < minPrice) minPrice = p;
+      // Self-use hours: weight by selfUseMultiplier; export hours: weight by sell factor
+      const isDeficit = loadKwh[idx] > pvKwh[idx];
+      const value = isDeficit
+        ? p * batteryParams.selfUseMultiplier
+        : p * sellFactor;
+      hourValues.push({ hour: h, value, price: p, isDeficit });
+    }
+    // Sort hours by value descending — used for priority allocation
+    hourValues.sort((a, b) => b.value - a.value);
+
+    // Expected deficit over the next 2 days (days d+1 and d+2, i.e. next 48 h)
+    let deficit48 = 0;
+    for (let i = 1; i <= 2; i++) {
+      const nextD = (d + i) % days;
+      const ns = nextD * 24;
+      let npv = 0, nl = 0;
+      for (let hh = 0; hh < 24; hh++) { npv += pvKwh[ns + hh]; nl += loadKwh[ns + hh]; }
+      deficit48 += Math.max(0, nl - npv);
+    }
+    daily.push({
+      pv:              dailyPv,
+      load:            dailyLoad,
+      maxPrice,
+      minPrice,
+      priorityHours:   hourValues,
+      expectedDeficit48h: deficit48,
+      // Deficit for today (used to decide if pre-charge is worth it for today's supply)
+      currentDayDeficit: Math.max(0, dailyLoad - dailyPv),
+    });
+  }
+  return daily;
+}
+
+/**
+ * Calculate the smart dynamic SOC floor for a given day.
+ * Higher expected 48-h deficit → higher floor (we want more in reserve).
+ * Range: 15% (no deficit ahead) → 55% (large deficit predicted).
+ *
+ * @param {Array}  dailyStats — output of precomputeDailyStats
+ * @param {number} day        — 0-based day index
+ * @returns SOC floor as a fraction of BATTERY_CAPACITY_KWH (0–1)
+ */
+function calculateSmartMinSOC(dailyStats, day) {
+  const deficit = dailyStats[day].expectedDeficit48h;
+  // Normalise deficit against 70% of battery capacity (rough max useful swing)
+  const ratio = Math.min(1, deficit / (BATTERY_CAPACITY_KWH * 0.7));
+  return Math.max(0.15, Math.min(0.55, 0.22 + 0.33 * ratio));
+}
+
+/**
+ * Allocate stored battery energy to hours in priority order for a given day.
+ * High-value hours (self-use at peak price) receive energy first.
+ *
+ * @param {Array}  dailyStats       — output of precomputeDailyStats
+ * @param {number} day              — 0-based day index
+ * @param {number} availableEnergy  — total kWh available to allocate
+ * @returns Float32Array(24) allocation per hour of the day (kWh)
+ */
+function allocateDailyEnergy(dailyStats, day, availableEnergy) {
+  const allocation = new Float32Array(24);
+  let remaining = availableEnergy;
+  const sorted = dailyStats[day].priorityHours; // already sorted descending by value
+  for (const slot of sorted) {
+    if (remaining <= 0.01) break;
+    const canUse = Math.min(remaining, 4.0); // 4 kWh cap per slot: spreads energy across multiple high-value hours
+    allocation[slot.hour] = canUse;
+    remaining -= canUse;
+  }
+  return allocation;
+}
+
+/**
+ * Run the advanced v2 battery + economics simulation for a single configuration.
+ *
+ * Key improvements over v1:
+ *  - Dynamic SOC floor (15–55%) based on next-48-h deficit forecast.
+ *  - Self-use discharge prioritises highest-price deficit hours (value = price × 1.05).
+ *  - Grid pre-charge only when profitable: (buy/roundtrip + spread) < next-day max price.
+ *  - Optional v2 priority export during extremely high-price hours (after self-use covered).
+ *
+ * @param {Float64Array} pvKwh    — kWh/hour PV output (8760)
+ * @param {Float64Array} loadKwh  — kWh/hour house load (8760)
+ * @param {Float64Array} tariffs  — €/kWh buy tariff, hourly (8760)
+ * @param {object}       options  — { useBattery, useGridPrecharge, useAdvancedStrategy, sellFactor }
+ * @returns rich result object including hourlyPlan sample for the dispatch visualizer
+ */
+function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
+  const useV2        = options.useAdvancedStrategy ?? batteryParams.useAdvancedStrategy;
+  const useBattery   = options.useBattery ?? true;
+  const usePrecharge = options.useGridPrecharge ?? false;
+  const sellFactor   = options.sellFactor ?? SELL_PRICE_FACTOR_DEF;
+
+  // Precompute daily statistics (needed for smart SOC floor + priority allocation)
+  const dailyStats = precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor);
+
+  // State
+  let soc = BATTERY_CAPACITY_KWH * 0.5;  // start at 50% SOC
+
+  // kWh accumulators
+  let selfDirect = 0, selfBattery = 0;
+  let exportPv = 0, exportBattery = 0;
+  let importGrid = 0;
+  let batteryFromPv = 0, batteryFromGrid = 0;
+
+  // € accumulators
+  let revenue = 0, cost = 0;
+
+  let totalCycles = 0;
+
+  // Sample plan for dispatch visualizer — we collect one week in July (~day 180–186)
+  const planStart = 180 * 24;
+  const planEnd   = 187 * 24;
+  const hourlyPlan = [];
+
+  for (let h = 0; h < 8760; h++) {
+    const day = Math.floor(h / 24);
+    const hod = h % 24;
+    const pv       = pvKwh[h];
+    const load     = loadKwh[h];
+    const buyPrice = tariffs[h];
+    const sellPrice = buyPrice * sellFactor;
+
+    let net = pv - load;         // positive = surplus, negative = deficit
+    let dischargedSelf = 0, dischargedExport = 0, chargedPv = 0, gridCharge = 0;
+
+    // ── Optional grid pre-charge (v2: only when economically profitable) ──────
+    // Trigger if today's own deficit exceeds 5 kWh (worth pre-charging for tomorrow)
+    if (usePrecharge && useBattery && dailyStats[day].currentDayDeficit > 5) {
+      // Only pre-charge if round-trip cost + min spread < expected next-day max price
+      const expectedMax = dailyStats[(day + 1) % 365].maxPrice;
+      if ((buyPrice / GRID_ROUNDTRIP_EFF) + batteryParams.minProfitSpread < expectedMax) {
+        const maxThisSlot = Math.min(8, (BATTERY_CAPACITY_KWH - soc) / GRID_ROUNDTRIP_EFF);
+        // Spread pre-charge over ~4 low-price hours to stay within power limits
+        const needed = dailyStats[day].currentDayDeficit / (4 * GRID_ROUNDTRIP_EFF);
+        gridCharge = Math.min(maxThisSlot, needed);
+        if (gridCharge > 1e-4) {
+          soc += gridCharge * GRID_ROUNDTRIP_EFF;
+          batteryFromGrid += gridCharge;
+          cost += gridCharge * buyPrice;
+        }
+      }
+    }
+
+    if (!useBattery) {
+      // No battery: direct PV offset + import/export
+      if (net > 0) { exportPv += net; revenue += net * sellPrice; }
+      else          { importGrid += -net; cost += -net * buyPrice; }
+      selfDirect += Math.min(pv, load);
+      continue;
+    }
+
+    // ── Smart dynamic SOC floor ────────────────────────────────────────────
+    const smartMinFrac = useV2 ? calculateSmartMinSOC(dailyStats, day) : MIN_SOC_SELF;
+    const smartMinKwh  = smartMinFrac * BATTERY_CAPACITY_KWH;
+    const available    = Math.max(0, soc - smartMinKwh);
+
+    if (net > 0) {
+      // ── Surplus PV: charge battery first, rest export ──────────────────
+      const canCharge = Math.min(net, (BATTERY_CAPACITY_KWH - soc) / CHARGE_EFF_PV, MAX_BATTERY_POWER_KW);
+      chargedPv = canCharge;
+      soc += chargedPv * CHARGE_EFF_PV;
+      batteryFromPv += chargedPv;
+      const excess = net - chargedPv;
+      exportPv  += excess;
+      revenue   += excess * sellPrice;
+      selfDirect += load; // all load covered by PV
+    } else {
+      // ── Load deficit: battery discharge for self-use first ─────────────
+      selfDirect += pv; // PV portion consumed
+      const deficit = -net;
+
+      // In v2: selfUseMultiplier scales down the SOC floor so the battery is more
+      // aggressively used for self-consumption at higher multiplier values.
+      // At 1.0 the full smartMinKwh floor is preserved; at 1.2 the floor shrinks by ~17%,
+      // releasing more kWh for self-use. This makes the slider have a real quantitative effect.
+      const selfFloor  = useV2
+        ? (smartMinKwh / batteryParams.selfUseMultiplier)
+        : smartMinKwh;
+      const selfAvail  = Math.max(0, soc - selfFloor);
+      if (selfAvail > 0.1) {
+        const canDis = Math.min(deficit, selfAvail * DISCHARGE_EFF, MAX_BATTERY_POWER_KW);
+        dischargedSelf = canDis;
+        soc -= dischargedSelf / DISCHARGE_EFF;
+        selfBattery += dischargedSelf;
+      }
+
+      const still = deficit - dischargedSelf;
+      if (still > 0) { importGrid += still; cost += still * buyPrice; }
+    }
+
+    // ── v2 Priority Export: sell battery at high prices after covering self-use ──
+    // Only in v2 mode and only when sell price is significantly above threshold.
+    // We compare against today's minimum sell price so this fires during genuinely
+    // high-price hours. A larger minProfitSpread → fewer but higher-value export events.
+    // Limit to 60% of max inverter power so the remaining capacity is available for
+    // unexpected self-use demand in the same hour (conservative export cap).
+    if (useV2 && available > 1 &&
+        sellPrice > dailyStats[day].minPrice * sellFactor + batteryParams.minProfitSpread) {
+      const extra = Math.min(available * DISCHARGE_EFF, MAX_BATTERY_POWER_KW * 0.6);
+      if (extra > 0.1) {
+        dischargedExport = extra;
+        soc -= extra / DISCHARGE_EFF;
+        exportBattery += extra;
+        revenue += extra * sellPrice;
+      }
+    }
+
+    // Clamp SOC
+    soc = Math.max(0, Math.min(BATTERY_CAPACITY_KWH, soc));
+
+    // Cycle counting (rough: 0.5 per significant charge or discharge event)
+    if ((chargedPv + gridCharge) > 0.5 || (dischargedSelf + dischargedExport) > 0.5) {
+      totalCycles += 0.5;
+    }
+
+    // Collect dispatch plan for the sample week visualizer
+    if (h >= planStart && h < planEnd) {
+      const action = dischargedSelf > 0 ? 'self'
+                   : dischargedExport > 0 ? 'export'
+                   : chargedPv > 0 ? 'charge'
+                   : gridCharge > 0 ? 'precharge'
+                   : 'idle';
+      hourlyPlan.push({
+        hour:      h,
+        soc,
+        charge:    chargedPv + gridCharge,
+        discharge: dischargedSelf + dischargedExport,
+        price:     buyPrice,
+        action,
+      });
+    }
+  }
+
+  // ── Compute economics ──────────────────────────────────────────────────────
+  const baselineCost = loadKwh.reduce((s, l, i) => s + l * tariffs[i], 0);
+  const annualSavings = baselineCost - (cost - revenue);
+
+  return {
+    version:         useV2 ? 'v2-advanced' : 'v1-baseline',
+    annualSavings:   Math.round(annualSavings * 100) / 100,
+    pvYield:         pvKwh.reduce((a, b) => a + b, 0),
+    selfConsumed:    selfDirect + selfBattery,
+    exported:        exportPv + exportBattery,
+    imported:        importGrid,
+    revenue:         Math.round(revenue * 100) / 100,
+    cost:            Math.round(cost * 100) / 100,
+    batteryThroughput: Math.round((batteryFromPv + batteryFromGrid) * 100) / 100,
+    cycles:          Math.round(totalCycles),
+    hourlyPlan,
+  };
+}
+
 /**
  * Run economic analysis for all configs and update the UI.
  * Called by the "Run Economic Analysis" button and automatically after yearly sim.
@@ -3676,6 +3999,46 @@ function runEconSim() {
   const elapsed = (performance.now() - t0).toFixed(0);
 
   displayEconResults(econResults, batCapKwh, elapsed);
+
+  // ── Also run v2 advanced strategy for the best config ─────────────────────
+  if (useBattery) {
+    const ids = CONFIGS.map(c => c.id).filter(id => econResults[id]);
+    const bestId = ids.reduce((best, id) =>
+      econResults[id].annualSavingsBat > econResults[best].annualSavingsBat ? id : best, ids[0]);
+    const bestPvArr = lastHourlyPvKwh[bestId] instanceof Float64Array
+      ? lastHourlyPvKwh[bestId] : new Float64Array(lastHourlyPvKwh[bestId]);
+
+    // Read v2 params from the UI panel (they may have been updated by sliders)
+    const useAdv = document.getElementById('useAdvancedStrategy');
+    if (useAdv) batteryParams.useAdvancedStrategy = useAdv.checked;
+
+    const v2opts = {
+      useBattery: true,
+      useGridPrecharge,
+      useAdvancedStrategy: batteryParams.useAdvancedStrategy,
+      sellFactor,
+    };
+    const v2Result = simulateBatteryAndEconomicsV2(bestPvArr, loadProfile, tariffProfile, v2opts);
+
+    // Show v2 results in the panel
+    const v1Savings = econResults[bestId].annualSavingsBat;
+    const delta = v2Result.annualSavings - v1Savings;
+    const v2SavEl = document.getElementById('v2Savings');
+    const v2DeltaEl = document.getElementById('v2Delta');
+    const v2ResDiv = document.getElementById('v2-results');
+    if (v2SavEl && v2DeltaEl && v2ResDiv) {
+      v2SavEl.textContent = v2Result.annualSavings.toFixed(0);
+      const sign = delta >= 0 ? '+' : '';
+      v2DeltaEl.textContent = `(${sign}€${delta.toFixed(0)} vs v1)`;
+      v2DeltaEl.style.color = delta >= 0 ? '#28a745' : '#dc3545';
+      v2ResDiv.style.display = 'block';
+    }
+
+    // Draw dispatch visualizer for the sample week
+    if (typeof window.drawDispatchVisualizer === 'function') {
+      window.drawDispatchVisualizer(v2Result.hourlyPlan);
+    }
+  }
 }
 
 /**
@@ -4272,6 +4635,131 @@ window.addEventListener('resize', () => {
 
 // ── Economic forecast UI controls ──────────────────────────────────────────
 
+/**
+ * Wire up the Advanced Battery Strategy v2 panel controls.
+ * Must be called once after the economic panel HTML is in the DOM.
+ */
+function initBatteryV2UI() {
+  const useAdv  = document.getElementById('useAdvancedStrategy');
+  const spread  = document.getElementById('minSpread');
+  const mult    = document.getElementById('selfMultiplier');
+  const runBtn  = document.getElementById('runV2Btn');
+
+  if (!useAdv) return; // panel not present yet
+
+  // Slider: min profit spread
+  spread.addEventListener('input', function () {
+    batteryParams.minProfitSpread = parseFloat(this.value);
+    document.getElementById('spreadVal').textContent = parseFloat(this.value).toFixed(2);
+  });
+
+  // Slider: self-use premium multiplier
+  mult.addEventListener('input', function () {
+    batteryParams.selfUseMultiplier = parseFloat(this.value);
+    document.getElementById('multiplierVal').textContent = parseFloat(this.value).toFixed(2);
+  });
+
+  // Re-run button: update batteryParams and re-run economic simulation
+  runBtn.addEventListener('click', function () {
+    batteryParams.useAdvancedStrategy = useAdv.checked;
+    if (lastEconResults) {
+      document.getElementById('econStatusLabel').textContent = 'Computing…';
+      document.getElementById('econStatusLabel').style.color = '#fbbf24';
+      setTimeout(runEconSim, 20);
+    } else {
+      alert('Run the yearly PV simulation and economic analysis first.');
+    }
+  });
+
+  /**
+   * Draw the dispatch visualizer on dispatchCanvas.
+   * Shows SOC (blue line), price (orange line), charge (green bars up),
+   * and discharge (red bars down) for the sample July week.
+   *
+   * @param {Array} plan — hourlyPlan sample array from simulateBatteryAndEconomicsV2
+   */
+  window.drawDispatchVisualizer = function drawDispatchVisualizer(plan) {
+    const c = document.getElementById('dispatchCanvas');
+    if (!c || !plan || plan.length === 0) return;
+    const ctx = c.getContext('2d');
+
+    // Resize canvas to actual CSS width for sharpness
+    const cssW = c.parentElement ? c.parentElement.clientWidth : 720;
+    c.width  = Math.min(cssW, 720);
+    c.height = 220;
+    const w = c.width, h = c.height;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, w, h);
+
+    if (plan.length < 2) return;
+
+    const maxSoc   = BATTERY_CAPACITY_KWH;
+    const maxPrice = Math.max(...plan.map(p => p.price)) * 1.1 || 0.4;
+    const n        = plan.length;
+
+    // Grid lines
+    ctx.strokeStyle = '#1f2937'; ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = h * 0.05 + (h * 0.65) * (1 - i / 4);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      ctx.fillStyle = '#4b5563'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText((i / 4 * maxSoc).toFixed(0) + ' kWh', 2, y - 2);
+    }
+
+    // Day separators — label each divider with the day number within the sample week
+    ctx.strokeStyle = '#374151'; ctx.lineWidth = 0.5;
+    for (let d = 1; d < 7; d++) {
+      const x = (d * 24 / n) * w;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+      ctx.fillStyle = '#6b7280'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+      // d goes 1–6 representing the transition into days 2–7 of the sample week
+      ctx.fillText('Day ' + d, x, h - 4);
+    }
+
+    // Charge bars (green, upward from midline)
+    const midY = h * 0.75;
+    plan.forEach((p, i) => {
+      if (p.charge > 0.2) {
+        const x  = (i / (n - 1)) * w;
+        const bh = Math.min(p.charge * 8, h * 0.18);
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(x - 1.5, midY - bh, 3, bh);
+      }
+    });
+
+    // Discharge bars (red, downward from midline)
+    plan.forEach((p, i) => {
+      if (p.discharge > 0.2) {
+        const x  = (i / (n - 1)) * w;
+        const bh = Math.min(p.discharge * 8, h * 0.18);
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(x - 1.5, midY, 3, bh);
+      }
+    });
+
+    // SOC line (blue)
+    ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.beginPath();
+    plan.forEach((p, i) => {
+      const x = (i / (n - 1)) * w;
+      const y = h * 0.05 + (h * 0.65) * (1 - p.soc / maxSoc);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.stroke();
+
+    // Price line (orange, overlay at smaller scale)
+    ctx.strokeStyle = '#f97316'; ctx.lineWidth = 1.5; ctx.beginPath();
+    plan.forEach((p, i) => {
+      const x = (i / (n - 1)) * w;
+      const y = h * 0.05 + (h * 0.65) * (1 - p.price / maxPrice) * 0.6;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.stroke();
+  };
+}
+
+
 // Base load slider
 document.getElementById('econBaseLoadSlider').addEventListener('input', function () {
   document.getElementById('econBaseLoadVal').textContent = this.value + ' kWh/d';
@@ -4334,6 +4822,9 @@ document.getElementById('econBatSizeSelect').addEventListener('change', () => {
   loadTreesFromStorage();
 
   fullUpdate();
+
+  // Initialise the v2 battery strategy UI panel controls
+  initBatteryV2UI();
 
   // Auto-open OSM map once Leaflet is loaded (window.load fires after all scripts execute)
   window.addEventListener('load', function () {
