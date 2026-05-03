@@ -346,7 +346,7 @@
     <div class="card" id="econForecastCard">
       <h3>🔋 Economic Forecast — Battery + Self-Consumption
         <span style="font-size:.68rem;color:#4b5563;text-transform:none;font-weight:400;margin-left:4px">
-          64 kWh battery · house load model · Dutch dynamic tariffs
+          selectable battery · house load model · Dutch dynamic tariffs
         </span>
       </h3>
 
@@ -354,7 +354,7 @@
       <div class="econ-ctrl-row">
         <label>
           <input type="checkbox" id="econBatteryToggle" checked style="accent-color:#4ade80;width:13px;height:13px">
-          Enable 64 kWh Battery <span style="color:#4ade80;font-size:.7rem">(already paid for — no capex)</span>
+          Enable Battery <span style="color:#4ade80;font-size:.7rem">(already paid for — no capex)</span>
         </label>
         <label>
           <input type="checkbox" id="econGridPrechargeToggle" style="accent-color:#fbbf24;width:13px;height:13px">
@@ -3602,7 +3602,10 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
 
       // ── 6. After-sundown sell to grid (time-shifting) ────────────────────
       if (!zeroExport && useBattery && isSellHour[h]) {
-        const minSoc   = batCapKwh * MIN_SOC_SELL;
+        const day      = Math.floor(h / 24);
+        const nextDay  = Math.min(nDays - 1, day + 1);
+        const nextDeficit = Math.max(0, dailyLoad[nextDay] - dailyPv[nextDay]);
+        const minSoc   = Math.min(batCapKwh, batCapKwh * MIN_SOC_SELL + nextDeficit / DISCHARGE_EFF);
         const avail    = soc - minSoc;
         if (avail > 1e-4) {
           const sellGross = Math.min(avail, MAX_BATTERY_POWER_KW);
@@ -3708,7 +3711,10 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
         trSoc -= dg; rLoad -= dg * DISCHARGE_EFF;
       }
       if (!zeroExport && useBattery && isSellHour[h]) {
-        const minS = batCapKwh * MIN_SOC_SELL;
+        const day = Math.floor(h / 24);
+        const nextDay = Math.min(nDays - 1, day + 1);
+        const nextDeficit = Math.max(0, dailyLoad[nextDay] - dailyPv[nextDay]);
+        const minS = Math.min(batCapKwh, batCapKwh * MIN_SOC_SELL + nextDeficit / DISCHARGE_EFF);
         if (trSoc > minS + 1e-4) {
           const sg = Math.min(trSoc - minS, MAX_BATTERY_POWER_KW);
           trSoc -= sg;
@@ -3814,12 +3820,13 @@ function precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor = SELL_PRICE_F
  *
  * @param {Array}  dailyStats — output of precomputeDailyStats
  * @param {number} day        — 0-based day index
- * @returns SOC floor as a fraction of BATTERY_CAPACITY_KWH (0–1)
+ * @param {number} batCapKwh  — selected battery capacity in kWh
+ * @returns SOC floor as a fraction of selected battery capacity (0–1)
  */
-function calculateSmartMinSOC(dailyStats, day) {
+function calculateSmartMinSOC(dailyStats, day, batCapKwh = BATTERY_CAPACITY_KWH) {
   const deficit = dailyStats[day].expectedDeficit48h;
   // Normalise deficit against 70% of battery capacity (rough max useful swing)
-  const ratio = Math.min(1, deficit / (BATTERY_CAPACITY_KWH * 0.7));
+  const ratio = Math.min(1, deficit / (batCapKwh * 0.7));
   return Math.max(0.15, Math.min(0.55, 0.22 + 0.33 * ratio));
 }
 
@@ -3857,13 +3864,15 @@ function allocateDailyEnergy(dailyStats, day, availableEnergy) {
  * @param {Float64Array} pvKwh    — kWh/hour PV output (8760)
  * @param {Float64Array} loadKwh  — kWh/hour house load (8760)
  * @param {Float64Array} tariffs  — €/kWh buy tariff, hourly (8760)
- * @param {object}       options  — { useBattery, useGridPrecharge, useAdvancedStrategy, sellFactor, sellTariffs }
+ * @param {object}       options  — { useBattery, useGridPrecharge, useAdvancedStrategy, zeroExport, batCapKwh, sellFactor, sellTariffs }
  * @returns rich result object including hourlyPlan sample for the dispatch visualizer
  */
 function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
   const useV2        = options.useAdvancedStrategy ?? batteryParams.useAdvancedStrategy;
   const useBattery   = options.useBattery ?? true;
   const usePrecharge = options.useGridPrecharge ?? false;
+  const zeroExport   = options.zeroExport ?? false;
+  const batCapKwh    = options.batCapKwh ?? BATTERY_CAPACITY_KWH;
   const sellFactor   = options.sellFactor ?? SELL_PRICE_FACTOR_DEF;
   const sellTariffs  = options.sellTariffs ?? null; // optional separate sell-price array
 
@@ -3871,7 +3880,7 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
   const dailyStats = precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor, sellTariffs);
 
   // State
-  let soc = BATTERY_CAPACITY_KWH * 0.5;  // start at 50% SOC
+  let soc = batCapKwh * 0.5;  // start at 50% SOC
 
   // kWh accumulators
   let selfDirect = 0, selfBattery = 0;
@@ -3906,7 +3915,7 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
       // Only pre-charge if round-trip cost + min spread < expected next-day max price
       const expectedMax = dailyStats[(day + 1) % 365].maxPrice;
       if ((buyPrice / GRID_ROUNDTRIP_EFF) + batteryParams.minProfitSpread < expectedMax) {
-        const maxThisSlot = Math.min(8, (BATTERY_CAPACITY_KWH - soc) / GRID_ROUNDTRIP_EFF);
+        const maxThisSlot = Math.min(8, (batCapKwh - soc) / GRID_ROUNDTRIP_EFF);
         // Spread pre-charge over ~4 low-price hours to stay within power limits
         const needed = dailyStats[day].currentDayDeficit / (4 * GRID_ROUNDTRIP_EFF);
         gridCharge = Math.min(maxThisSlot, needed);
@@ -3920,26 +3929,28 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
 
     if (!useBattery) {
       // No battery: direct PV offset + import/export
-      if (net > 0) { exportPv += net; revenue += net * sellPrice; }
+      if (net > 0) { if (!zeroExport) { exportPv += net; revenue += net * sellPrice; } }
       else          { importGrid += -net; cost += -net * buyPrice; }
       selfDirect += Math.min(pv, load);
       continue;
     }
 
     // ── Smart dynamic SOC floor ────────────────────────────────────────────
-    const smartMinFrac = useV2 ? calculateSmartMinSOC(dailyStats, day) : MIN_SOC_SELF;
-    const smartMinKwh  = smartMinFrac * BATTERY_CAPACITY_KWH;
+    const smartMinFrac = useV2 ? calculateSmartMinSOC(dailyStats, day, batCapKwh) : MIN_SOC_SELF;
+    const smartMinKwh  = smartMinFrac * batCapKwh;
     const available    = Math.max(0, soc - smartMinKwh);
 
     if (net > 0) {
       // ── Surplus PV: charge battery first, rest export ──────────────────
-      const canCharge = Math.min(net, (BATTERY_CAPACITY_KWH - soc) / CHARGE_EFF_PV, MAX_BATTERY_POWER_KW);
+      const canCharge = Math.min(net, (batCapKwh - soc) / CHARGE_EFF_PV, MAX_BATTERY_POWER_KW);
       chargedPv = canCharge;
       soc += chargedPv * CHARGE_EFF_PV;
       batteryFromPv += chargedPv;
       const excess = net - chargedPv;
-      exportPv  += excess;
-      revenue   += excess * sellPrice;
+      if (!zeroExport) {
+        exportPv  += excess;
+        revenue   += excess * sellPrice;
+      }
       selfDirect += load; // all load covered by PV
     } else {
       // ── Load deficit: battery discharge for self-use first ─────────────
@@ -3967,9 +3978,10 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
 
     // ── v2 Priority Export: sell battery at high prices after covering self-use ──
     // Compare current sell price against today's min sell price + required spread.
-    if (useV2 && available > 1 &&
+    const exportAvail = Math.max(0, soc - smartMinKwh);
+    if (!zeroExport && useV2 && exportAvail > 1 &&
         sellPrice > dailyStats[day].minSellPrice + batteryParams.minProfitSpread) {
-      const extra = Math.min(available * DISCHARGE_EFF, MAX_BATTERY_POWER_KW * 0.6);
+      const extra = Math.min(exportAvail * DISCHARGE_EFF, MAX_BATTERY_POWER_KW * 0.6);
       if (extra > 0.1) {
         dischargedExport = extra;
         soc -= extra / DISCHARGE_EFF;
@@ -3979,7 +3991,7 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
     }
 
     // Clamp SOC
-    soc = Math.max(0, Math.min(BATTERY_CAPACITY_KWH, soc));
+    soc = Math.max(0, Math.min(batCapKwh, soc));
 
     // Cycle counting (rough: 0.5 per significant charge or discharge event)
     if ((chargedPv + gridCharge) > 0.5 || (dischargedSelf + dischargedExport) > 0.5) {
@@ -4019,6 +4031,7 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
     cost:            Math.round(cost * 100) / 100,
     batteryThroughput: Math.round((batteryFromPv + batteryFromGrid) * 100) / 100,
     cycles:          Math.round(totalCycles),
+    batteryCapacityKwh: batCapKwh,
     hourlyPlan,
   };
 }
@@ -4032,7 +4045,7 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
 /**
  * Lightweight backward-induction DP optimizer for battery dispatch.
  *
- * States:  SOC buckets 0..DP_SOC_STEPS-1  (5% steps of BATTERY_CAPACITY_KWH)
+ * States:  SOC buckets 0..DP_SOC_STEPS-1  (5% steps of selected battery capacity)
  * Actions: 0=charge  1=discharge_self  2=discharge_export  3=idle
  * Objective: maximise net economic value (€) over the horizon.
  *
@@ -4040,7 +4053,7 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
  * @param {Array} loadSlice    — kWh/hour house load (length = horizon)
  * @param {Array} tariffSlice  — €/kWh buy tariff (length = horizon)
  * @param {number} horizon     — number of hours to optimise
- * @param {object} params      — { allowGridPrecharge, selfUseMultiplier, minProfitSpread, sellFactor }
+ * @param {object} params      — { allowGridPrecharge, selfUseMultiplier, minProfitSpread, sellFactor, zeroExport, batteryCapacityKwh }
  * @param {number} currentSoc  — actual SOC (kWh) at the start of the horizon
  * @param {Array|null} sellSlice — optional separate sell-price array (Tibber model: bare APX)
  * @returns {{ plan: Array<{hour,action,soc}>, totalValue: number }}
@@ -4048,8 +4061,9 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
 function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, currentSoc, sellSlice = null) {
   const n      = Math.min(horizon, MAX_HORIZON_HOURS);
   const states = DP_SOC_STEPS;
-  // States 0..19 map to 0%..95% of capacity in 5% steps (spec: "0 to 19 → 0% to 95%")
-  const socStep = BATTERY_CAPACITY_KWH / states; // 64/20 = 3.2 kWh per 5% step
+  const batCapKwh = params.batteryCapacityKwh || BATTERY_CAPACITY_KWH;
+  // States 0..19 map to 0%, 5%, ..., 95% of selected capacity.
+  const socStep = batCapKwh / states;
   const sellFactor = params.sellFactor || SELL_PRICE_FACTOR_DEF;
 
   // dp[t][s] = max future value reachable from hour t with SOC bucket s
@@ -4082,7 +4096,7 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
 
     for (let s = 0; s < states; s++) {
       const curSoc   = s * socStep;
-      const spaceKwh = BATTERY_CAPACITY_KWH - curSoc;
+      const spaceKwh = batCapKwh - curSoc;
       let bestVal    = -1e9;
       let bestAct    = 3; // default: idle
 
@@ -4097,7 +4111,7 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
         : 0;
       const totalStore = pvStore + gridStore;
       if (totalStore > 0.05) {
-        const newSoc = Math.min(BATTERY_CAPACITY_KWH, curSoc + totalStore);
+        const newSoc = Math.min(batCapKwh, curSoc + totalStore);
         const newS   = Math.min(states - 1, Math.round(newSoc / socStep));
         // Grid cost: kWh drawn from grid = kWh stored / GRID_ROUNDTRIP_EFF
         const gridCost = gridStore > 0 ? (gridStore / GRID_ROUNDTRIP_EFF) * buy : 0;
@@ -4108,7 +4122,7 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
       // ── Action 1: Discharge for self-use ──
       // Value = avoided buy-price per kWh (includes Tibber opslag → higher than sell)
       const deficit    = Math.max(0, load - pv);
-      const selfAvail  = Math.max(0, curSoc - BATTERY_CAPACITY_KWH * MIN_SOC_SELF);
+      const selfAvail  = Math.max(0, curSoc - batCapKwh * MIN_SOC_SELF);
       // canDisSelf = kWh delivered to load (= drawn × DISCHARGE_EFF)
       const canDisSelf = Math.min(deficit, selfAvail * DISCHARGE_EFF, MAX_BATTERY_POWER_KW);
       if (canDisSelf > 0.05) {
@@ -4121,8 +4135,8 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
       // ── Action 2: Discharge for grid export (only if profitable) ──
       // Fires when the current sell price is meaningfully above the horizon's
       // average sell price (plus the user's required profit spread).
-      if (sell > avgFutureExportThreshold) {
-        const expAvail  = Math.max(0, curSoc - BATTERY_CAPACITY_KWH * MIN_SOC_SELL);
+      if (!params.zeroExport && sell > avgFutureExportThreshold) {
+        const expAvail  = Math.max(0, curSoc - batCapKwh * MIN_SOC_SELL);
         const canDisExp = Math.min(expAvail * DISCHARGE_EFF * 0.7, MAX_BATTERY_POWER_KW * 0.6);
         if (canDisExp > 0.05) {
           const newSoc = Math.max(0, curSoc - canDisExp / DISCHARGE_EFF);
@@ -4146,7 +4160,7 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
   // drift from physical reality after the first day.
   const startSoc = (currentSoc !== null && currentSoc !== undefined && isFinite(currentSoc))
     ? currentSoc
-    : BATTERY_CAPACITY_KWH * 0.5;
+    : batCapKwh * 0.5;
   const initialS = Math.min(states - 1, Math.max(0, Math.round(startSoc / socStep)));
   const plan = [];
   let curS = initialS;
@@ -4170,22 +4184,24 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
  * @param {Float64Array} pvKwh    — kWh/hour PV (8760)
  * @param {Float64Array} loadKwh  — kWh/hour house load (8760)
  * @param {Float64Array} tariffs  — €/kWh buy tariff (8760)
- * @param {object}       options  — { useBattery, useGridPrecharge, sellFactor, sellTariffs, horizonHours }
+ * @param {object}       options  — { useBattery, useGridPrecharge, zeroExport, batCapKwh, sellFactor, sellTariffs, horizonHours }
  * @returns result object compatible with V2 (annualSavings, hourlyPlan, …)
  */
 function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
   const horizon      = options.horizonHours || batteryParams.forecastHorizon || 48;
   const useBattery   = options.useBattery ?? true;
   const usePrecharge = options.useGridPrecharge ?? false;
+  const zeroExport   = options.zeroExport ?? false;
+  const batCapKwh    = options.batCapKwh ?? BATTERY_CAPACITY_KWH;
   const sellFactor   = options.sellFactor ?? SELL_PRICE_FACTOR_DEF;
   const sellTariffs  = options.sellTariffs ?? null; // separate sell-price array (Tibber: bare APX)
 
   if (!useBattery) {
     // No battery: delegate to V2 baseline (identical no-battery path)
-    return simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, { ...options, useAdvancedStrategy: false });
+    return simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, { ...options, useAdvancedStrategy: false, batCapKwh });
   }
 
-  let soc = BATTERY_CAPACITY_KWH * 0.5; // start at 50% SOC
+  let soc = batCapKwh * 0.5; // start at 50% SOC
 
   // kWh accumulators
   let selfDirect = 0, selfBattery = 0;
@@ -4213,6 +4229,8 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
     selfUseMultiplier:  batteryParams.selfUseMultiplier,
     minProfitSpread:    batteryParams.minProfitSpread,
     sellFactor,
+    zeroExport,
+    batteryCapacityKwh: batCapKwh,
   };
 
   for (let d = 0; d < 365; d++) {
@@ -4262,7 +4280,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
         // ── Surplus PV ───────────────────────────────────────────────────────
         selfDirect += load; // load is always fully covered by PV when net ≥ 0
 
-        if (dpAction === 'discharge_export' && sellPrice > exportGatePx) {
+        if (!zeroExport && dpAction === 'discharge_export' && sellPrice > exportGatePx) {
           // DP says export: send PV surplus straight to grid (no battery charge),
           // then also drain battery for additional export.  Skipping the charge
           // step removes the ~10 % round-trip loss that caused the graph to show
@@ -4270,7 +4288,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
           exportPv  += net;
           hourRevenue += net * sellPrice;
           hourPvRevenue += net * sellPrice;
-          const avail  = Math.max(0, soc - BATTERY_CAPACITY_KWH * MIN_SOC_SELL);
+          const avail  = Math.max(0, soc - batCapKwh * MIN_SOC_SELL);
           const canExp = Math.min(avail * DISCHARGE_EFF * 0.7, MAX_BATTERY_POWER_KW * 0.6);
           if (canExp > 0.1) {
             dischargedExport = canExp;
@@ -4282,14 +4300,16 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
         } else {
           // Default (charge / idle / discharge_self): charge battery from PV surplus,
           // export whatever doesn't fit.
-          const canCharge = Math.min(net, (BATTERY_CAPACITY_KWH - soc) / CHARGE_EFF_PV, MAX_BATTERY_POWER_KW);
+          const canCharge = Math.min(net, (batCapKwh - soc) / CHARGE_EFF_PV, MAX_BATTERY_POWER_KW);
           chargedPv = canCharge;
           soc += chargedPv * CHARGE_EFF_PV;
           batteryFromPv += chargedPv;
           const excess = net - chargedPv;
-          exportPv  += excess;
-          hourRevenue += excess * sellPrice;
-          hourPvRevenue += excess * sellPrice;
+          if (!zeroExport) {
+            exportPv  += excess;
+            hourRevenue += excess * sellPrice;
+            hourPvRevenue += excess * sellPrice;
+          }
         }
       } else {
         // ── Load deficit: cover from battery and/or grid ─────────────────────
@@ -4298,7 +4318,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
 
         // Optional grid pre-charge when DP recommends charging this hour
         if (usePrecharge && dpAction === 'charge') {
-          const maxThisSlot = Math.min(8, (BATTERY_CAPACITY_KWH - soc) / GRID_ROUNDTRIP_EFF);
+          const maxThisSlot = Math.min(8, (batCapKwh - soc) / GRID_ROUNDTRIP_EFF);
           // Spread the needed energy across ~4 low-price hours to stay within power limits
           const needed = deficit / (4 * GRID_ROUNDTRIP_EFF);
           gridCharge = Math.min(maxThisSlot, needed);
@@ -4310,7 +4330,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
         }
 
         // SOC floor for self-use: always 5% (MIN_SOC_SELF), matching V1/V2.
-        const socFloor  = BATTERY_CAPACITY_KWH * MIN_SOC_SELF;
+        const socFloor  = batCapKwh * MIN_SOC_SELF;
         const available = Math.max(0, soc - socFloor);
         if (available > 0.1) {
           const canDis = Math.min(deficit, available * DISCHARGE_EFF, MAX_BATTERY_POWER_KW);
@@ -4327,8 +4347,8 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
         // Battery export in deficit hours: only when the deficit was already fully
         // covered by battery (still ≈ 0).  Exporting while simultaneously importing
         // is always a net loss when sellFactor < 1, so guard on still ≤ 0.
-        if (dpAction === 'discharge_export' && still <= 0.01 && sellPrice > exportGatePx) {
-          const avail2  = Math.max(0, soc - BATTERY_CAPACITY_KWH * MIN_SOC_SELL);
+        if (!zeroExport && dpAction === 'discharge_export' && still <= 0.01 && sellPrice > exportGatePx) {
+          const avail2  = Math.max(0, soc - batCapKwh * MIN_SOC_SELL);
           const canExp  = Math.min(avail2 * DISCHARGE_EFF * 0.7, MAX_BATTERY_POWER_KW * 0.6);
           if (canExp > 0.1) {
             dischargedExport = canExp;
@@ -4347,7 +4367,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
       monthlyPvExportRevenue[month] += hourPvRevenue;
       monthlyBatteryExportRevenue[month] += hourBatteryRevenue;
 
-      soc = Math.max(0, Math.min(BATTERY_CAPACITY_KWH, soc));
+      soc = Math.max(0, Math.min(batCapKwh, soc));
 
       if ((chargedPv + gridCharge) > 0.5 || (dischargedSelf + dischargedExport) > 0.5) {
         totalCycles += 0.5;
@@ -4390,6 +4410,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
     cost:              Math.round(cost * 100) / 100,
     batteryThroughput: Math.round((batteryFromPv + batteryFromGrid) * 100) / 100,
     cycles:            Math.round(totalCycles),
+    batteryCapacityKwh: batCapKwh,
     monthlyCashflow: {
       baselineCost: Array.from(monthlyBaselineCost),
       importCost: Array.from(monthlyImportCost),
@@ -4465,6 +4486,8 @@ function runEconSim() {
       useBattery: true,
       useGridPrecharge,
       useAdvancedStrategy: batteryParams.useAdvancedStrategy,
+      zeroExport,
+      batCapKwh,
       sellFactor,
       sellTariffs: sellProfile,
     };
@@ -4495,6 +4518,8 @@ function runEconSim() {
       const v3opts = {
         useBattery: true,
         useGridPrecharge,
+        zeroExport,
+        batCapKwh,
         sellFactor,
         sellTariffs: sellProfile,
         horizonHours: batteryParams.forecastHorizon,
@@ -4518,7 +4543,7 @@ function runEconSim() {
 
       // Draw dispatch visualizer with v3 plan (v3 wins priority if enabled)
       if (typeof window.drawDispatchVisualizer === 'function') {
-        window.drawDispatchVisualizer(v3Result.hourlyPlan);
+        window.drawDispatchVisualizer(v3Result.hourlyPlan, v3Result.batteryCapacityKwh);
       }
     } else {
       if (v3ResDiv) v3ResDiv.style.display = 'none';
@@ -4528,7 +4553,7 @@ function runEconSim() {
 
       // Draw dispatch visualizer with v2 plan when v3 is disabled
       if (typeof window.drawDispatchVisualizer === 'function') {
-        window.drawDispatchVisualizer(v2Result.hourlyPlan);
+        window.drawDispatchVisualizer(v2Result.hourlyPlan, v2Result.batteryCapacityKwh);
       }
     }
   } else if (typeof window.drawV3CashflowChart === 'function') {
@@ -5276,8 +5301,9 @@ function initBatteryV2UI() {
    * Used by both V2 and V3 simulations (V3 takes priority when enabled).
    *
    * @param {Array} plan — hourlyPlan sample array from simulateBatteryAndEconomicsV2/V3
+   * @param {number} batteryCapacityKwh — selected battery capacity for SOC scaling
    */
-  window.drawDispatchVisualizer = function drawDispatchVisualizer(plan) {
+  window.drawDispatchVisualizer = function drawDispatchVisualizer(plan, batteryCapacityKwh = BATTERY_CAPACITY_KWH) {
     const c = document.getElementById('dispatchCanvas');
     if (!c || !plan || plan.length === 0) return;
     const ctx = c.getContext('2d');
@@ -5294,7 +5320,7 @@ function initBatteryV2UI() {
 
     if (plan.length < 2) return;
 
-    const maxSoc   = BATTERY_CAPACITY_KWH;
+    const maxSoc   = batteryCapacityKwh || BATTERY_CAPACITY_KWH;
     const maxPrice = Math.max(...plan.map(p => p.price)) * 1.1 || 0.4;
     const n        = plan.length;
 
