@@ -9,7 +9,7 @@ No server, no build step — open `index.html` directly in any modern browser.
 
 | Feature | Detail |
 |---|---|
-| **Array** | 8 rows × 9 columns (72 panels) in landscape orientation |
+| **Array** | 8 rows × 11 columns (88 panels) in landscape orientation |
 | **Panel model** | Lucksolar LS-MD120-340W — single-diode model (5 parameters) |
 | **Shade interaction** | Click or drag panels to shade/unshade; presets for common scenarios |
 | **Wiring configs** | Wiring options are computed simultaneously for instant comparison; economic V4 comparison focuses on A, C, F, and G |
@@ -30,16 +30,16 @@ Configurations are computed in parallel on every shade change. Click a row in th
 Row groups: rows 1–3 | rows 4–6 | rows 7–8
 
 ```
-Rows 1–3: P[1][1]──…──P[1][9] ─┐
-          P[2][1]──…──P[2][9] ─┤─► MPPT 1  (3 × 9 panels SP)
-          P[3][1]──…──P[3][9] ─┘
+Rows 1–3: P[1][1]──…──P[1][11] ─┐
+          P[2][1]──…──P[2][11] ─┤─► MPPT 1  (3 × 11 panels SP)
+          P[3][1]──…──P[3][11] ─┘
 
-Rows 4–6: P[4][1]──…──P[4][9] ─┐
-          P[5][1]──…──P[5][9] ─┤─► MPPT 2  (3 × 9 panels SP)
-          P[6][1]──…──P[6][9] ─┘
+Rows 4–6: P[4][1]──…──P[4][11] ─┐
+          P[5][1]──…──P[5][11] ─┤─► MPPT 2  (3 × 11 panels SP)
+          P[6][1]──…──P[6][11] ─┘
 
-Rows 7–8: P[7][1]──…──P[7][9] ─┐
-          P[8][1]──…──P[8][9] ─┘─► MPPT 3  (2 × 9 panels SP)
+Rows 7–8: P[7][1]──…──P[7][11] ─┐
+          P[8][1]──…──P[8][11] ─┘─► MPPT 3  (2 × 11 panels SP)
 ```
 
 Each row is a series string; rows within a group are in parallel.
@@ -53,10 +53,10 @@ In the V4 economic comparison, Option A keeps this wiring configuration and adds
 Same row groups as A, but each group uses vertical TCT wiring: all panels in the same column position are connected in parallel (cross-tie), and column sections are connected in series.
 
 ```
-  Col 1     Col 2     …    Col 9
-P[1][1]─┐ P[1][2]─┐    P[1][9]─┐
-P[2][1]─┤ P[2][2]─┤    P[2][9]─┤  → all 9 col-sections in series → MPPT 1
-P[3][1]─┘ P[3][2]─┘    P[3][9]─┘
+  Col 1     Col 2     …    Col 11
+P[1][1]─┐ P[1][2]─┐    P[1][11]─┐
+P[2][1]─┤ P[2][2]─┤    P[2][11]─┤  → all 11 col-sections in series → MPPT 1
+P[3][1]─┘ P[3][2]─┘    P[3][11]─┘
 ```
 
 V-TCT indicator lines are shown on the array canvas.
@@ -65,13 +65,13 @@ V-TCT indicator lines are shown on the array canvas.
 
 ### Option C — 8 MPPTs, 1 Series String per Row
 
-Each of the 8 rows becomes its own independent MPPT (9 panels in series).
+Each of the 8 rows becomes its own independent MPPT (11 panels in series).
 
 ```
-Row 1: P[1][1]──P[1][2]──…──P[1][9] ► MPPT 1
-Row 2: P[2][1]──P[2][2]──…──P[2][9] ► MPPT 2
+Row 1: P[1][1]──P[1][2]──…──P[1][11] ► MPPT 1
+Row 2: P[2][1]──P[2][2]──…──P[2][11] ► MPPT 2
 …
-Row 8: P[8][1]──…──P[8][9] ► MPPT 8
+Row 8: P[8][1]──…──P[8][11] ► MPPT 8
 ```
 
 Shade on one row has no effect on any other row.
@@ -80,40 +80,19 @@ In the V4 economic comparison, Option C keeps this wiring configuration and adds
 
 ---
 
-### Option D — 9 MPPTs, Block Series-Parallel (SP)
+### Option F — 4 MPPTs, 2 Rows × 11 Cols (22 panels per MPPT, SP)
 
-The array is divided into a 3×3 macro grid of blocks (3 column groups × 3 row groups). Within each block, rows form independent series strings in parallel.
-
-Column groups: cols 1–3 | cols 4–6 | cols 7–9  
-Row groups:    rows 1–3 | rows 4–6 | rows 7–8
-
-| | Cols 1–3 | Cols 4–6 | Cols 7–9 |
-|---|---|---|---|
-| **Rows 1–3** | MPPT 1 (3×3 SP) | MPPT 2 (3×3 SP) | MPPT 3 (3×3 SP) |
-| **Rows 4–6** | MPPT 4 (3×3 SP) | MPPT 5 (3×3 SP) | MPPT 6 (3×3 SP) |
-| **Rows 7–8** | MPPT 7 (2×3 SP) | MPPT 8 (2×3 SP) | MPPT 9 (2×3 SP) |
-
----
-
-### Option E — 9 MPPTs, Block Vertical TCT
-
-Identical block structure to D, but each block uses V-TCT wiring internally (columns in series, rows in parallel per column within the block).
-
----
-
-### Option F — 4 MPPTs, 2 Rows × 9 Cols (18 panels per MPPT, SP)
-
-The array is split into four equal horizontal bands, each covering 2 rows × 9 columns = 18 panels wired in Series-Parallel (2 strings of 9 panels in parallel).
+The array is split into four equal horizontal bands, each covering 2 rows × 11 columns = 22 panels wired in Series-Parallel (2 strings of 11 panels in parallel).
 
 Row groups: rows 1–2 | rows 3–4 | rows 5–6 | rows 7–8
 
 ```
-Rows 1–2: P[1][1]──…──P[1][9] ─┐
-          P[2][1]──…──P[2][9] ─┘─► MPPT 1  (2 × 9 panels SP)
+Rows 1–2: P[1][1]──…──P[1][11] ─┐
+          P[2][1]──…──P[2][11] ─┘─► MPPT 1  (2 × 11 panels SP)
 
-Rows 3–4: ─► MPPT 2  (2 × 9 panels SP)
-Rows 5–6: ─► MPPT 3  (2 × 9 panels SP)
-Rows 7–8: ─► MPPT 4  (2 × 9 panels SP)
+Rows 3–4: ─► MPPT 2  (2 × 11 panels SP)
+Rows 5–6: ─► MPPT 3  (2 × 11 panels SP)
+Rows 7–8: ─► MPPT 4  (2 × 11 panels SP)
 ```
 
 Each MPPT input voltage = 1 series string Vmpp ≈ 38 V; input current = 2 × Impp ≈ 17.7 A.
