@@ -44,7 +44,7 @@ Rows 7–8: P[7][1]──…──P[7][9] ─┐
 
 Each row is a series string; rows within a group are in parallel.
 
-In the V4 economic comparison, Option A uses unlimited charge capability, 18 kW discharge capability, 200 W standby consumption, and 92.5% AC↔battery converter efficiency as option-specific economic assumptions rather than wiring changes.
+In the V4 economic comparison, Option A keeps this wiring configuration and adds option-specific economic model parameters: unlimited charge capability, 18 kW discharge capability, 200 W standby consumption, and 92.5% AC↔battery converter efficiency.
 
 ---
 
@@ -76,7 +76,7 @@ Row 8: P[8][1]──…──P[8][9] ► MPPT 8
 
 Shade on one row has no effect on any other row.
 
-In the V4 economic comparison, Option C uses unlimited charge capability, 18 kW discharge capability, 200 W standby consumption, and 92.5% AC↔battery converter efficiency as option-specific economic assumptions rather than wiring changes.
+In the V4 economic comparison, Option C keeps this wiring configuration and adds option-specific economic model parameters: unlimited charge capability, 18 kW discharge capability, 200 W standby consumption, and 92.5% AC↔battery converter efficiency.
 
 ---
 
