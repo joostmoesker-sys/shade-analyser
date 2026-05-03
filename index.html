@@ -4600,7 +4600,8 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
   let dpNext = new Float64Array(states);
   for (let s = 0; s < states; s++) {
     // A linear penalty gives every kWh of end-state drift the same opportunity
-    // cost, which is enough to enforce a neutral annual start/end SOC without a
+    // cost; the negative sign below subtracts that cost from future value. This
+    // is enough to enforce a neutral annual start/end SOC without a
     // quadratic penalty that would over-favour tiny deviations over real dispatch
     // value. The large €/kWh weight makes reaching the target dominate any
     // marginal final-hour arbitrage.
