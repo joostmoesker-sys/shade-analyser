@@ -1261,8 +1261,39 @@ const CONFIGS = [
 // Economic comparison is intentionally limited to the options with defined V4
 // battery power, standby, and converter-efficiency assumptions for this scenario.
 const ECON_COMPARISON_CONFIG_IDS = ['A', 'C', 'F', 'G'];
+
+// Sub-variants for A/B/C with AC discharge power limited to 5, 10 or 15 kW.
+// These share the same wiring (and therefore PV yield) as their parent config.
+// pvFromId points to the parent config whose simulated hourly PV data is reused.
+const ECON_ABC_VARIANTS = [
+  // ── Option A variants (SP wiring) ──────────────────────────────────────────
+  { id:'A5',  label:'Option A 5kW',  short:'A \u2014 SP / 5kW dis',  cfgColor:'#7dd3fc', pvFromId:'A',
+    econChargePowerKw:Infinity, econDischargePowerKw: 5,  econStandbyKw:0.2, econChargeEff:0.925, econDischargeEff:0.925 },
+  { id:'A10', label:'Option A 10kW', short:'A \u2014 SP / 10kW dis', cfgColor:'#38bdf8', pvFromId:'A',
+    econChargePowerKw:Infinity, econDischargePowerKw:10,  econStandbyKw:0.2, econChargeEff:0.925, econDischargeEff:0.925 },
+  { id:'A15', label:'Option A 15kW', short:'A \u2014 SP / 15kW dis', cfgColor:'#0284c7', pvFromId:'A',
+    econChargePowerKw:Infinity, econDischargePowerKw:15,  econStandbyKw:0.2, econChargeEff:0.925, econDischargeEff:0.925 },
+  // ── Option B variants (V-TCT wiring) ───────────────────────────────────────
+  { id:'B5',  label:'Option B 5kW',  short:'B \u2014 TCT / 5kW dis',  cfgColor:'#c4b5fd', pvFromId:'B',
+    econChargePowerKw:Infinity, econDischargePowerKw: 5,  econStandbyKw:0.2, econChargeEff:0.925, econDischargeEff:0.925 },
+  { id:'B10', label:'Option B 10kW', short:'B \u2014 TCT / 10kW dis', cfgColor:'#a78bfa', pvFromId:'B',
+    econChargePowerKw:Infinity, econDischargePowerKw:10,  econStandbyKw:0.2, econChargeEff:0.925, econDischargeEff:0.925 },
+  { id:'B15', label:'Option B 15kW', short:'B \u2014 TCT / 15kW dis', cfgColor:'#7c3aed', pvFromId:'B',
+    econChargePowerKw:Infinity, econDischargePowerKw:15,  econStandbyKw:0.2, econChargeEff:0.925, econDischargeEff:0.925 },
+  // ── Option C variants (per-row wiring) ─────────────────────────────────────
+  { id:'C5',  label:'Option C 5kW',  short:'C \u2014 1\u00d711 / 5kW dis',  cfgColor:'#86efac', pvFromId:'C',
+    econChargePowerKw:Infinity, econDischargePowerKw: 5,  econStandbyKw:0.2, econChargeEff:0.925, econDischargeEff:0.925 },
+  { id:'C10', label:'Option C 10kW', short:'C \u2014 1\u00d711 / 10kW dis', cfgColor:'#4ade80', pvFromId:'C',
+    econChargePowerKw:Infinity, econDischargePowerKw:10,  econStandbyKw:0.2, econChargeEff:0.925, econDischargeEff:0.925 },
+  { id:'C15', label:'Option C 15kW', short:'C \u2014 1\u00d711 / 15kW dis', cfgColor:'#16a34a', pvFromId:'C',
+    econChargePowerKw:Infinity, econDischargePowerKw:15,  econStandbyKw:0.2, econChargeEff:0.925, econDischargeEff:0.925 },
+];
+
 function getEconomicComparisonConfigs() {
-  return CONFIGS.filter(cfg => ECON_COMPARISON_CONFIG_IDS.includes(cfg.id));
+  return [
+    ...CONFIGS.filter(cfg => ECON_COMPARISON_CONFIG_IDS.includes(cfg.id)),
+    ...ECON_ABC_VARIANTS,
+  ];
 }
 function getConfigEconomicLimits(cfg) {
   const chargePowerKw = cfg.econChargePowerKw ?? cfg.econBatteryPowerKw ?? MAX_BATTERY_POWER_KW;
@@ -4813,7 +4844,7 @@ function runEconSim() {
   const econResults = {};
   const optionLoadProfiles = {};
   for (const cfg of getEconomicComparisonConfigs()) {
-    const pvArr = lastHourlyPvKwh[cfg.id];
+    const pvArr = lastHourlyPvKwh[cfg.pvFromId ?? cfg.id];
     if (!pvArr) continue;
     const pvTyped = pvArr instanceof Float64Array ? pvArr : new Float64Array(pvArr);
     const limits = getConfigEconomicLimits(cfg);
@@ -5121,15 +5152,18 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
 function exportEconCsv() {
   if (!lastEconResults || !lastHourlyPvKwh) { alert('Run economic simulation first.'); return; }
 
-  // Find best config by savings
-  const ids = CONFIGS.map(c => c.id).filter(id => lastEconResults.econResults[id]);
+  // Find best config by savings (search across all economic comparison configs)
+  const ids = getEconomicComparisonConfigs().map(c => c.id).filter(id => lastEconResults.econResults[id]);
   const bestId = ids.reduce((best, id) =>
     lastEconResults.econResults[id].annualSavingsBat > lastEconResults.econResults[best].annualSavingsBat ? id : best
   , ids[0]);
 
-  const pvArr = lastHourlyPvKwh[bestId] instanceof Float64Array
-    ? lastHourlyPvKwh[bestId]
-    : new Float64Array(lastHourlyPvKwh[bestId]);
+  // Resolve PV data: sub-variants reference their parent via pvFromId
+  const bestCfgMeta = getEconomicComparisonConfigs().find(c => c.id === bestId);
+  const pvSourceId = bestCfgMeta?.pvFromId ?? bestId;
+  const pvArr = lastHourlyPvKwh[pvSourceId] instanceof Float64Array
+    ? lastHourlyPvKwh[pvSourceId]
+    : new Float64Array(lastHourlyPvKwh[pvSourceId]);
 
   let csv = 'Hour,Date,PV_kWh,AdjustedLoad_kWh,BaselineLoad_kWh,BuyTariff_EUR_kWh,SellTariff_EUR_kWh\n';
   const { tariffProfile: tp, sellProfile: sp, opts, loadProfile, optionLoadProfiles } = lastEconResults;
