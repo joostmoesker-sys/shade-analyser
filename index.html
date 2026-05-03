@@ -1348,6 +1348,8 @@ const CONFIGS = [
 
 const ECON_COMPARISON_CONFIG_IDS = ['A', 'C', 'F', 'G'];
 function getEconomicComparisonConfigs() {
+  // Economic comparison is intentionally limited to the hardware options with
+  // defined V4 power/standby assumptions for this scenario.
   return CONFIGS.filter(cfg => ECON_COMPARISON_CONFIG_IDS.includes(cfg.id));
 }
 function getConfigEconomicLimits(cfg) {
