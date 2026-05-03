@@ -4773,6 +4773,7 @@ document.getElementById('econHpSlider').addEventListener('input', function () {
 // Sell price factor slider
 document.getElementById('econSellFactorSlider').addEventListener('input', function () {
   document.getElementById('econSellFactorVal').textContent = (this.value / 100).toFixed(2) + '×';
+  if (lastEconResults) setTimeout(runEconSim, 20);
 });
 
 // Run economic analysis button
