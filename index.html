@@ -4336,7 +4336,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
         if (usePrecharge && dpAction === 'charge') {
           const maxThisSlot = Math.min(MAX_GRID_PRECHARGE_POWER_KW, (batCapKwh - soc) / GRID_ROUNDTRIP_EFF);
           // Spread the needed energy across low-price hours to stay within power limits
-          const needed = deficit / (PRECHARGE_SPREAD_HOURS * GRID_ROUNDTRIP_EFF);
+          const needed = (deficit / PRECHARGE_SPREAD_HOURS) / GRID_ROUNDTRIP_EFF;
           gridCharge = Math.min(maxThisSlot, needed);
           if (gridCharge > 1e-4) {
             soc += gridCharge * GRID_ROUNDTRIP_EFF;
