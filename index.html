@@ -123,6 +123,7 @@
     .econ-note { font-size:0.67rem; color:#4b5563; margin-top:8px; line-height:1.5; }
     .econ-savings-chart-wrap { position:relative; height:160px; margin-top:10px; }
     .econ-soc-chart-wrap { position:relative; height:120px; margin-top:10px; }
+    .v3-cashflow-chart-wrap { position:relative; margin-top:12px; display:none; }
     .econ-export-btn { padding:4px 10px; font-size:0.72rem; border:1px solid #374151; border-radius:5px; background:#111827; color:#9ca3af; cursor:pointer; transition:all 0.15s; }
     .econ-export-btn:hover { border-color:#4ade80; color:#4ade80; }
 
@@ -467,6 +468,15 @@
             <span id="v3DeltaV1" style="font-weight:bold; margin-left:6px;"></span>
             <span id="v3DeltaV2" style="font-weight:bold; margin-left:6px; color:#60a5fa;"></span>
             <span id="v3Horizon" style="margin-left:6px; color:#9ca3af; font-size:0.78rem;"></span>
+          </div>
+          <div id="v3CashflowWrap" class="v3-cashflow-chart-wrap">
+            <canvas id="v3CashflowChart" width="720" height="190" style="border:1px solid #374151; border-radius:4px; width:100%; max-width:720px; display:block;"></canvas>
+            <div style="font-size:0.7rem; color:#6b7280; margin-top:4px;">
+              V3 monthly cashflow — <span style="color:#4ade80;">■</span> savings
+              · <span style="color:#60a5fa;">■</span> baseline grid cost
+              · <span style="color:#f97316;">■</span> import cost
+              · <span style="color:#22c55e;">■</span> export revenue
+            </div>
           </div>
           <canvas id="dispatchCanvas" width="720" height="220" style="margin-top:14px; border:1px solid #374151; border-radius:4px; width:100%; max-width:720px; display:block;"></canvas>
           <div style="font-size:0.7rem; color:#6b7280; margin-top:4px;">
@@ -4184,6 +4194,12 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
   // € accumulators
   let revenue = 0, cost = 0;
   let totalCycles = 0;
+  const monthlyBaselineCost = new Float64Array(12);
+  const monthlyImportCost = new Float64Array(12);
+  const monthlyRevenue = new Float64Array(12);
+  const monthlyPvExportRevenue = new Float64Array(12);
+  const monthlyBatteryExportRevenue = new Float64Array(12);
+  const monthlySavings = new Float64Array(12);
 
   // Sample plan for the dispatch visualizer (July week, days 180–186)
   const planStart = 180 * 24;
@@ -4233,6 +4249,9 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
       const buyPrice  = tariffs[h];
       const sellPrice = sellTariffs ? sellTariffs[h] : buyPrice * sellFactor;
       const dpAction  = plan[i] ? plan[i].action : 'idle';
+      const month     = new Date(2025, 0, Math.floor(h / 24) + 1).getMonth();
+      let hourCost = 0, hourRevenue = 0, hourPvRevenue = 0, hourBatteryRevenue = 0;
+      monthlyBaselineCost[month] += load * buyPrice;
 
       const net = pv - load; // positive = PV surplus, negative = load deficit
       let chargedPv = 0, gridCharge = 0, dischargedSelf = 0, dischargedExport = 0;
@@ -4247,14 +4266,16 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
           // step removes the ~10 % round-trip loss that caused the graph to show
           // simultaneous charge + discharge in the same hour.
           exportPv  += net;
-          revenue   += net * sellPrice;
+          hourRevenue += net * sellPrice;
+          hourPvRevenue += net * sellPrice;
           const avail  = Math.max(0, soc - BATTERY_CAPACITY_KWH * MIN_SOC_SELL);
           const canExp = Math.min(avail * DISCHARGE_EFF * 0.7, MAX_BATTERY_POWER_KW * 0.6);
           if (canExp > 0.1) {
             dischargedExport = canExp;
             soc -= dischargedExport / DISCHARGE_EFF;
             exportBattery += dischargedExport;
-            revenue += dischargedExport * sellPrice;
+            hourRevenue += dischargedExport * sellPrice;
+            hourBatteryRevenue += dischargedExport * sellPrice;
           }
         } else {
           // Default (charge / idle / discharge_self): charge battery from PV surplus,
@@ -4265,7 +4286,8 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
           batteryFromPv += chargedPv;
           const excess = net - chargedPv;
           exportPv  += excess;
-          revenue   += excess * sellPrice;
+          hourRevenue += excess * sellPrice;
+          hourPvRevenue += excess * sellPrice;
         }
       } else {
         // ── Load deficit: cover from battery and/or grid ─────────────────────
@@ -4281,7 +4303,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
           if (gridCharge > 1e-4) {
             soc += gridCharge * GRID_ROUNDTRIP_EFF;
             batteryFromGrid += gridCharge;
-            cost += gridCharge * buyPrice;
+            hourCost += gridCharge * buyPrice;
           }
         }
 
@@ -4298,7 +4320,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
         }
 
         const still = deficit - dischargedSelf;
-        if (still > 0.01) { importGrid += still; cost += still * buyPrice; }
+        if (still > 0.01) { importGrid += still; hourCost += still * buyPrice; }
 
         // Battery export in deficit hours: only when the deficit was already fully
         // covered by battery (still ≈ 0).  Exporting while simultaneously importing
@@ -4310,10 +4332,18 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
             dischargedExport = canExp;
             soc -= dischargedExport / DISCHARGE_EFF;
             exportBattery += dischargedExport;
-            revenue += dischargedExport * sellPrice;
+            hourRevenue += dischargedExport * sellPrice;
+            hourBatteryRevenue += dischargedExport * sellPrice;
           }
         }
       }
+
+      cost += hourCost;
+      revenue += hourRevenue;
+      monthlyImportCost[month] += hourCost;
+      monthlyRevenue[month] += hourRevenue;
+      monthlyPvExportRevenue[month] += hourPvRevenue;
+      monthlyBatteryExportRevenue[month] += hourBatteryRevenue;
 
       soc = Math.max(0, Math.min(BATTERY_CAPACITY_KWH, soc));
 
@@ -4343,6 +4373,9 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
   // ── Compute economics ──────────────────────────────────────────────────────
   const baselineCost  = loadKwh.reduce((s, l, i) => s + l * tariffs[i], 0);
   const annualSavings = baselineCost - (cost - revenue);
+  for (let m = 0; m < 12; m++) {
+    monthlySavings[m] = monthlyBaselineCost[m] - (monthlyImportCost[m] - monthlyRevenue[m]);
+  }
 
   return {
     version:           'v3-dp',
@@ -4355,6 +4388,14 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
     cost:              Math.round(cost * 100) / 100,
     batteryThroughput: Math.round((batteryFromPv + batteryFromGrid) * 100) / 100,
     cycles:            Math.round(totalCycles),
+    monthlyCashflow: {
+      baselineCost: Array.from(monthlyBaselineCost),
+      importCost: Array.from(monthlyImportCost),
+      revenue: Array.from(monthlyRevenue),
+      pvExportRevenue: Array.from(monthlyPvExportRevenue),
+      batteryExportRevenue: Array.from(monthlyBatteryExportRevenue),
+      savings: Array.from(monthlySavings),
+    },
     hourlyPlan,
   };
 }
@@ -4469,18 +4510,27 @@ function runEconSim() {
       if (v3HorizonEl) v3HorizonEl.textContent = `[${batteryParams.forecastHorizon}h horizon]`;
       v3ResDiv.style.display = 'block';
 
+      if (typeof window.drawV3CashflowChart === 'function') {
+        window.drawV3CashflowChart(v3Result.monthlyCashflow);
+      }
+
       // Draw dispatch visualizer with v3 plan (v3 wins priority if enabled)
       if (typeof window.drawDispatchVisualizer === 'function') {
         window.drawDispatchVisualizer(v3Result.hourlyPlan);
       }
     } else {
       if (v3ResDiv) v3ResDiv.style.display = 'none';
+      if (typeof window.drawV3CashflowChart === 'function') {
+        window.drawV3CashflowChart(null);
+      }
 
       // Draw dispatch visualizer with v2 plan when v3 is disabled
       if (typeof window.drawDispatchVisualizer === 'function') {
         window.drawDispatchVisualizer(v2Result.hourlyPlan);
       }
     }
+  } else if (typeof window.drawV3CashflowChart === 'function') {
+    window.drawV3CashflowChart(null);
   }
 }
 
@@ -5132,6 +5182,88 @@ function initBatteryV2UI() {
       alert('Run the yearly PV simulation and economic analysis first.');
     }
   });
+
+  /**
+   * Draw the V3 monthly cashflow chart for the best config.
+   * Values are true month-by-month V3 totals, not annual savings scaled by load.
+   *
+   * @param {object|null} cashflow — monthlyCashflow from simulateBatteryAndEconomicsV3
+   */
+  window.drawV3CashflowChart = function drawV3CashflowChart(cashflow) {
+    const wrap = document.getElementById('v3CashflowWrap');
+    const c = document.getElementById('v3CashflowChart');
+    if (!wrap || !c) return;
+    if (!cashflow || !cashflow.savings) {
+      wrap.style.display = 'none';
+      const ctx = c.getContext('2d');
+      ctx.clearRect(0, 0, c.width, c.height);
+      return;
+    }
+    wrap.style.display = 'block';
+
+    const cssW = c.parentElement ? c.parentElement.clientWidth : 720;
+    c.width  = Math.min(cssW, 720);
+    c.height = 190;
+    const ctx = c.getContext('2d');
+    const w = c.width, h = c.height;
+    const ML = 42, MR = 10, MT = 24, MB = 24;
+    const pw = w - ML - MR, ph = h - MT - MB;
+    const months = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+
+    const series = [
+      { key: 'savings',      label: 'Savings',      color: '#4ade80' },
+      { key: 'baselineCost', label: 'Baseline',     color: '#60a5fa' },
+      { key: 'importCost',   label: 'Import cost',  color: '#f97316' },
+      { key: 'revenue',      label: 'Export rev.',  color: '#22c55e' },
+    ];
+    const vals = series.flatMap(s => Array.from(cashflow[s.key] || []));
+    const maxV = Math.max(...vals, 1);
+    const minV = Math.min(...vals, 0);
+    const range = Math.max(maxV - minV, 1);
+    const zeroY = MT + ph - ((0 - minV) / range) * ph;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#1f2937';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const v = minV + (i / 4) * range;
+      const y = MT + ph - ((v - minV) / range) * ph;
+      ctx.beginPath(); ctx.moveTo(ML, y); ctx.lineTo(ML + pw, y); ctx.stroke();
+      ctx.fillStyle = '#6b7280'; ctx.font = '9px sans-serif'; ctx.textAlign = 'right';
+      ctx.fillText('€' + v.toFixed(0), ML - 3, y + 3);
+    }
+    ctx.fillStyle = '#374151';
+    ctx.fillRect(ML, zeroY, pw, 1);
+
+    const groupW = pw / 12;
+    const barW = Math.max(2, groupW / (series.length + 2));
+    for (let m = 0; m < 12; m++) {
+      series.forEach((s, si) => {
+        const v = (cashflow[s.key] && cashflow[s.key][m]) || 0;
+        const bh = Math.abs(v / range) * ph;
+        const bx = ML + m * groupW + (si + 0.8) * barW;
+        const by = v >= 0 ? zeroY - bh : zeroY;
+        ctx.fillStyle = s.color;
+        ctx.fillRect(bx, by, Math.max(barW - 1, 1), bh);
+      });
+      ctx.fillStyle = '#6b7280'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(months[m], ML + (m + 0.5) * groupW, MT + ph + 14);
+    }
+
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('V3 monthly cashflow for best config', ML, 14);
+    let lx = ML + 188;
+    series.forEach(s => {
+      ctx.fillStyle = s.color; ctx.fillRect(lx, 7, 7, 7);
+      ctx.fillStyle = '#9ca3af'; ctx.font = '8px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(s.label, lx + 9, 14);
+      lx += ctx.measureText(s.label).width + 24;
+    });
+  };
 
   /**
    * Draw the dispatch visualizer on dispatchCanvas.
