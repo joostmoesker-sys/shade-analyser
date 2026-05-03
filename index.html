@@ -1350,10 +1350,10 @@ const CONFIGS = [
   },
 ];
 
+// Economic comparison is intentionally limited to the options with defined V4
+// battery power, standby, and converter-efficiency assumptions for this scenario.
 const ECON_COMPARISON_CONFIG_IDS = ['A', 'C', 'F', 'G'];
 function getEconomicComparisonConfigs() {
-  // Economic comparison is intentionally limited to the hardware options with
-  // defined V4 power/standby assumptions for this scenario.
   return CONFIGS.filter(cfg => ECON_COMPARISON_CONFIG_IDS.includes(cfg.id));
 }
 function getConfigEconomicLimits(cfg) {
@@ -4866,6 +4866,7 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
   };
 }
 
+/** Add continuous standby consumption (kW = kWh/hour) to every hourly load sample. */
 function addStandbyToLoadProfile(loadProfile, standbyKw) {
   const adjusted = new Float64Array(loadProfile.length);
   for (let i = 0; i < loadProfile.length; i++) adjusted[i] = loadProfile[i] + standbyKw;
