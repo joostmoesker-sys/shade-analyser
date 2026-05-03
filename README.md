@@ -12,7 +12,7 @@ No server, no build step — open `index.html` directly in any modern browser.
 | **Array** | 8 rows × 9 columns (72 panels) in landscape orientation |
 | **Panel model** | Lucksolar LS-MD120-340W — single-diode model (5 parameters) |
 | **Shade interaction** | Click or drag panels to shade/unshade; presets for common scenarios |
-| **Wiring configs** | Six options (A–F) always computed simultaneously for instant comparison |
+| **Wiring configs** | Wiring options are computed simultaneously for instant comparison; economic V4 comparison focuses on A, C, F, and G |
 | **Solar irradiance** | Clear-sky model for Neer, Netherlands (lat 51.27°N, lon 5.99°E) — date picker + time slider |
 | **Physical sections** | Top 5 rows (tilt −30°, az 220°) and bottom 3 rows (tilt 30°, az 255°) with independent POA irradiance |
 | **IV + PV curves** | Live canvas-based plot per selected config — no external charting library |
@@ -23,7 +23,7 @@ No server, no build step — open `index.html` directly in any modern browser.
 
 ## Wiring Configurations
 
-All six configurations are computed in parallel on every shade change. Click a row in the comparison table to annotate the array canvas and see the IV/PV curves for that configuration.
+Configurations are computed in parallel on every shade change. Click a row in the comparison table to annotate the array canvas and see the IV/PV curves for that configuration.
 
 ### Option A — 3 MPPTs, Series-Parallel (SP)
 
@@ -114,6 +114,8 @@ Rows 7–8: ─► MPPT 4  (2 × 9 panels SP)
 
 Each MPPT input voltage = 1 series string Vmpp ≈ 38 V; input current = 2 × Impp ≈ 17.7 A.
 
+For the economic V4 comparison, Option F uses a 16 kW PV clipping limit and 10 kW battery charge/discharge limit. Option G uses the same wiring with a 24 kW PV clipping limit and 10 kW battery charge/discharge limit.
+
 ---
 
 ## Physical Sections & Solar Irradiance
@@ -146,7 +148,7 @@ Netherlands DST is handled automatically (last Sunday March → last Sunday Octo
 
 ---
 
-The comparison table always shows all six configurations simultaneously:
+The live PV comparison table shows all wiring configurations simultaneously; the Economic Forecast comparison is limited to A, C, F, and G:
 
 | Config | Total Power | % STC | MPPT mini-bars |
 |---|---|---|---|
@@ -233,7 +235,7 @@ Any modern browser with ES6+ support: Chrome 80+, Firefox 75+, Safari 13+, Edge 
 
 ### Overview
 
-The **Economic Forecast** panel (at the bottom of the right column) lets you evaluate the annual monetary value of each wiring configuration under your current shade pattern, with or without a 64 kWh battery.
+The **Economic Forecast** panel (at the bottom of the right column) lets you compare Options A, C, F, and G under your current shade pattern with the V4 euro optimizer, with or without a 64 kWh battery.
 
 ### How to Use
 
@@ -256,7 +258,7 @@ The **Economic Forecast** panel (at the bottom of the right column) lets you eva
 ### Battery Dispatch Logic
 
 1. **PV → load** (direct self-consumption, highest priority)
-2. **Surplus PV → battery** (charge at 95% efficiency, up to 15 kW)
+2. **Surplus PV → battery** (charge at 95% efficiency, up to the option's battery power limit; F/G use 10 kW)
 3. **Remaining surplus PV → grid** (at sell tariff)
 4. **Battery → load** (discharge for self-use when PV insufficient, down to 5% SOC)
 5. **Grid → load** (import only what battery cannot cover)
@@ -338,7 +340,7 @@ It appears alongside V2 in the 🔋 Economic Forecast card and shows a **three-w
 2. The V3 panel appears automatically inside the Economic Forecast results section.
 3. Select the **Forecast Horizon** (24 h, 48 h, 96 h, or 120 h — default, 5-day rolling look-ahead).
 4. Enable or disable **Use V3 Dynamic Programming** with the checkbox.
-5. Click **Re-run with v2/v3/v4 Strategy** to refresh the comparison.
+5. Click **Re-run V4 Comparison** to refresh the A/C/F/G economic comparison.
 
 #### DP Design
 
@@ -382,7 +384,7 @@ Saldering (net metering) is abolished in 2027. The model uses the post-2027 Tibb
 
 #### Overview
 
-**V4** keeps V3 available as the lightweight rolling DP baseline and adds a full-year, euro-first optimizer for the best configuration. It optimizes annual cashflow directly instead of optimizing proxy rules such as fixed sell windows, average-price export gates, or self-consumption targets.
+**V4** keeps V3 available as the lightweight rolling DP baseline and adds a full-year, euro-first optimizer. The Economic Forecast table runs this optimizer for Options A, C, F, and G so they can be compared directly. It optimizes annual cashflow directly instead of optimizing proxy rules such as fixed sell windows, average-price export gates, or self-consumption targets.
 
 #### Design
 
@@ -393,6 +395,9 @@ Saldering (net metering) is abolished in 2027. The model uses the post-2027 Tibb
 | Objective | Maximise export revenue − grid import cost |
 | Terminal SOC | Penalised back to the initial 50% SOC to prevent end-of-year draining |
 | Dispatch model | Quantity-based SOC transitions; planner and executor use the same transition function |
+| Economic options | A, C, F, and G only |
+| F/G battery power | 10 kW charge/discharge |
+| F/G PV clipping | F: 16 kW PV, G: 24 kW PV |
 
 #### Dispatch Logic
 
@@ -408,7 +413,7 @@ Saldering (net metering) is abolished in 2027. The model uses the post-2027 Tibb
 
 #### Diagnostics
 
-The V4 result line reports SOC bucket size, curtailed PV, and final SOC. Battery degradation is excluded because the battery is treated as already paid for. The monthly cashflow chart and July dispatch visualizer automatically use V4 when the optimizer is enabled.
+The V4 result line reports battery power, SOC bucket size, curtailed PV, and final SOC for the best option. Battery degradation is excluded because the battery is treated as already paid for. The monthly cashflow chart and July dispatch visualizer use the best V4 option when the optimizer is enabled.
 
 ---
 
