@@ -1399,7 +1399,7 @@ let batteryParams = {
   minProfitSpread:    0.06,   // minimum €/kWh spread to justify grid→battery→grid cycle
   selfUseMultiplier:  1.05,   // premium weight for self-use vs. export (value = price × multiplier)
   forecastHorizon:    120,    // hours to look ahead for DP planning (120h = 5-day rolling horizon)
-  cycleCost:          0.025,  // retained only for v2/v3 compatibility; v4 ignores battery wear costs
+  cycleCost:          0.025,  // legacy setting retained for compatibility; current calculations ignore wear costs
   useAdvancedStrategy: true,  // v2 smart dispatch on; false → v1 behaviour
   useV3DP:            true,   // v3 dynamic programming dispatch on
   useV4Euro:          true,   // v4 full-year euro optimizer on
