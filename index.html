@@ -1410,7 +1410,7 @@ const DP_SOC_STEPS      = 20;   // SOC discretisation: 5% steps (0..19 → 0%..9
 const DP_ACTIONS        = ['charge', 'discharge_self', 'discharge_export', 'idle'];
 const MAX_HORIZON_HOURS = 120;  // maximum DP look-ahead window (hours); 5-day horizon
 const V4_SOC_STEPS      = 96;   // finer full-year optimizer buckets (≈0.67 kWh at 64 kWh)
-const V4_TERMINAL_PENALTY_EUR_KWH = 1000; // force final SOC back to the initial annual SOC
+const V4_TERMINAL_PENALTY_EUR_KWH = 1000; // far above hourly spreads, forcing final SOC back to initial
 
 // ── House load profile constants (Dutch well-insulated house, 12 kW heat pump) ──
 // Base load: 12 kWh/day (appliances, lighting, EV slow-charge)
