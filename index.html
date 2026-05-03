@@ -403,8 +403,9 @@
               <th title="% of load covered by PV+battery">SC%</th>
               <th title="kWh exported to grid">Export kWh</th>
               <th title="Annual savings vs pure-grid baseline">Savings (no bat)</th>
-              <th title="Annual savings with battery dispatch">Savings (+ bat)</th>
+              <th title="Annual savings with V4 optimized battery dispatch">Savings (V4 + bat)</th>
               <th title="Extra savings from battery">🔋 Bonus</th>
+              <th title="PV inverter clipping and battery charge/discharge power limits">Limits</th>
             </tr></thead>
             <tbody id="econTableBody"></tbody>
           </table>
@@ -426,39 +427,40 @@
 
         <p class="econ-note" id="econNoteText"></p>
 
-        <!-- ── Advanced Battery Strategy v2 Panel ── -->
+        <!-- ── V4 economic comparison details ── -->
         <div id="battery-v2-panel" style="margin-top:16px; padding:14px; background:#0f2237; border:2px solid #0d6efd; border-radius:8px;">
-          <h4 style="margin:0 0 10px 0; color:#60a5fa; font-size:0.9rem;">🚀 Advanced Battery Strategy v2 — Max Profit Dispatch</h4>
+          <h4 style="margin:0 0 10px 0; color:#60a5fa; font-size:0.9rem;">🚀 V4 Economic Comparison — Options A, C, F &amp; G</h4>
           <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end; font-size:0.8rem; color:#d1d5db;">
-            <label style="display:flex;align-items:center;gap:5px;">
+            <span style="color:#9ca3af">Runs the full-year V4 optimizer for Options A, C, F and G.</span>
+            <label style="display:none;align-items:center;gap:5px;">
               <input type="checkbox" id="useAdvancedStrategy" checked style="accent-color:#0d6efd;">
               Use v2 Smart Dispatch
             </label>
-            <div>
+            <div style="display:none">
               <label>Min Profit Spread (€/kWh): <span id="spreadVal" style="color:#fbbf24;">0.06</span></label><br>
               <input type="range" id="minSpread" min="0.02" max="0.15" step="0.01" value="0.06" style="width:140px;">
             </div>
-            <div>
+            <div style="display:none">
               <label>Self-use Premium: <span id="multiplierVal" style="color:#fbbf24;">1.05</span>×</label><br>
               <input type="range" id="selfMultiplier" min="1.0" max="1.20" step="0.01" value="1.05" style="width:140px;">
             </div>
-            <button id="runV2Btn" style="padding:7px 18px; background:#0d6efd; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.8rem;">Re-run with v2/v3/v4 Strategy</button>
+            <button id="runV2Btn" style="padding:7px 18px; background:#0d6efd; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.8rem;">Re-run V4 Comparison</button>
           </div>
           <div style="margin-top:12px; padding-top:10px; border-top:1px solid #1e3a5f; font-size:0.8rem; color:#d1d5db; display:flex; gap:16px; flex-wrap:wrap; align-items:center;">
-            <label><strong style="color:#22c55e;">V3 Forecast Horizon:</strong></label>
-            <select id="horizonSelect" style="margin-left:4px; padding:4px 10px; border-radius:4px; background:#1e3a5f; color:#d1d5db; border:1px solid #374151;">
+            <label style="display:none"><strong style="color:#22c55e;">V3 Forecast Horizon:</strong></label>
+            <select id="horizonSelect" style="display:none; margin-left:4px; padding:4px 10px; border-radius:4px; background:#1e3a5f; color:#d1d5db; border:1px solid #374151;">
               <option value="24">24 hours</option>
               <option value="48">48 hours</option>
               <option value="96">96 hours</option>
               <option value="120" selected>120 hours (5-day look-ahead)</option>
             </select>
-            <label style="margin-left:8px; display:flex; align-items:center; gap:5px;">
+            <label style="margin-left:8px; display:none; align-items:center; gap:5px;">
               <input type="checkbox" id="useV3DP" checked style="accent-color:#22c55e;">
               Use V3 Dynamic Programming
             </label>
             <label style="margin-left:8px; display:flex; align-items:center; gap:5px;">
-              <input type="checkbox" id="useV4Euro" checked aria-label="Use V4 Euro Optimizer" style="accent-color:#fbbf24;">
-              Use V4 Euro Optimizer
+              <input type="checkbox" id="useV4Euro" checked aria-label="Show best-option V4 details" style="accent-color:#fbbf24;">
+              Show best-option V4 details
             </label>
           </div>
           <div id="v2-results" style="margin-top:10px; display:none; font-size:0.88rem; color:#d1d5db;">
@@ -474,7 +476,7 @@
             <span id="v3Horizon" style="margin-left:6px; color:#9ca3af; font-size:0.78rem;"></span>
           </div>
           <div id="v4-results" style="margin-top:6px; display:none; font-size:0.88rem; color:#d1d5db;">
-            <strong style="color:#fbbf24;">v4 Euro Optimizer (best config):</strong>
+            <strong style="color:#fbbf24;">Best-option V4 Euro Optimizer:</strong>
             <span id="v4Savings" style="color:#4ade80; font-weight:700; font-size:1rem;"></span> €
             <span id="v4DeltaV3" style="font-weight:bold; margin-left:6px;"></span>
             <span id="v4Diagnostics" style="margin-left:6px; color:#9ca3af; font-size:0.78rem;"></span>
@@ -1285,15 +1287,17 @@ const CONFIGS = [
     blocks: DE_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
   },
   {
-    id:'F', label:'Option F', short:'F \u2014 4\u00d718 10kW',
-    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d79 = 18 panels per MPPT) \u00b7 10 kW total inverter limit',
+    id:'F', label:'Option F', short:'F \u2014 16kW PV/10kW bat',
+    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d79 = 18 panels per MPPT) \u00b7 16 kW PV limit \u00b7 10 kW battery charge/discharge',
     cfgColor:'#22d3ee', mpptColors:COL4,
+    econBatteryPowerKw: 10,
     blocks: ROW_GROUPS4.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
   {
-    id:'G', label:'Option G', short:'G \u2014 4\u00d718 15kW',
-    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d79 = 18 panels per MPPT) \u00b7 15 kW total inverter limit',
+    id:'G', label:'Option G', short:'G \u2014 24kW PV/10kW bat',
+    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d79 = 18 panels per MPPT) \u00b7 24 kW PV limit \u00b7 10 kW battery charge/discharge',
     cfgColor:'#f59e0b', mpptColors:COL4,
+    econBatteryPowerKw: 10,
     blocks: ROW_GROUPS4.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
   {
@@ -1334,6 +1338,14 @@ const CONFIGS = [
   },
 ];
 
+const ECON_COMPARISON_CONFIG_IDS = ['A', 'C', 'F', 'G'];
+function getEconomicComparisonConfigs() {
+  return CONFIGS.filter(cfg => ECON_COMPARISON_CONFIG_IDS.includes(cfg.id));
+}
+function getConfigBatteryPowerKw(cfg) {
+  return cfg.econBatteryPowerKw ?? MAX_BATTERY_POWER_KW;
+}
+
 // ── Inverter specs per configuration (WP6) ─────────────────────────────────
 const INVERTER_SPECS = {
   A: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
@@ -1341,8 +1353,8 @@ const INVERTER_SPECS = {
   C: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
   D: { VmpptMin:75,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
   E: { VmpptMin:75,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
-  F: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:10000 },
-  G: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:15000 },
+  F: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:16000 },
+  G: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:24000 },
   H: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
   I: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
   J: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
@@ -3767,6 +3779,47 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
   };
 }
 
+function simulateNoBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
+  const sellFactor = opts.sellFactor ?? SELL_PRICE_FACTOR_DEF;
+  const sellTariffs = opts.sellTariffs ?? null;
+  const zeroExport = !!opts.zeroExport;
+  const nH = Math.min(8760, pvHourly.length, loadHourly.length, tariffs.length);
+  let baselineCost = 0, importCost = 0, revenue = 0;
+  let selfDirect = 0, exportPv = 0, importGrid = 0;
+  const monthlySavings = new Float64Array(12);
+
+  for (let h = 0; h < nH; h++) {
+    const pv = pvHourly[h];
+    const load = loadHourly[h];
+    const buyPrice = tariffs[h];
+    const sellPrice = sellTariffs ? sellTariffs[h] : buyPrice * sellFactor;
+    const month = new Date(2025, 0, Math.floor(h / 24) + 1).getMonth();
+    const self = Math.min(pv, load);
+    const exported = zeroExport ? 0 : Math.max(0, pv - load);
+    const imported = Math.max(0, load - pv);
+    const base = load * buyPrice;
+    const cost = imported * buyPrice;
+    const rev = exported * sellPrice;
+
+    baselineCost += base;
+    importCost += cost;
+    revenue += rev;
+    selfDirect += self;
+    exportPv += exported;
+    importGrid += imported;
+    monthlySavings[month] += base - (cost - rev);
+  }
+
+  return {
+    annualSavings: baselineCost - (importCost - revenue),
+    monthlySavings,
+    selfDirect,
+    exportPv,
+    importGrid,
+    baselineCost,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ADVANCED BATTERY v2 STRATEGY — helper functions + main simulation
 // ═══════════════════════════════════════════════════════════════════════════
@@ -4472,6 +4525,11 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
   const minSoc = batCapKwh * MIN_SOC_SELF;
   const zeroExport = !!params.zeroExport;
   const allowGridPrecharge = !!params.allowGridPrecharge;
+  const batteryPowerKw = params.batteryPowerKw ?? MAX_BATTERY_POWER_KW;
+  const gridPrechargePowerKw = Math.min(
+    params.gridPrechargePowerKw ?? MAX_GRID_PRECHARGE_POWER_KW,
+    batteryPowerKw,
+  );
 
   if (nextSoc < minSoc - eps || nextSoc > batCapKwh + eps) return null;
 
@@ -4489,30 +4547,33 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
   let curtailedPv = 0;
 
   if (delta > eps) {
-    const totalStoreCap = Math.min(MAX_BATTERY_POWER_KW * CHARGE_EFF_PV, Math.max(0, batCapKwh - curSoc));
+    const totalStoreCap = Math.min(batteryPowerKw * CHARGE_EFF_PV, Math.max(0, batCapKwh - curSoc));
     const pvStoreCap = Math.min(
       surplusPv * CHARGE_EFF_PV,
       totalStoreCap,
     );
     const gridStoreCap = allowGridPrecharge
-      ? Math.min(MAX_GRID_PRECHARGE_POWER_KW * GRID_ROUNDTRIP_EFF, totalStoreCap)
+      ? Math.min(gridPrechargePowerKw * GRID_ROUNDTRIP_EFF, totalStoreCap)
       : 0;
 
     if (delta > Math.min(totalStoreCap, pvStoreCap + gridStoreCap) + eps) return null;
 
     let remainingStore = delta;
+    let remainingInputCap = batteryPowerKw;
     let pvStore = 0, gridStore = 0;
     const pvOpportunityCost = (!zeroExport && sellPrice > 0) ? sellPrice / CHARGE_EFF_PV : 0;
     const gridStoredCost = buyPrice / GRID_ROUNDTRIP_EFF;
 
     if (gridStoredCost < pvOpportunityCost) {
-      gridStore = Math.min(remainingStore, gridStoreCap);
+      gridStore = Math.min(remainingStore, gridStoreCap, remainingInputCap * GRID_ROUNDTRIP_EFF);
       remainingStore -= gridStore;
-      pvStore = Math.min(remainingStore, pvStoreCap);
+      remainingInputCap -= gridStore / GRID_ROUNDTRIP_EFF;
+      pvStore = Math.min(remainingStore, pvStoreCap, remainingInputCap * CHARGE_EFF_PV);
     } else {
-      pvStore = Math.min(remainingStore, pvStoreCap);
+      pvStore = Math.min(remainingStore, pvStoreCap, remainingInputCap * CHARGE_EFF_PV);
       remainingStore -= pvStore;
-      gridStore = Math.min(remainingStore, gridStoreCap);
+      remainingInputCap -= pvStore / CHARGE_EFF_PV;
+      gridStore = Math.min(remainingStore, gridStoreCap, remainingInputCap * GRID_ROUNDTRIP_EFF);
     }
 
     if (pvStore + gridStore + eps < delta) return null;
@@ -4529,7 +4590,7 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     if (draw > availableDraw + eps) return null;
 
     const delivered = draw * DISCHARGE_EFF;
-    if (delivered > MAX_BATTERY_POWER_KW + eps) return null;
+    if (delivered > batteryPowerKw + eps) return null;
 
     selfBattery = Math.min(delivered, loadDeficit);
     loadDeficit -= selfBattery;
@@ -4578,6 +4639,11 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
   const batCapKwh    = options.batCapKwh ?? BATTERY_CAPACITY_KWH;
   const sellFactor   = options.sellFactor ?? SELL_PRICE_FACTOR_DEF;
   const sellTariffs  = options.sellTariffs ?? null;
+  const batteryPowerKw = options.batteryPowerKw ?? MAX_BATTERY_POWER_KW;
+  const gridPrechargePowerKw = Math.min(
+    options.gridPrechargePowerKw ?? MAX_GRID_PRECHARGE_POWER_KW,
+    batteryPowerKw,
+  );
   const nH           = Math.min(8760, pvKwh.length, loadKwh.length, tariffs.length);
 
   if (!useBattery) {
@@ -4589,13 +4655,15 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
   const minState = Math.ceil((batCapKwh * MIN_SOC_SELF) / socStep);
   const initialState = Math.min(states - 1, Math.max(minState, Math.round((batCapKwh * TARGET_SOC_FRACTION) / socStep)));
   const maxChargeSteps = Math.ceil(
-    Math.max(MAX_BATTERY_POWER_KW * CHARGE_EFF_PV, MAX_GRID_PRECHARGE_POWER_KW * GRID_ROUNDTRIP_EFF) / socStep,
+    Math.max(batteryPowerKw * CHARGE_EFF_PV, gridPrechargePowerKw * GRID_ROUNDTRIP_EFF) / socStep,
   ) + 1;
-  const maxDischargeSteps = Math.ceil((MAX_BATTERY_POWER_KW / DISCHARGE_EFF) / socStep) + 1;
+  const maxDischargeSteps = Math.ceil((batteryPowerKw / DISCHARGE_EFF) / socStep) + 1;
   const params = {
     batCapKwh,
     zeroExport,
     allowGridPrecharge: usePrecharge,
+    batteryPowerKw,
+    gridPrechargePowerKw,
   };
 
   let dpNext = new Float64Array(states);
@@ -4726,6 +4794,11 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
     version:           'v4-euro-optimizer',
     annualSavings:     Math.round(annualSavings * 100) / 100,
     pvYield:           pvKwh.reduce((a, b, i) => i < nH ? a + b : a, 0),
+    selfDirect,
+    selfBattery,
+    exportPv,
+    exportBat:         exportBattery,
+    importGrid,
     selfConsumed:      selfDirect + selfBattery,
     exported:          exportPv + exportBattery,
     imported:          importGrid,
@@ -4783,17 +4856,52 @@ function runEconSim() {
 
   const opts = { useBattery, useGridPrecharge, zeroExport, batCapKwh, sellFactor, sellTariffs: sellProfile };
 
-  // Run for all configs
+  // Run the economic comparison only for A/C/F/G using the V4 euro optimizer.
   const econResults = {};
-  for (const cfg of CONFIGS) {
+  for (const cfg of getEconomicComparisonConfigs()) {
     const pvArr = lastHourlyPvKwh[cfg.id];
     if (!pvArr) continue;
-    econResults[cfg.id] = simulateBatteryEconomics(
-      pvArr instanceof Float64Array ? pvArr : new Float64Array(pvArr),
-      loadProfile,
-      tariffProfile,
-      opts,
-    );
+    const pvTyped = pvArr instanceof Float64Array ? pvArr : new Float64Array(pvArr);
+    const noBat = simulateNoBatteryEconomics(pvTyped, loadProfile, tariffProfile, opts);
+    const batteryPowerKw = getConfigBatteryPowerKw(cfg);
+    const v4Result = useBattery
+      ? simulateBatteryAndEconomicsV4(pvTyped, loadProfile, tariffProfile, {
+          ...opts,
+          useBattery: true,
+          batteryPowerKw,
+          gridPrechargePowerKw: Math.min(MAX_GRID_PRECHARGE_POWER_KW, batteryPowerKw),
+        })
+      : null;
+    const active = v4Result || {
+      annualSavings: noBat.annualSavings,
+      pvYield: pvTyped.reduce((a, b) => a + b, 0),
+      selfDirect: noBat.selfDirect,
+      selfBattery: 0,
+      exportPv: noBat.exportPv,
+      exportBat: 0,
+      importGrid: noBat.importGrid,
+      selfConsumed: noBat.selfDirect,
+      exported: noBat.exportPv,
+      imported: noBat.importGrid,
+      batteryThroughput: 0,
+      cycles: 0,
+      batteryCapacityKwh: batCapKwh,
+      monthlyCashflow: { savings: Array.from(noBat.monthlySavings) },
+      hourlyPlan: [],
+    };
+    econResults[cfg.id] = {
+      ...active,
+      annualSavingsBat: active.annualSavings,
+      annualSavingsNoBat: noBat.annualSavings,
+      batBonus: active.annualSavings - noBat.annualSavings,
+      selfConsRate: active.selfConsumed / (active.pvYield + 1e-9),
+      batCycles: active.cycles,
+      batThroughput: active.batteryThroughput,
+      monthlySavingsBat: active.monthlyCashflow.savings,
+      monthlySavingsNoBat: noBat.monthlySavings,
+      batteryPowerKw,
+      v4Result,
+    };
   }
 
   lastEconResults = { econResults, loadProfile, tariffProfile, sellProfile, opts };
@@ -4801,128 +4909,38 @@ function runEconSim() {
 
   displayEconResults(econResults, batCapKwh, elapsed);
 
-  // ── Also run v2 and v3 advanced strategy for the best config ──────────────
-  if (useBattery) {
-    const ids = CONFIGS.map(c => c.id).filter(id => econResults[id]);
-    const bestId = ids.reduce((best, id) =>
-      econResults[id].annualSavingsBat > econResults[best].annualSavingsBat ? id : best, ids[0]);
-    const bestPvArr = lastHourlyPvKwh[bestId] instanceof Float64Array
-      ? lastHourlyPvKwh[bestId] : new Float64Array(lastHourlyPvKwh[bestId]);
+  const ids = getEconomicComparisonConfigs().map(c => c.id).filter(id => econResults[id]);
+  const bestId = ids.length ? ids.reduce((best, id) =>
+    econResults[id].annualSavingsBat > econResults[best].annualSavingsBat ? id : best, ids[0]) : null;
+  const bestEcon = bestId ? econResults[bestId] : null;
+  const v2ResDiv = document.getElementById('v2-results');
+  const v3ResDiv = document.getElementById('v3-results');
+  if (v2ResDiv) v2ResDiv.style.display = 'none';
+  if (v3ResDiv) v3ResDiv.style.display = 'none';
 
-    // Read v2/v3/v4 params from the UI panel (they may have been updated by sliders/toggles)
-    const useAdv  = document.getElementById('useAdvancedStrategy');
-    const useV3El = document.getElementById('useV3DP');
-    const useV4El = document.getElementById('useV4Euro');
-    if (useAdv)  batteryParams.useAdvancedStrategy = useAdv.checked;
-    if (useV3El) batteryParams.useV3DP             = useV3El.checked;
-    if (useV4El) batteryParams.useV4Euro           = useV4El.checked;
-
-    const v2opts = {
-      useBattery: true,
-      useGridPrecharge,
-      useAdvancedStrategy: batteryParams.useAdvancedStrategy,
-      zeroExport,
-      batCapKwh,
-      sellFactor,
-      sellTariffs: sellProfile,
-    };
-    const v2Result = simulateBatteryAndEconomicsV2(bestPvArr, loadProfile, tariffProfile, v2opts);
-
-    // Show v2 results in the panel
-    const v1Savings = econResults[bestId].annualSavingsBat;
-    const deltaV2 = v2Result.annualSavings - v1Savings;
-    const v2SavEl = document.getElementById('v2Savings');
-    const v2DeltaEl = document.getElementById('v2Delta');
-    const v2ResDiv = document.getElementById('v2-results');
-    if (v2SavEl && v2DeltaEl && v2ResDiv) {
-      v2SavEl.textContent = v2Result.annualSavings.toFixed(0);
-      const sign = deltaV2 >= 0 ? '+' : '';
-      v2DeltaEl.textContent = `(${sign}€${deltaV2.toFixed(0)} vs v1)`;
-      v2DeltaEl.style.color = deltaV2 >= 0 ? '#28a745' : '#dc3545';
-      v2ResDiv.style.display = 'block';
-    }
-
-    // ── V3 DP simulation ───────────────────────────────────────────────────
-    const v3ResDiv   = document.getElementById('v3-results');
-    const v3SavEl    = document.getElementById('v3Savings');
-    const v3DeltaV1  = document.getElementById('v3DeltaV1');
-    const v3DeltaV2El = document.getElementById('v3DeltaV2');
-    const v3HorizonEl = document.getElementById('v3Horizon');
-    let v3Result = null;
-
-    if (batteryParams.useV3DP && v3ResDiv) {
-      const v3opts = {
-        useBattery: true,
-        useGridPrecharge,
-        zeroExport,
-        batCapKwh,
-        sellFactor,
-        sellTariffs: sellProfile,
-        horizonHours: batteryParams.forecastHorizon,
-      };
-      v3Result = simulateBatteryAndEconomicsV3(bestPvArr, loadProfile, tariffProfile, v3opts);
-
-      if (v3SavEl) v3SavEl.textContent = v3Result.annualSavings.toFixed(0);
-
-      const dv1  = v3Result.annualSavings - v1Savings;
-      const dv2  = v3Result.annualSavings - v2Result.annualSavings;
-      const s1   = dv1 >= 0 ? '+' : '';
-      const s2   = dv2 >= 0 ? '+' : '';
-      if (v3DeltaV1)   { v3DeltaV1.textContent = `(${s1}€${dv1.toFixed(0)} vs v1)`; v3DeltaV1.style.color = dv1 >= 0 ? '#28a745' : '#dc3545'; }
-      if (v3DeltaV2El) { v3DeltaV2El.textContent = `(${s2}€${dv2.toFixed(0)} vs v2)`; v3DeltaV2El.style.color = dv2 >= 0 ? '#28a745' : '#dc3545'; }
-      if (v3HorizonEl) v3HorizonEl.textContent = `[${batteryParams.forecastHorizon}h horizon]`;
-      v3ResDiv.style.display = 'block';
-
-      if (typeof window.drawV3CashflowChart === 'function') {
-        window.drawV3CashflowChart(v3Result.monthlyCashflow);
-      }
-
-    } else {
-      if (v3ResDiv) v3ResDiv.style.display = 'none';
-    }
-
-    // ── V4 full-year euro optimizer ───────────────────────────────────────
+  if (useBattery && batteryParams.useV4Euro && bestEcon && bestEcon.v4Result) {
     const v4ResDiv = document.getElementById('v4-results');
     const v4SavEl = document.getElementById('v4Savings');
     const v4DeltaEl = document.getElementById('v4DeltaV3');
     const v4DiagEl = document.getElementById('v4Diagnostics');
-    let visualPlan = v3Result || v2Result;
-
-    if (batteryParams.useV4Euro && v4ResDiv) {
-      const v4Result = simulateBatteryAndEconomicsV4(bestPvArr, loadProfile, tariffProfile, {
-        useBattery: true,
-        useGridPrecharge,
-        zeroExport,
-        batCapKwh,
-        sellFactor,
-        sellTariffs: sellProfile,
-      });
-      const compareBase = v3Result || v2Result;
-      const dv = v4Result.annualSavings - compareBase.annualSavings;
-      const sign = dv >= 0 ? '+' : '';
-      if (v4SavEl) v4SavEl.textContent = v4Result.annualSavings.toFixed(0);
-      if (v4DeltaEl) {
-        v4DeltaEl.textContent = `(${sign}€${dv.toFixed(0)} vs ${v3Result ? 'v3' : 'v2'})`;
-        v4DeltaEl.style.color = dv >= 0 ? '#28a745' : '#dc3545';
-      }
-      if (v4DiagEl) {
-        // V4 diagnostics focus on physical feasibility now that battery wear cost is excluded.
-        v4DiagEl.textContent = `[${v4Result.diagnostics.socStep.toFixed(2)} kWh SOC step · curtail ${v4Result.diagnostics.curtailedPv.toFixed(0)} kWh · final SOC ${v4Result.diagnostics.finalSoc.toFixed(1)} kWh]`;
-      }
-      v4ResDiv.style.display = 'block';
-      visualPlan = v4Result;
-      if (typeof window.drawV3CashflowChart === 'function') {
-        window.drawV3CashflowChart(v4Result.monthlyCashflow);
-      }
-    } else {
-      if (v4ResDiv) v4ResDiv.style.display = 'none';
-      if (typeof window.drawV3CashflowChart === 'function') {
-        window.drawV3CashflowChart(v3Result ? v3Result.monthlyCashflow : null);
-      }
+    const v4Result = bestEcon.v4Result;
+    const bonus = v4Result.annualSavings - bestEcon.annualSavingsNoBat;
+    const sign = bonus >= 0 ? '+' : '';
+    if (v4SavEl) v4SavEl.textContent = v4Result.annualSavings.toFixed(0);
+    if (v4DeltaEl) {
+      v4DeltaEl.textContent = `(${sign}€${bonus.toFixed(0)} vs no battery · Option ${bestId})`;
+      v4DeltaEl.style.color = bonus >= 0 ? '#28a745' : '#dc3545';
     }
-
+    if (v4DiagEl) {
+      // V4 diagnostics focus on physical feasibility now that battery wear cost is excluded.
+      v4DiagEl.textContent = `[${bestEcon.batteryPowerKw.toFixed(0)} kW battery · ${v4Result.diagnostics.socStep.toFixed(2)} kWh SOC step · curtail ${v4Result.diagnostics.curtailedPv.toFixed(0)} kWh · final SOC ${v4Result.diagnostics.finalSoc.toFixed(1)} kWh]`;
+    }
+    if (v4ResDiv) v4ResDiv.style.display = 'block';
+    if (typeof window.drawV3CashflowChart === 'function') {
+      window.drawV3CashflowChart(v4Result.monthlyCashflow);
+    }
     if (typeof window.drawDispatchVisualizer === 'function') {
-      window.drawDispatchVisualizer(visualPlan.hourlyPlan, visualPlan.batteryCapacityKwh || batCapKwh);
+      window.drawDispatchVisualizer(v4Result.hourlyPlan, v4Result.batteryCapacityKwh || batCapKwh);
     }
   } else {
     const v2ResDiv = document.getElementById('v2-results');
@@ -4944,7 +4962,9 @@ function runEconSim() {
  * Display economic simulation results in the UI.
  */
 function displayEconResults(econResults, batCapKwh, elapsedMs) {
-  const ids = CONFIGS.map(c => c.id).filter(id => econResults[id]);
+  const econConfigs = getEconomicComparisonConfigs();
+  const ids = econConfigs.map(c => c.id).filter(id => econResults[id]);
+  if (!ids.length) return;
   const savingsArr = ids.map(id => econResults[id].annualSavingsBat);
   const bestSavings = Math.max(...savingsArr);
   const worstSavings = Math.min(...savingsArr);
@@ -4954,7 +4974,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
 
   // ── Metrics cards ────────────────────────────────────────────────────────
   const cards = [
-    { label: 'Best annual savings', value: `€${bestSavings.toFixed(0)}`, sub: `Config ${bestCfgId}` },
+    { label: 'Best V4 savings', value: `€${bestSavings.toFixed(0)}`, sub: `Option ${bestCfgId}` },
     { label: 'Battery bonus', value: `€${Math.max(0, best.batBonus).toFixed(0)}`, sub: 'vs no-battery PV', hidden: !useBat },
     { label: 'PV self-cons rate', value: `${(best.selfConsRate * 100).toFixed(0)}%`, sub: `of ${best.pvYield.toFixed(0)} kWh PV` },
     { label: 'Battery equiv. cycles', value: useBat ? best.batCycles.toFixed(0) : '—', sub: useBat ? `${best.batThroughput.toFixed(0)} kWh throughput` : 'battery disabled' },
@@ -4969,13 +4989,16 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
   // ── Comparison table ──────────────────────────────────────────────────────
   const maxSavings = bestSavings;
   let tbody = '';
-  for (const cfg of CONFIGS) {
+  for (const cfg of econConfigs) {
     const r = econResults[cfg.id];
     if (!r) continue;
     const isBest = Math.abs(r.annualSavingsBat - maxSavings) < 1;
     const batBonusStr = r.batBonus > 0.5
       ? `<span style="color:#4ade80">+€${r.batBonus.toFixed(0)}</span>`
       : `<span style="color:#6b7280">—</span>`;
+    const spec = INVERTER_SPECS[cfg.id] || {};
+    const pvLimit = spec.totalPowerW ? `${(spec.totalPowerW / 1000).toFixed(0)} kW PV` : 'array PV';
+    const limitsStr = `${pvLimit} · ${r.batteryPowerKw.toFixed(0)} kW bat`;
     tbody += `<tr style="--cfg-color:${cfg.cfgColor}">
       <td class="cfg-name"><span class="cfg-dot" style="background:${cfg.cfgColor}"></span>${cfg.short}</td>
       <td>${r.pvYield.toFixed(0)}</td>
@@ -4984,6 +5007,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
       <td style="color:#fbbf24">€${r.annualSavingsNoBat.toFixed(0)}</td>
       <td class="${isBest ? 'best-val' : ''}" style="${isBest ? '' : 'color:#4ade80'}">€${r.annualSavingsBat.toFixed(0)} ${isBest ? '★' : ''}</td>
       <td>${batBonusStr}</td>
+      <td style="color:#9ca3af;font-size:.68rem">${limitsStr}</td>
     </tr>`;
   }
   document.getElementById('econTableBody').innerHTML = tbody;
@@ -4999,7 +5023,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
 
   // Collect monthly savings data for all configs (with battery)
   const months = ['J','F','M','A','M','J','J','A','S','O','N','D'];
-  const allMonthVals = CONFIGS.flatMap(cfg => econResults[cfg.id]
+  const allMonthVals = econConfigs.flatMap(cfg => econResults[cfg.id]
     ? Array.from(econResults[cfg.id].monthlySavingsBat) : []);
   const maxM = Math.max(...allMonthVals, 1);
   const minM = Math.min(...allMonthVals, 0);
@@ -5015,11 +5039,11 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
   }
 
   const barGrpW = pw / 12;
-  const nCfgs   = CONFIGS.filter(c => econResults[c.id]).length;
+  const nCfgs   = econConfigs.filter(c => econResults[c.id]).length;
   const barW    = barGrpW / (nCfgs + 1);
   const zeroY   = MT + ph - ((-minM) / range) * ph;
 
-  CONFIGS.forEach((cfg, ci) => {
+  econConfigs.forEach((cfg, ci) => {
     const r = econResults[cfg.id]; if (!r) return;
     cc.fillStyle = cfg.cfgColor;
     for (let m = 0; m < 12; m++) {
@@ -5040,7 +5064,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
 
   // Legend
   let lx = ML;
-  CONFIGS.forEach(cfg => {
+  econConfigs.forEach(cfg => {
     if (!econResults[cfg.id]) return;
     cc.fillStyle = cfg.cfgColor; cc.fillRect(lx, 7, 7, 7);
     cc.fillStyle = '#9ca3af'; cc.font = '8px sans-serif'; cc.textAlign = 'left';
@@ -5102,10 +5126,10 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
   const shade_delta = bestSavings - worstSavings;
   const worstCfgId  = ids[savingsArr.indexOf(worstSavings)];
   document.getElementById('shadeImpactText').innerHTML =
-    `Shade impact: <b style="color:#4ade80">Config ${bestCfgId}</b> saves `
+    `V4 comparison: <b style="color:#4ade80">Option ${bestCfgId}</b> saves `
     + `<b style="color:#4ade80">€${shade_delta.toFixed(0)}/yr more</b> `
-    + `than worst Config ${worstCfgId} `
-    + `— choose wiring carefully!`;
+    + `than worst Option ${worstCfgId} `
+    + `among A/C/F/G.`;
 
   // ── Note ─────────────────────────────────────────────────────────────────
   document.getElementById('econNoteText').textContent =
@@ -5115,6 +5139,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
     `Base load ${document.getElementById('econBaseLoadSlider').value} kWh/d + ` +
     `HP winter ${document.getElementById('econHpSlider').value} kWh/d (electrical). ` +
     `PV→battery efficiency: ${CHARGE_EFF_PV * 100 | 0}%/${DISCHARGE_EFF * 100 | 0}%. ` +
+    `Economic comparison uses V4 optimizer for Options A, C, F and G only; F=16 kW PV/10 kW battery, G=24 kW PV/10 kW battery. ` +
     `Battery degradation excluded. ` +
     `Heat pump COP not modeled. 5% SOC floor for all discharge strategies.`;
 
