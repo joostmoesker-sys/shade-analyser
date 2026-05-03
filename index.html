@@ -4606,7 +4606,7 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
     // quadratic penalty that would over-favour tiny deviations over real dispatch
     // value. The large €/kWh weight makes reaching the target dominate any
     // marginal final-hour arbitrage.
-    dpNext[s] = -Math.abs(s - initialState) * socStep * V4_TERMINAL_PENALTY_EUR_PER_KWH; // subtract end-SOC penalty
+    dpNext[s] = -Math.abs(s - initialState) * socStep * V4_TERMINAL_PENALTY_EUR_PER_KWH; // negative value penalizes end-SOC drift
   }
 
   const policy = new Int16Array(nH * states);
@@ -4906,6 +4906,7 @@ function runEconSim() {
         v4DeltaEl.style.color = dv >= 0 ? '#28a745' : '#dc3545';
       }
       if (v4DiagEl) {
+        // V4 diagnostics focus on physical feasibility now that battery wear cost is excluded.
         v4DiagEl.textContent = `[${v4Result.diagnostics.socStep.toFixed(2)} kWh SOC step · curtail ${v4Result.diagnostics.curtailedPv.toFixed(0)} kWh · final SOC ${v4Result.diagnostics.finalSoc.toFixed(1)} kWh]`;
       }
       v4ResDiv.style.display = 'block';
