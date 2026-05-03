@@ -1376,7 +1376,7 @@ const MIN_ROI_DISPLAY_YEARS = 5;
 // ── Battery storage constants (64 kWh system, already paid for) ──────────────
 // Battery is optional and capex is excluded from all savings calculations.
 const BATTERY_CAPACITY_KWH   = 64;
-const INITIAL_SOC_FRACTION    = 0.50;  // annual simulations start/end at 50% SOC
+const TARGET_SOC_FRACTION     = 0.50;  // annual simulations start/end at 50% SOC
 const MIN_SOC_SELL            = 0.05;  // 5% SOC floor for sell-to-grid strategy (3.2 kWh on 64 kWh)
 const MIN_SOC_SELF            = 0.05;  // 5% SOC floor for self-use discharge
 const CHARGE_EFF_PV           = 0.95;  // PV → battery one-way efficiency
@@ -1410,7 +1410,8 @@ const DP_SOC_STEPS      = 20;   // SOC discretisation: 5% steps (0..19 → 0%..9
 const DP_ACTIONS        = ['charge', 'discharge_self', 'discharge_export', 'idle'];
 const MAX_HORIZON_HOURS = 120;  // maximum DP look-ahead window (hours); 5-day horizon
 const V4_SOC_STEPS      = 96;   // finer full-year optimizer buckets (≈0.67 kWh at 64 kWh)
-const V4_TERMINAL_PENALTY_EUR_KWH = 1000; // far above hourly spreads, forcing final SOC back to initial
+const V4_TERMINAL_PENALTY_EUR_PER_KWH = 1000; // far above hourly spreads, forcing final SOC back to target
+const V4_EPSILON_KWH     = 1e-7; // numerical tolerance for SOC transition feasibility
 
 // ── House load profile constants (Dutch well-insulated house, 12 kW heat pump) ──
 // Base load: 12 kWh/day (appliances, lighting, EV slow-charge)
@@ -3538,7 +3539,7 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
   for (let h = 0; h < nH; h++) baselineCost += loadHourly[h] * tariffs[h];
 
   // ── Forward pass ──────────────────────────────────────────────────────────
-  let soc = batCapKwh * INITIAL_SOC_FRACTION;
+  let soc = batCapKwh * TARGET_SOC_FRACTION;
 
   // Accumulators (kWh)
   let selfDirect   = 0;  // PV directly consumed
@@ -3680,7 +3681,7 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
   const monthlySavingsBatArr   = new Float64Array(12);
   const monthlySavingsNoBatArr = new Float64Array(12);
   {
-    let soc2 = batCapKwh * INITIAL_SOC_FRACTION;
+    let soc2 = batCapKwh * TARGET_SOC_FRACTION;
     for (let h = 0; h < nH; h++) {
       const pv   = pvHourly[h];
       const load = loadHourly[h];
@@ -3710,7 +3711,7 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
   for (const [startDoy, seasonLabel] of [[1, 'Jan'], [182, 'Jul']]) {
     const traceLen = 14 * 24;
     const socArr   = new Float64Array(traceLen);
-    let   trSoc    = batCapKwh * INITIAL_SOC_FRACTION;
+    let   trSoc    = batCapKwh * TARGET_SOC_FRACTION;
     for (let i = 0; i < traceLen; i++) {
       const h        = (startDoy - 1) * 24 + i;
       if (h >= nH) break;
@@ -3899,7 +3900,7 @@ function simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, options = {}) {
   const dailyStats = precomputeDailyStats(pvKwh, loadKwh, tariffs, sellFactor, sellTariffs);
 
   // State
-  let soc = batCapKwh * INITIAL_SOC_FRACTION;
+  let soc = batCapKwh * TARGET_SOC_FRACTION;
 
   // kWh accumulators
   let selfDirect = 0, selfBattery = 0;
@@ -4186,7 +4187,7 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
   // drift from physical reality after the first day.
   const startSoc = (currentSoc !== null && currentSoc !== undefined && isFinite(currentSoc))
     ? currentSoc
-    : batCapKwh * INITIAL_SOC_FRACTION;
+    : batCapKwh * TARGET_SOC_FRACTION;
   const initialS = Math.min(states - 1, Math.max(0, Math.round(startSoc / socStep)));
   const plan = [];
   let curS = initialS;
@@ -4227,7 +4228,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
     return simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, { ...options, useAdvancedStrategy: false, batCapKwh });
   }
 
-  let soc = batCapKwh * INITIAL_SOC_FRACTION;
+  let soc = batCapKwh * TARGET_SOC_FRACTION;
 
   // kWh accumulators
   let selfDirect = 0, selfBattery = 0;
@@ -4460,7 +4461,7 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
 // share the same transition/economics model. The objective is direct cashflow:
 // export revenue - grid import cost - battery throughput wear cost.
 function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, params) {
-  const eps = 1e-7;
+  const eps = V4_EPSILON_KWH;
   const batCapKwh = params.batCapKwh;
   const minSoc = batCapKwh * MIN_SOC_SELF;
   const cycleCost = params.cycleCost ?? batteryParams.cycleCost ?? 0;
@@ -4584,7 +4585,7 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
   const states = V4_SOC_STEPS + 1;
   const socStep = batCapKwh / V4_SOC_STEPS;
   const minState = Math.ceil((batCapKwh * MIN_SOC_SELF) / socStep);
-  const initialState = Math.min(states - 1, Math.max(minState, Math.round((batCapKwh * INITIAL_SOC_FRACTION) / socStep)));
+  const initialState = Math.min(states - 1, Math.max(minState, Math.round((batCapKwh * TARGET_SOC_FRACTION) / socStep)));
   const maxChargeSteps = Math.ceil(
     Math.max(MAX_BATTERY_POWER_KW * CHARGE_EFF_PV, MAX_GRID_PRECHARGE_POWER_KW * GRID_ROUNDTRIP_EFF) / socStep,
   ) + 1;
@@ -4598,11 +4599,12 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
 
   let dpNext = new Float64Array(states);
   for (let s = 0; s < states; s++) {
-    // Linear distance penalty strongly steers the annual optimiser back to the
-    // initial SOC bucket without creating a fake one-off benefit from emptying
-    // the battery at year-end; with the large €/kWh weight, reaching the target
-    // dominates any marginal final-hour arbitrage.
-    dpNext[s] = -Math.abs(s - initialState) * socStep * V4_TERMINAL_PENALTY_EUR_KWH;
+    // A linear penalty gives every kWh of end-state drift the same opportunity
+    // cost, which is enough to enforce a neutral annual start/end SOC without a
+    // quadratic penalty that would over-favour tiny deviations over real dispatch
+    // value. The large €/kWh weight makes reaching the target dominate any
+    // marginal final-hour arbitrage.
+    dpNext[s] = -Math.abs(s - initialState) * socStep * V4_TERMINAL_PENALTY_EUR_PER_KWH;
   }
 
   const policy = new Int16Array(nH * states);
@@ -5109,11 +5111,12 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
   document.getElementById('econNoteText').textContent =
     `Completed in ${elapsedMs} ms. Clear-sky model (optimistic — real yield 15–25% lower with clouds). ` +
     `Battery capex excluded (already paid for). ` +
-    `Buy tariff = APX + €${TIBBER_OPSLAG_EUR_KWH.toFixed(2)}/kWh (Tibber opslag); sell = bare APX. ` +
+    `Buy tariff = APX + €${TIBBER_OPSLAG_EUR_KWH.toFixed(2)}/kWh (Tibber opslag/surcharge); sell = bare APX. ` +
     `Base load ${document.getElementById('econBaseLoadSlider').value} kWh/d + ` +
     `HP winter ${document.getElementById('econHpSlider').value} kWh/d (electrical). ` +
     `PV→battery efficiency: ${CHARGE_EFF_PV * 100 | 0}%/${DISCHARGE_EFF * 100 | 0}%. ` +
-    `No battery degradation. Heat pump COP not modeled. 5% SOC floor for all discharge strategies.`;
+    `V4 includes €${batteryParams.cycleCost.toFixed(3)}/kWh throughput wear cost; V1–V3 exclude degradation. ` +
+    `Heat pump COP not modeled. 5% SOC floor for all discharge strategies.`;
 
   document.getElementById('econResultsDiv').style.display = 'block';
   document.getElementById('econStatusLabel').textContent = `Done ✓ (${elapsedMs} ms)`;
