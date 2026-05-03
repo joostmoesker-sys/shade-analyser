@@ -338,7 +338,7 @@ It appears alongside V2 in the 🔋 Economic Forecast card and shows a **three-w
 2. The V3 panel appears automatically inside the Economic Forecast results section.
 3. Select the **Forecast Horizon** (24 h, 48 h, 96 h, or 120 h — default, 5-day rolling look-ahead).
 4. Enable or disable **Use V3 Dynamic Programming** with the checkbox.
-5. Click **Re-run with v2/v3 Strategy** to refresh the comparison.
+5. Click **Re-run with v2/v3/v4 Strategy** to refresh the comparison.
 
 #### DP Design
 
@@ -375,6 +375,40 @@ Saldering (net metering) is abolished in 2027. The model uses the post-2027 Tibb
 - V3 typically outperforms V1 by **15–25%** and V2 by **+5–10%** in battery-driven annual savings.
 - Largest gain on days with strong intra-day price variation (dynamic tariff peak/off-peak spread).
 - Performance: even at 120 h horizon the full-year DP run takes < 400 ms on a modern mid-range laptop (Chrome/Firefox, single-threaded JS).
+
+---
+
+### Advanced Battery Strategy v4 — Euro Optimizer
+
+#### Overview
+
+**V4** keeps V3 available as the lightweight rolling DP baseline and adds a full-year, euro-first optimizer for the best configuration. It optimizes annual cashflow directly instead of optimizing proxy rules such as fixed sell windows, average-price export gates, or self-consumption targets.
+
+#### Design
+
+| Parameter | Value |
+|---|---|
+| SOC states | 96 buckets plus endpoints (≈0.67 kWh at 64 kWh) |
+| Horizon | Full 8760-hour year |
+| Objective | Maximise export revenue − grid import cost − battery wear cost |
+| Terminal SOC | Penalised back to the initial 50% SOC to prevent end-of-year draining |
+| Dispatch model | Quantity-based SOC transitions; planner and executor use the same transition function |
+
+#### Dispatch Logic
+
+| Flow | Treatment |
+|---|---|
+| PV → load | Served first as the physical self-consumption baseline |
+| PV → battery | Used when its future value beats immediate positive export revenue |
+| PV → grid | Exported only when export is allowed and sell price is positive |
+| Grid → battery | Optional; selected only when enabled and cheaper than alternative stored energy |
+| Battery → load | Used when avoided import value exceeds future value and wear cost |
+| Battery → grid | Used only when export is allowed, sell price is positive, and no grid import remains in that hour |
+| Curtailment | Used for zero-export mode, capacity limits, or negative/zero sell prices |
+
+#### Diagnostics
+
+The V4 result line reports SOC bucket size, battery wear cost, curtailed PV, and final SOC. The monthly cashflow chart and July dispatch visualizer automatically use V4 when the optimizer is enabled.
 
 ---
 
@@ -427,4 +461,3 @@ In typical Dutch conditions with the 64 kWh battery:
 - v2 improves annual savings by **€50–€200** over v1 depending on tariff volatility.
 - Largest gains on high-price winter days when the dynamic SOC floor correctly reserves energy for evening peaks.
 - Grid pre-charge provides additional uplift when enabled and the tariff spread is favourable.
-

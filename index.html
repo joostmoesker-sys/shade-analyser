@@ -442,7 +442,7 @@
               <label>Self-use Premium: <span id="multiplierVal" style="color:#fbbf24;">1.05</span>×</label><br>
               <input type="range" id="selfMultiplier" min="1.0" max="1.20" step="0.01" value="1.05" style="width:140px;">
             </div>
-            <button id="runV2Btn" style="padding:7px 18px; background:#0d6efd; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.8rem;">Re-run with v2/v3 Strategy</button>
+            <button id="runV2Btn" style="padding:7px 18px; background:#0d6efd; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.8rem;">Re-run with v2/v3/v4 Strategy</button>
           </div>
           <div style="margin-top:12px; padding-top:10px; border-top:1px solid #1e3a5f; font-size:0.8rem; color:#d1d5db; display:flex; gap:16px; flex-wrap:wrap; align-items:center;">
             <label><strong style="color:#22c55e;">V3 Forecast Horizon:</strong></label>
@@ -455,6 +455,10 @@
             <label style="margin-left:8px; display:flex; align-items:center; gap:5px;">
               <input type="checkbox" id="useV3DP" checked style="accent-color:#22c55e;">
               Use V3 Dynamic Programming
+            </label>
+            <label style="margin-left:8px; display:flex; align-items:center; gap:5px;">
+              <input type="checkbox" id="useV4Euro" checked style="accent-color:#fbbf24;">
+              Use V4 Euro Optimizer
             </label>
           </div>
           <div id="v2-results" style="margin-top:10px; display:none; font-size:0.88rem; color:#d1d5db;">
@@ -469,10 +473,16 @@
             <span id="v3DeltaV2" style="font-weight:bold; margin-left:6px; color:#60a5fa;"></span>
             <span id="v3Horizon" style="margin-left:6px; color:#9ca3af; font-size:0.78rem;"></span>
           </div>
+          <div id="v4-results" style="margin-top:6px; display:none; font-size:0.88rem; color:#d1d5db;">
+            <strong style="color:#fbbf24;">v4 Euro Optimizer (best config):</strong>
+            <span id="v4Savings" style="color:#4ade80; font-weight:700; font-size:1rem;"></span> €
+            <span id="v4DeltaV3" style="font-weight:bold; margin-left:6px;"></span>
+            <span id="v4Diagnostics" style="margin-left:6px; color:#9ca3af; font-size:0.78rem;"></span>
+          </div>
           <div id="v3CashflowWrap" class="v3-cashflow-chart-wrap">
             <canvas id="v3CashflowChart" width="720" height="190" style="border:1px solid #374151; border-radius:4px; width:100%; max-width:720px; display:block;"></canvas>
             <div style="font-size:0.7rem; color:#6b7280; margin-top:4px;">
-              V3 monthly cashflow — <span style="color:#4ade80;">■</span> savings
+              V3/V4 monthly cashflow — <span style="color:#4ade80;">■</span> savings
               · <span style="color:#60a5fa;">■</span> baseline grid cost
               · <span style="color:#f97316;">■</span> import cost
               · <span style="color:#22c55e;">■</span> export revenue
@@ -1391,12 +1401,15 @@ let batteryParams = {
   cycleCost:          0.025,  // estimated cost per kWh cycle (wear, depreciation)
   useAdvancedStrategy: true,  // v2 smart dispatch on; false → v1 behaviour
   useV3DP:            true,   // v3 dynamic programming dispatch on
+  useV4Euro:          true,   // v4 full-year euro optimizer on
 };
 
 // ── V3 Dynamic Programming constants ─────────────────────────────────────────
 const DP_SOC_STEPS      = 20;   // SOC discretisation: 5% steps (0..19 → 0%..95% of capacity)
 const DP_ACTIONS        = ['charge', 'discharge_self', 'discharge_export', 'idle'];
 const MAX_HORIZON_HOURS = 120;  // maximum DP look-ahead window (hours); 5-day horizon
+const V4_SOC_STEPS      = 96;   // finer full-year optimizer buckets (≈0.67 kWh at 64 kWh)
+const V4_TERMINAL_PENALTY_EUR_KWH = 1000; // force final SOC back to the initial annual SOC
 
 // ── House load profile constants (Dutch well-insulated house, 12 kW heat pump) ──
 // Base load: 12 kWh/day (appliances, lighting, EV slow-charge)
@@ -4441,6 +4454,300 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
   };
 }
 
+// ── V4 FULL-YEAR EURO OPTIMIZER ───────────────────────────────────────────────
+// Keeps V3 intact and adds a finer, quantity-based DP whose planner and executor
+// share the same transition/economics model. The objective is direct cashflow:
+// export revenue - grid import cost - battery throughput wear cost.
+function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, params) {
+  const eps = 1e-7;
+  const batCapKwh = params.batCapKwh;
+  const minSoc = batCapKwh * MIN_SOC_SELF;
+  const cycleCost = params.cycleCost ?? batteryParams.cycleCost ?? 0;
+  const zeroExport = !!params.zeroExport;
+  const allowGridPrecharge = !!params.allowGridPrecharge;
+
+  if (nextSoc < minSoc - eps || nextSoc > batCapKwh + eps) return null;
+
+  const delta = nextSoc - curSoc;
+  const selfDirect = Math.min(pv, load);
+  let loadDeficit = Math.max(0, load - selfDirect);
+  let surplusPv = Math.max(0, pv - selfDirect);
+
+  let importGrid = loadDeficit;
+  let importCost = importGrid * buyPrice;
+  let revenue = 0;
+  let pvExport = 0, batteryExport = 0, selfBattery = 0;
+  let pvChargeInput = 0, gridChargeInput = 0;
+  let batteryChargeStored = 0, batteryDischargeDrawn = 0;
+  let curtailedPv = 0, cycleWearCost = 0;
+
+  if (delta > eps) {
+    const totalStoreCap = Math.min(MAX_BATTERY_POWER_KW * CHARGE_EFF_PV, Math.max(0, batCapKwh - curSoc));
+    const pvStoreCap = Math.min(
+      surplusPv * CHARGE_EFF_PV,
+      totalStoreCap,
+    );
+    const gridStoreCap = allowGridPrecharge
+      ? Math.min(MAX_GRID_PRECHARGE_POWER_KW * GRID_ROUNDTRIP_EFF, totalStoreCap)
+      : 0;
+
+    if (delta > Math.min(totalStoreCap, pvStoreCap + gridStoreCap) + eps) return null;
+
+    let remainingStore = delta;
+    let pvStore = 0, gridStore = 0;
+    const pvOpportunityCost = (!zeroExport && sellPrice > 0) ? sellPrice / CHARGE_EFF_PV : 0;
+    const gridStoredCost = buyPrice / GRID_ROUNDTRIP_EFF;
+
+    if (gridStoredCost < pvOpportunityCost) {
+      gridStore = Math.min(remainingStore, gridStoreCap);
+      remainingStore -= gridStore;
+      pvStore = Math.min(remainingStore, pvStoreCap);
+    } else {
+      pvStore = Math.min(remainingStore, pvStoreCap);
+      remainingStore -= pvStore;
+      gridStore = Math.min(remainingStore, gridStoreCap);
+    }
+
+    if (pvStore + gridStore + eps < delta) return null;
+
+    pvChargeInput = pvStore / CHARGE_EFF_PV;
+    gridChargeInput = gridStore / GRID_ROUNDTRIP_EFF;
+    surplusPv = Math.max(0, surplusPv - pvChargeInput);
+    importGrid += gridChargeInput;
+    importCost += gridChargeInput * buyPrice;
+    batteryChargeStored = delta;
+    cycleWearCost += batteryChargeStored * cycleCost;
+  } else if (delta < -eps) {
+    const draw = -delta;
+    const availableDraw = Math.max(0, curSoc - minSoc);
+    if (draw > availableDraw + eps) return null;
+
+    const delivered = draw * DISCHARGE_EFF;
+    if (delivered > MAX_BATTERY_POWER_KW + eps) return null;
+
+    selfBattery = Math.min(delivered, loadDeficit);
+    loadDeficit -= selfBattery;
+    importGrid = loadDeficit;
+    importCost = importGrid * buyPrice;
+
+    const remainingDelivered = delivered - selfBattery;
+    if (remainingDelivered > eps) {
+      if (zeroExport || loadDeficit > eps || sellPrice <= 0) return null;
+      batteryExport = remainingDelivered;
+      revenue += batteryExport * sellPrice;
+    }
+
+    batteryDischargeDrawn = draw;
+    cycleWearCost += batteryDischargeDrawn * cycleCost;
+  }
+
+  if (!zeroExport && sellPrice > 0 && surplusPv > eps) {
+    pvExport = surplusPv;
+    revenue += pvExport * sellPrice;
+  } else {
+    curtailedPv = surplusPv;
+  }
+
+  const cashflow = revenue - importCost - cycleWearCost;
+  return {
+    cashflow,
+    selfDirect,
+    selfBattery,
+    pvExport,
+    batteryExport,
+    importGrid,
+    importCost,
+    revenue,
+    pvChargeInput,
+    gridChargeInput,
+    batteryChargeStored,
+    batteryDischargeDrawn,
+    cycleWearCost,
+    curtailedPv,
+  };
+}
+
+function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
+  const useBattery   = options.useBattery ?? true;
+  const usePrecharge = options.useGridPrecharge ?? false;
+  const zeroExport   = options.zeroExport ?? false;
+  const batCapKwh    = options.batCapKwh ?? BATTERY_CAPACITY_KWH;
+  const sellFactor   = options.sellFactor ?? SELL_PRICE_FACTOR_DEF;
+  const sellTariffs  = options.sellTariffs ?? null;
+  const nH           = Math.min(8760, pvKwh.length, loadKwh.length, tariffs.length);
+
+  if (!useBattery) {
+    return simulateBatteryAndEconomicsV2(pvKwh, loadKwh, tariffs, { ...options, useAdvancedStrategy: false, batCapKwh });
+  }
+
+  const states = V4_SOC_STEPS + 1;
+  const socStep = batCapKwh / V4_SOC_STEPS;
+  const minState = Math.ceil((batCapKwh * MIN_SOC_SELF) / socStep);
+  const initialState = Math.min(states - 1, Math.max(minState, Math.round((batCapKwh * 0.5) / socStep)));
+  const maxChargeSteps = Math.ceil(
+    Math.max(MAX_BATTERY_POWER_KW * CHARGE_EFF_PV, MAX_GRID_PRECHARGE_POWER_KW * GRID_ROUNDTRIP_EFF) / socStep,
+  ) + 1;
+  const maxDischargeSteps = Math.ceil((MAX_BATTERY_POWER_KW / DISCHARGE_EFF) / socStep) + 1;
+  const params = {
+    batCapKwh,
+    zeroExport,
+    allowGridPrecharge: usePrecharge,
+    cycleCost: batteryParams.cycleCost,
+  };
+
+  let dpNext = new Float64Array(states);
+  for (let s = 0; s < states; s++) {
+    dpNext[s] = -Math.abs(s - initialState) * socStep * V4_TERMINAL_PENALTY_EUR_KWH;
+  }
+
+  const policy = new Int16Array(nH * states);
+  policy.fill(-1);
+
+  for (let h = nH - 1; h >= 0; h--) {
+    const dpCur = new Float64Array(states);
+    dpCur.fill(-1e15);
+    const pv = pvKwh[h];
+    const load = loadKwh[h];
+    const buyPrice = tariffs[h];
+    const sellPrice = sellTariffs ? sellTariffs[h] : buyPrice * sellFactor;
+
+    for (let s = minState; s < states; s++) {
+      const curSoc = s * socStep;
+      const lo = Math.max(minState, s - maxDischargeSteps);
+      const hi = Math.min(states - 1, s + maxChargeSteps);
+      let bestVal = -1e15;
+      let bestNext = s;
+
+      for (let ns = lo; ns <= hi; ns++) {
+        const flow = evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, ns * socStep, params);
+        if (!flow) continue;
+        const val = flow.cashflow + dpNext[ns];
+        if (val > bestVal) {
+          bestVal = val;
+          bestNext = ns;
+        }
+      }
+
+      dpCur[s] = bestVal;
+      policy[h * states + s] = bestNext;
+    }
+    dpNext = dpCur;
+  }
+
+  let socState = initialState;
+  let selfDirect = 0, selfBattery = 0;
+  let exportPv = 0, exportBattery = 0;
+  let importGrid = 0;
+  let batteryFromPv = 0, batteryFromGrid = 0;
+  let batteryChargedStored = 0, batteryDischargedDrawn = 0;
+  let curtailedPv = 0, cycleWearCost = 0;
+  let revenue = 0, importCost = 0;
+  const monthlyBaselineCost = new Float64Array(12);
+  const monthlyImportCost = new Float64Array(12);
+  const monthlyRevenue = new Float64Array(12);
+  const monthlyPvExportRevenue = new Float64Array(12);
+  const monthlyBatteryExportRevenue = new Float64Array(12);
+  const monthlyWearCost = new Float64Array(12);
+  const monthlySavings = new Float64Array(12);
+
+  const planStart = 180 * 24;
+  const planEnd   = 187 * 24;
+  const hourlyPlan = [];
+
+  for (let h = 0; h < nH; h++) {
+    const nextState = policy[h * states + socState] >= 0 ? policy[h * states + socState] : socState;
+    const pv = pvKwh[h];
+    const load = loadKwh[h];
+    const buyPrice = tariffs[h];
+    const sellPrice = sellTariffs ? sellTariffs[h] : buyPrice * sellFactor;
+    const curSoc = socState * socStep;
+    const nextSoc = nextState * socStep;
+    const flow = evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, params);
+    if (!flow) continue;
+
+    const month = new Date(2025, 0, Math.floor(h / 24) + 1).getMonth();
+    monthlyBaselineCost[month] += load * buyPrice;
+    monthlyImportCost[month] += flow.importCost;
+    monthlyRevenue[month] += flow.revenue;
+    monthlyPvExportRevenue[month] += flow.pvExport * sellPrice;
+    monthlyBatteryExportRevenue[month] += flow.batteryExport * sellPrice;
+    monthlyWearCost[month] += flow.cycleWearCost;
+
+    selfDirect += flow.selfDirect;
+    selfBattery += flow.selfBattery;
+    exportPv += flow.pvExport;
+    exportBattery += flow.batteryExport;
+    importGrid += flow.importGrid;
+    batteryFromPv += flow.pvChargeInput;
+    batteryFromGrid += flow.gridChargeInput;
+    batteryChargedStored += flow.batteryChargeStored;
+    batteryDischargedDrawn += flow.batteryDischargeDrawn;
+    curtailedPv += flow.curtailedPv;
+    cycleWearCost += flow.cycleWearCost;
+    revenue += flow.revenue;
+    importCost += flow.importCost;
+
+    if (h >= planStart && h < planEnd) {
+      const action = flow.selfBattery > 0 ? 'self'
+                   : flow.batteryExport > 0 ? 'export'
+                   : flow.gridChargeInput > 0 ? 'precharge'
+                   : flow.pvChargeInput > 0 ? 'charge'
+                   : flow.curtailedPv > 0 ? 'curtail'
+                   : 'idle';
+      hourlyPlan.push({
+        hour:      h,
+        soc:       nextSoc,
+        charge:    flow.pvChargeInput + flow.gridChargeInput,
+        discharge: flow.selfBattery + flow.batteryExport,
+        price:     buyPrice,
+        action,
+      });
+    }
+
+    socState = nextState;
+  }
+
+  const baselineCost = loadKwh.reduce((s, l, i) => i < nH ? s + l * tariffs[i] : s, 0);
+  const totalCost = importCost + cycleWearCost;
+  const annualSavings = baselineCost - (totalCost - revenue);
+  for (let m = 0; m < 12; m++) {
+    monthlySavings[m] = monthlyBaselineCost[m] - (monthlyImportCost[m] + monthlyWearCost[m] - monthlyRevenue[m]);
+  }
+
+  return {
+    version:           'v4-euro-optimizer',
+    annualSavings:     Math.round(annualSavings * 100) / 100,
+    pvYield:           pvKwh.reduce((a, b, i) => i < nH ? a + b : a, 0),
+    selfConsumed:      selfDirect + selfBattery,
+    exported:          exportPv + exportBattery,
+    imported:          importGrid,
+    revenue:           Math.round(revenue * 100) / 100,
+    cost:              Math.round(totalCost * 100) / 100,
+    batteryThroughput: Math.round(((batteryChargedStored + batteryDischargedDrawn) / 2) * 100) / 100,
+    cycles:            Math.round(((batteryChargedStored + batteryDischargedDrawn) / 2) / (batCapKwh + 1e-9)),
+    batteryCapacityKwh: batCapKwh,
+    diagnostics: {
+      importCost:       Math.round(importCost * 100) / 100,
+      cycleWearCost:    Math.round(cycleWearCost * 100) / 100,
+      pvExportRevenue:  Math.round(monthlyPvExportRevenue.reduce((a, b) => a + b, 0) * 100) / 100,
+      batteryExportRevenue: Math.round(monthlyBatteryExportRevenue.reduce((a, b) => a + b, 0) * 100) / 100,
+      curtailedPv:      Math.round(curtailedPv * 100) / 100,
+      finalSoc:         Math.round((socState * socStep) * 100) / 100,
+      socStep:          Math.round(socStep * 100) / 100,
+    },
+    monthlyCashflow: {
+      baselineCost: Array.from(monthlyBaselineCost),
+      importCost: Array.from(monthlyImportCost),
+      revenue: Array.from(monthlyRevenue),
+      pvExportRevenue: Array.from(monthlyPvExportRevenue),
+      batteryExportRevenue: Array.from(monthlyBatteryExportRevenue),
+      wearCost: Array.from(monthlyWearCost),
+      savings: Array.from(monthlySavings),
+    },
+    hourlyPlan,
+  };
+}
+
 /**
  * Run economic analysis for all configs and update the UI.
  * Called by the "Run Economic Analysis" button and automatically after yearly sim.
@@ -4494,11 +4801,13 @@ function runEconSim() {
     const bestPvArr = lastHourlyPvKwh[bestId] instanceof Float64Array
       ? lastHourlyPvKwh[bestId] : new Float64Array(lastHourlyPvKwh[bestId]);
 
-    // Read v2/v3 params from the UI panel (they may have been updated by sliders/toggles)
+    // Read v2/v3/v4 params from the UI panel (they may have been updated by sliders/toggles)
     const useAdv  = document.getElementById('useAdvancedStrategy');
     const useV3El = document.getElementById('useV3DP');
+    const useV4El = document.getElementById('useV4Euro');
     if (useAdv)  batteryParams.useAdvancedStrategy = useAdv.checked;
     if (useV3El) batteryParams.useV3DP             = useV3El.checked;
+    if (useV4El) batteryParams.useV4Euro           = useV4El.checked;
 
     const v2opts = {
       useBattery: true,
@@ -4531,6 +4840,7 @@ function runEconSim() {
     const v3DeltaV1  = document.getElementById('v3DeltaV1');
     const v3DeltaV2El = document.getElementById('v3DeltaV2');
     const v3HorizonEl = document.getElementById('v3Horizon');
+    let v3Result = null;
 
     if (batteryParams.useV3DP && v3ResDiv) {
       const v3opts = {
@@ -4542,7 +4852,7 @@ function runEconSim() {
         sellTariffs: sellProfile,
         horizonHours: batteryParams.forecastHorizon,
       };
-      const v3Result = simulateBatteryAndEconomicsV3(bestPvArr, loadProfile, tariffProfile, v3opts);
+      v3Result = simulateBatteryAndEconomicsV3(bestPvArr, loadProfile, tariffProfile, v3opts);
 
       if (v3SavEl) v3SavEl.textContent = v3Result.annualSavings.toFixed(0);
 
@@ -4559,23 +4869,65 @@ function runEconSim() {
         window.drawV3CashflowChart(v3Result.monthlyCashflow);
       }
 
-      // Draw dispatch visualizer with v3 plan (v3 wins priority if enabled)
-      if (typeof window.drawDispatchVisualizer === 'function') {
-        window.drawDispatchVisualizer(v3Result.hourlyPlan, v3Result.batteryCapacityKwh || batCapKwh);
-      }
     } else {
       if (v3ResDiv) v3ResDiv.style.display = 'none';
-      if (typeof window.drawV3CashflowChart === 'function') {
-        window.drawV3CashflowChart(null);
-      }
+    }
 
-      // Draw dispatch visualizer with v2 plan when v3 is disabled
-      if (typeof window.drawDispatchVisualizer === 'function') {
-        window.drawDispatchVisualizer(v2Result.hourlyPlan, v2Result.batteryCapacityKwh || batCapKwh);
+    // ── V4 full-year euro optimizer ───────────────────────────────────────
+    const v4ResDiv = document.getElementById('v4-results');
+    const v4SavEl = document.getElementById('v4Savings');
+    const v4DeltaEl = document.getElementById('v4DeltaV3');
+    const v4DiagEl = document.getElementById('v4Diagnostics');
+    let visualPlan = v3Result || v2Result;
+
+    if (batteryParams.useV4Euro && v4ResDiv) {
+      const v4Result = simulateBatteryAndEconomicsV4(bestPvArr, loadProfile, tariffProfile, {
+        useBattery: true,
+        useGridPrecharge,
+        zeroExport,
+        batCapKwh,
+        sellFactor,
+        sellTariffs: sellProfile,
+      });
+      const compareBase = v3Result || v2Result;
+      const dv = v4Result.annualSavings - compareBase.annualSavings;
+      const sign = dv >= 0 ? '+' : '';
+      if (v4SavEl) v4SavEl.textContent = v4Result.annualSavings.toFixed(0);
+      if (v4DeltaEl) {
+        v4DeltaEl.textContent = `(${sign}€${dv.toFixed(0)} vs ${v3Result ? 'v3' : 'v2'})`;
+        v4DeltaEl.style.color = dv >= 0 ? '#28a745' : '#dc3545';
+      }
+      if (v4DiagEl) {
+        v4DiagEl.textContent = `[${v4Result.diagnostics.socStep.toFixed(2)} kWh SOC step · wear €${v4Result.diagnostics.cycleWearCost.toFixed(0)} · curtail ${v4Result.diagnostics.curtailedPv.toFixed(0)} kWh · final SOC ${v4Result.diagnostics.finalSoc.toFixed(1)} kWh]`;
+      }
+      v4ResDiv.style.display = 'block';
+      visualPlan = v4Result;
+      if (typeof window.drawV3CashflowChart === 'function') {
+        window.drawV3CashflowChart(v4Result.monthlyCashflow);
+      }
+    } else {
+      if (v4ResDiv) v4ResDiv.style.display = 'none';
+      if (typeof window.drawV3CashflowChart === 'function') {
+        window.drawV3CashflowChart(v3Result ? v3Result.monthlyCashflow : null);
       }
     }
-  } else if (typeof window.drawV3CashflowChart === 'function') {
-    window.drawV3CashflowChart(null);
+
+    if (typeof window.drawDispatchVisualizer === 'function') {
+      window.drawDispatchVisualizer(visualPlan.hourlyPlan, visualPlan.batteryCapacityKwh || batCapKwh);
+    }
+  } else {
+    const v2ResDiv = document.getElementById('v2-results');
+    const v3ResDiv = document.getElementById('v3-results');
+    const v4ResDiv = document.getElementById('v4-results');
+    if (v2ResDiv) v2ResDiv.style.display = 'none';
+    if (v3ResDiv) v3ResDiv.style.display = 'none';
+    if (v4ResDiv) v4ResDiv.style.display = 'none';
+    if (typeof window.drawV3CashflowChart === 'function') {
+      window.drawV3CashflowChart(null);
+    }
+    if (typeof window.drawDispatchVisualizer === 'function') {
+      window.drawDispatchVisualizer([], batCapKwh);
+    }
   }
 }
 
@@ -5215,10 +5567,20 @@ function initBatteryV2UI() {
     });
   }
 
+  // V4 toggle: update full-year euro optimizer
+  const useV4El = document.getElementById('useV4Euro');
+  if (useV4El) {
+    useV4El.addEventListener('change', function () {
+      batteryParams.useV4Euro = this.checked;
+      if (lastEconResults) setTimeout(runEconSim, 20);
+    });
+  }
+
   // Re-run button: update batteryParams and re-run economic simulation
   runBtn.addEventListener('click', function () {
     batteryParams.useAdvancedStrategy = useAdv.checked;
     if (useV3El) batteryParams.useV3DP = useV3El.checked;
+    if (useV4El) batteryParams.useV4Euro = useV4El.checked;
     if (lastEconResults) {
       document.getElementById('econStatusLabel').textContent = 'Computing…';
       document.getElementById('econStatusLabel').style.color = '#fbbf24';
