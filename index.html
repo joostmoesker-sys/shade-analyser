@@ -4460,6 +4460,12 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
 // Keeps V3 intact and adds a finer, quantity-based DP whose planner and executor
 // share the same transition/economics model. The objective is direct cashflow:
 // export revenue - grid import cost.
+/**
+ * Evaluate one V4 SOC transition for a single hour.
+ * Returns the physically feasible energy flows and their euro cashflow, or null
+ * when the requested next SOC would violate battery capacity, power, SOC floor,
+ * zero-export, or no-simultaneous-import/export guardrails.
+ */
 function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, params) {
   const eps = V4_EPSILON_KWH;
   const batCapKwh = params.batCapKwh;
@@ -4600,7 +4606,7 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
     // quadratic penalty that would over-favour tiny deviations over real dispatch
     // value. The large €/kWh weight makes reaching the target dominate any
     // marginal final-hour arbitrage.
-    dpNext[s] = -Math.abs(s - initialState) * socStep * V4_TERMINAL_PENALTY_EUR_PER_KWH;
+    dpNext[s] = -Math.abs(s - initialState) * socStep * V4_TERMINAL_PENALTY_EUR_PER_KWH; // subtract end-SOC penalty
   }
 
   const policy = new Int16Array(nH * states);
@@ -5106,7 +5112,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
     `Base load ${document.getElementById('econBaseLoadSlider').value} kWh/d + ` +
     `HP winter ${document.getElementById('econHpSlider').value} kWh/d (electrical). ` +
     `PV→battery efficiency: ${CHARGE_EFF_PV * 100 | 0}%/${DISCHARGE_EFF * 100 | 0}%. ` +
-    `Battery degradation excluded; battery is treated as already paid for. ` +
+    `Battery degradation excluded. ` +
     `Heat pump COP not modeled. 5% SOC floor for all discharge strategies.`;
 
   document.getElementById('econResultsDiv').style.display = 'block';
