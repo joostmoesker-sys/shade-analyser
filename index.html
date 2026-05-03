@@ -1117,7 +1117,7 @@ self.onmessage = function(e) {
 'use strict';
 
 // ── Panel & array constants ─────────────────────────────────────────────────
-const ROWS = 8, COLS = 9;
+const ROWS = 8, COLS = 11;
 const BYPASS_VD = 0.5, VT_25 = 0.025693;
 const STC_IRRAD = 1000; // W/m²
 
@@ -1146,8 +1146,6 @@ function sectionOf(r) { return r <= SECTION_DIV ? 0 : 1; }
 // ── Colour palettes ────────────────────────────────────────────────────────
 const COL3 = ['#38bdf8', '#4ade80', '#fb923c'];
 const COL4 = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490'];
-const COL5 = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490', '#164e63'];
-const COL6 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24'];
 const COL8 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171'];
 
 // ── Monthly cloud-correction factors (Kc) for Neer, NL ────────────────────
@@ -1212,53 +1210,11 @@ const HOURLY_APX_PRICE_2025 = [
 // ── Block structure helpers ────────────────────────────────────────────────
 const ROW_GROUPS  = [[0,1],[2,4],[5,7]];       // 2+3+3 rows: 1–2 | 3–5 | 6–8 (configs A/B)
 const ROW_GROUPS4 = [[0,1],[2,3],[4,5],[6,7]]; // 2+2+2+2 rows (configs F/G — 4 MPPTs)
-const COL_GROUPS  = [[0,2],[3,5],[6,8]];       // 3+3+3 cols  (configs D/E/H/I)
-const COL_GROUPS5 = [[0,1],[2,3],[4,5],[6,7],[8,8]]; // 2+2+2+2+1 cols (configs J/K — 5 MPPTs)
-const DE_ROW_GROUPS = [[0,1],[2,4],[5,7]];     // 2+3+3 rows — 3×3 blocks on bottom (configs D/E)
-const DE_BLOCKS = DE_ROW_GROUPS.flatMap(([r0,r1]) => COL_GROUPS.map(([c0,c1]) => ({r0,r1,c0,c1})));
-// Column-span blocks for H/I (all 8 rows, 3 col groups)
-const HI_BLOCKS = COL_GROUPS.map(([c0,c1]) => ({r0:0, r1:ROWS-1, c0, c1}));
-// Column-span blocks for J/K (all 8 rows, 5 col groups)
-const JK_BLOCKS = COL_GROUPS5.map(([c0,c1]) => ({r0:0, r1:ROWS-1, c0, c1}));
 
-/** Build ordered cell list for a row-wise snake (L): 8 rows × 9 cols, 12 panels/string */
-function buildSnakeRowCells() {
-  const strings = Array.from({length: 6}, () => []);
-  let idx = 0;
-  for (let r = 0; r < ROWS; r++) {
-    const ltr = r % 2 === 0;
-    for (let ci = 0; ci < COLS; ci++) {
-      const c = ltr ? ci : COLS - 1 - ci;
-      strings[Math.floor(idx / 12)].push({r, c});
-      idx++;
-    }
-  }
-  return strings;
-}
-
-/** Build ordered cell list for a column-wise snake (M): 8 rows × 9 cols, 12 panels/string */
-function buildSnakeColCells() {
-  const strings = Array.from({length: 6}, () => []);
-  let idx = 0;
-  for (let c = 0; c < COLS; c++) {
-    const ttb = c % 2 === 0;
-    for (let ri = 0; ri < ROWS; ri++) {
-      const r = ttb ? ri : ROWS - 1 - ri;
-      strings[Math.floor(idx / 12)].push({r, c});
-      idx++;
-    }
-  }
-  return strings;
-}
-
-const SNAKE_ROW_CELLS = buildSnakeRowCells(); // 6 strings × 12 cells each (config L)
-const SNAKE_COL_CELLS = buildSnakeColCells(); // 6 strings × 12 cells each (config M)
-
-const COL9 = ['#38bdf8','#4ade80','#fb923c','#a78bfa','#f472b6','#fbbf24','#34d399','#f87171','#60a5fa'];
 const CONFIGS = [
   {
     id:'A', label:'Option A', short:'A \u2014 SP',
-    desc:'3 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20135 | 6\u20138, each = parallel strings of 9 \u00b7 economic model: unlimited charge, 18 kW discharge, 200 W standby',
+    desc:'3 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20135 | 6\u20138, each = parallel strings of 11 \u00b7 economic model: unlimited charge, 18 kW discharge, 200 W standby',
     cfgColor:'#38bdf8', mpptColors:COL3,
     econChargePowerKw: Infinity,
     econDischargePowerKw: 18,
@@ -1275,7 +1231,7 @@ const CONFIGS = [
   },
   {
     id:'C', label:'Option C', short:'C \u2014 1\u00d79',
-    desc:'8 MPPTs \u00b7 1 series string per row (9 panels each) \u00b7 economic model: unlimited charge, 18 kW discharge, 200 W standby',
+    desc:'8 MPPTs \u00b7 1 series string per row (11 panels each) \u00b7 economic model: unlimited charge, 18 kW discharge, 200 W standby',
     cfgColor:'#4ade80', mpptColors:COL8,
     econChargePowerKw: Infinity,
     econDischargePowerKw: 18,
@@ -1285,20 +1241,8 @@ const CONFIGS = [
     blocks: Array.from({length:ROWS},(_,r)=>({r0:r,r1:r,c0:0,c1:COLS-1,topo:'series',label:`MPPT ${r+1} (row ${r+1})`})),
   },
   {
-    id:'D', label:'Option D', short:'D \u2014 Blk SP',
-    desc:'9 MPPTs \u00b7 Block SP: 3\u00d73 macro grid (2\u00d73 top + 3\u00d73 mid/bot blocks), SP within each block',
-    cfgColor:'#fb923c', mpptColors:COL9,
-    blocks: DE_BLOCKS.map((b,i)=>({...b,topo:'sp',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
-  },
-  {
-    id:'E', label:'Option E', short:'E \u2014 Blk TCT',
-    desc:'9 MPPTs \u00b7 Block V-TCT: same block structure as D (2\u00d73 top + 3\u00d73 mid/bot), cross-tied within each block',
-    cfgColor:'#f472b6', mpptColors:COL9,
-    blocks: DE_BLOCKS.map((b,i)=>({...b,topo:'v-tct',label:`MPPT ${i+1} (r${b.r0+1}\u2013${b.r1+1},c${b.c0+1}\u2013${b.c1+1})`})),
-  },
-  {
     id:'F', label:'Option F', short:'F \u2014 16kW PV/10kW bat',
-    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d79 = 18 panels per MPPT) \u00b7 16 kW PV limit \u00b7 10 kW battery charge/discharge',
+    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d711 = 22 panels per MPPT) \u00b7 16 kW PV limit \u00b7 10 kW battery charge/discharge',
     cfgColor:'#22d3ee', mpptColors:COL4,
     econChargePowerKw: 10,
     econDischargePowerKw: 10,
@@ -1306,47 +1250,11 @@ const CONFIGS = [
   },
   {
     id:'G', label:'Option G', short:'G \u2014 24kW PV/10kW bat',
-    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d79 = 18 panels per MPPT) \u00b7 24 kW PV limit \u00b7 10 kW battery charge/discharge',
+    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d711 = 22 panels per MPPT) \u00b7 24 kW PV limit \u00b7 10 kW battery charge/discharge',
     cfgColor:'#f59e0b', mpptColors:COL4,
     econChargePowerKw: 10,
     econDischargePowerKw: 10,
     blocks: ROW_GROUPS4.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
-  },
-  {
-    id:'H', label:'Option H', short:'H \u2014 3\u00d7col-SP',
-    desc:'3 MPPTs \u00b7 col-SP: col groups 1\u20133 | 4\u20136 | 7\u20139 \u2014 each col = 8-panel series string, 3 strings in \u2225 per MPPT',
-    cfgColor:'#34d399', mpptColors:COL3,
-    blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
-  },
-  {
-    id:'I', label:'Option I', short:'I \u2014 3\u00d7col-TCT',
-    desc:'3 MPPTs \u00b7 H-TCT: same col groups as H (1\u20133 | 4\u20136 | 7\u20139), horizontal cross-tied within each group',
-    cfgColor:'#f87171', mpptColors:COL3,
-    blocks: HI_BLOCKS.map((b,i)=>({...b,topo:'h-tct',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
-  },
-  {
-    id:'J', label:'Option J', short:'J \u2014 5\u00d7col-SP',
-    desc:'5 MPPTs \u00b7 col-SP: col groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 | 9 \u2014 each col = series string, strings in \u2225 per MPPT (MPPT 5 = single string)',
-    cfgColor:'#67e8f9', mpptColors:COL5,
-    blocks: JK_BLOCKS.map((b,i)=>({...b,topo:'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
-  },
-  {
-    id:'K', label:'Option K', short:'K \u2014 5\u00d7col-TCT',
-    desc:'5 MPPTs \u00b7 H-TCT: col groups 1\u20132, 3\u20134, 5\u20136, 7\u20138 horizontal cross-tied; MPPT 5 (col 9) = single series string',
-    cfgColor:'#fca5a5', mpptColors:COL5,
-    blocks: JK_BLOCKS.map((b,i)=>({...b,topo:i<4?'h-tct':'col-sp',label:`MPPT ${i+1} (cols ${b.c0+1}\u2013${b.c1+1})`})),
-  },
-  {
-    id:'L', label:'Option L', short:'L \u2014 6\u00d712 Snake\u2194',
-    desc:'6 MPPTs \u00b7 Row-wise snake: 12 panels in series per MPPT, string snakes across rows (left\u2194right alternating)',
-    cfgColor:'#86efac', mpptColors:COL6,
-    blocks: SNAKE_ROW_CELLS.map((cells,i)=>({r0:0,r1:ROWS-1,c0:0,c1:COLS-1,topo:'snake-series',cells,label:`MPPT ${i+1} (snake row ${i+1})`})),
-  },
-  {
-    id:'M', label:'Option M', short:'M \u2014 6\u00d712 Snake\u2195',
-    desc:'6 MPPTs \u00b7 Column-wise snake: 12 panels in series per MPPT, string snakes across columns (top\u2195bottom alternating)',
-    cfgColor:'#fde68a', mpptColors:COL6,
-    blocks: SNAKE_COL_CELLS.map((cells,i)=>({r0:0,r1:ROWS-1,c0:0,c1:COLS-1,topo:'snake-series',cells,label:`MPPT ${i+1} (snake col ${i+1})`})),
   },
 ];
 
@@ -1385,17 +1293,8 @@ const INVERTER_SPECS = {
   A: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
   B: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
   C: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
-  // D/E use the updated lower MPPT start voltage for their block-level inverter.
-  D: { VmpptMin:60,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
-  E: { VmpptMin:60,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
   F: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:16000 },
   G: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:24000 },
-  H: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
-  I: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
-  J: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
-  K: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
-  L: { VmpptMin:75,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
-  M: { VmpptMin:75,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
 };
 
 /**
