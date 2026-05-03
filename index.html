@@ -5201,9 +5201,11 @@ function initBatteryV2UI() {
     }
     wrap.style.display = 'block';
 
-    const cssW = c.parentElement ? c.parentElement.clientWidth : 720;
-    c.width  = Math.min(cssW, 720);
-    c.height = 190;
+    const V3_CASHFLOW_CHART_MAX_WIDTH = 720;
+    const V3_CASHFLOW_CHART_HEIGHT = 190;
+    const cssW = c.parentElement ? c.parentElement.clientWidth : V3_CASHFLOW_CHART_MAX_WIDTH;
+    c.width  = Math.min(cssW, V3_CASHFLOW_CHART_MAX_WIDTH);
+    c.height = V3_CASHFLOW_CHART_HEIGHT;
     const ctx = c.getContext('2d');
     const w = c.width, h = c.height;
     const ML = 42, MR = 10, MT = 24, MB = 24;
