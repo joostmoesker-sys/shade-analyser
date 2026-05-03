@@ -457,7 +457,7 @@
               Use V3 Dynamic Programming
             </label>
             <label style="margin-left:8px; display:flex; align-items:center; gap:5px;">
-              <input type="checkbox" id="useV4Euro" checked style="accent-color:#fbbf24;">
+              <input type="checkbox" id="useV4Euro" checked aria-label="Use V4 Euro Optimizer" style="accent-color:#fbbf24;">
               Use V4 Euro Optimizer
             </label>
           </div>
@@ -4597,6 +4597,8 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
 
   let dpNext = new Float64Array(states);
   for (let s = 0; s < states; s++) {
+    // Annual optimisation should not earn a fake one-off benefit by emptying
+    // the battery at year-end, so V4 targets the same 50% SOC bucket it starts from.
     dpNext[s] = -Math.abs(s - initialState) * socStep * V4_TERMINAL_PENALTY_EUR_KWH;
   }
 
