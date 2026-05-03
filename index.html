@@ -4853,7 +4853,6 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
 }
 
 function addStandbyToLoadProfile(loadProfile, standbyKw) {
-  if (!standbyKw) return loadProfile;
   const adjusted = new Float64Array(loadProfile.length);
   for (let i = 0; i < loadProfile.length; i++) adjusted[i] = loadProfile[i] + standbyKw;
   return adjusted;
@@ -5206,14 +5205,14 @@ function exportEconCsv() {
     ? lastHourlyPvKwh[bestId]
     : new Float64Array(lastHourlyPvKwh[bestId]);
 
-  let csv = 'Hour,Date,PV_kWh,Load_kWh,BuyTariff_EUR_kWh,SellTariff_EUR_kWh\n';
+  let csv = 'Hour,Date,PV_kWh,OptionLoad_kWh,BaselineLoad_kWh,BuyTariff_EUR_kWh,SellTariff_EUR_kWh\n';
   const { tariffProfile: tp, sellProfile: sp, opts, loadProfile, optionLoadProfiles } = lastEconResults;
   const exportLoadProfile = (optionLoadProfiles && optionLoadProfiles[bestId]) || loadProfile;
   for (let h = 0; h < 8760; h++) {
     const date = new Date(2025, 0, Math.floor(h / 24) + 1, h % 24);
     const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:00`;
     const sellP = sp ? sp[h] : tp[h] * opts.sellFactor;
-    csv += `${h},${dateStr},${pvArr[h].toFixed(4)},${exportLoadProfile[h].toFixed(4)},${tp[h].toFixed(4)},${sellP.toFixed(4)}\n`;
+    csv += `${h},${dateStr},${pvArr[h].toFixed(4)},${exportLoadProfile[h].toFixed(4)},${loadProfile[h].toFixed(4)},${tp[h].toFixed(4)},${sellP.toFixed(4)}\n`;
   }
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
