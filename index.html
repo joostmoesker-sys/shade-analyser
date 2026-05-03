@@ -1374,6 +1374,8 @@ const GRID_ROUNDTRIP_EFF      = 0.80;  // grid → battery → grid round-trip e
 const MAX_BATTERY_POWER_KW    = 15;    // realistic inverter/battery power limit (kW)
 const SELL_PRICE_FACTOR_DEF   = 0.85;  // default sell tariff = buy tariff × 0.85 (legacy / override)
 const TIBBER_OPSLAG_EUR_KWH   = 0.04;  // Tibber fixed surcharge on every imported kWh (exported: bare APX)
+const V3_CASHFLOW_CHART_MAX_WIDTH = 720;
+const V3_CASHFLOW_CHART_HEIGHT    = 190;
 
 // ── Advanced battery v2 strategy tunable parameters ──────────────────────────
 // These can be adjusted in real time by the v2 UI panel sliders.
@@ -5201,8 +5203,6 @@ function initBatteryV2UI() {
     }
     wrap.style.display = 'block';
 
-    const V3_CASHFLOW_CHART_MAX_WIDTH = 720;
-    const V3_CASHFLOW_CHART_HEIGHT = 190;
     const cssW = c.parentElement ? c.parentElement.clientWidth : V3_CASHFLOW_CHART_MAX_WIDTH;
     c.width  = Math.min(cssW, V3_CASHFLOW_CHART_MAX_WIDTH);
     c.height = V3_CASHFLOW_CHART_HEIGHT;
