@@ -1263,6 +1263,8 @@ const CONFIGS = [
     econChargePowerKw: Infinity,
     econDischargePowerKw: 18,
     econStandbyKw: 0.2,
+    econChargeEff: 0.925,
+    econDischargeEff: 0.925,
     blocks: ROW_GROUPS.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
   {
@@ -1278,6 +1280,8 @@ const CONFIGS = [
     econChargePowerKw: Infinity,
     econDischargePowerKw: 18,
     econStandbyKw: 0.2,
+    econChargeEff: 0.925,
+    econDischargeEff: 0.925,
     blocks: Array.from({length:ROWS},(_,r)=>({r0:r,r1:r,c0:0,c1:COLS-1,topo:'series',label:`MPPT ${r+1} (row ${r+1})`})),
   },
   {
@@ -1359,6 +1363,8 @@ function getConfigEconomicLimits(cfg) {
     chargePowerKw,
     dischargePowerKw,
     standbyKw: cfg.econStandbyKw ?? 0,
+    chargeEff: cfg.econChargeEff ?? CHARGE_EFF_PV,
+    dischargeEff: cfg.econDischargeEff ?? DISCHARGE_EFF,
   };
 }
 function formatPowerLimitKw(value) {
@@ -1370,8 +1376,8 @@ const INVERTER_SPECS = {
   A: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
   B: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
   C: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
-  D: { VmpptMin:75,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
-  E: { VmpptMin:75,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
+  D: { VmpptMin:60,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
+  E: { VmpptMin:60,  VmpptMax:150,  ImaxPerMppt:45, totalPowerW:null },
   F: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:16000 },
   G: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:24000 },
   H: { VmpptMin:60,  VmpptMax:600,  ImaxPerMppt:22, totalPowerW:null },
@@ -4547,6 +4553,8 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
   const allowGridPrecharge = !!params.allowGridPrecharge;
   const chargePowerKw = params.chargePowerKw ?? params.batteryPowerKw ?? MAX_BATTERY_POWER_KW;
   const dischargePowerKw = params.dischargePowerKw ?? params.batteryPowerKw ?? MAX_BATTERY_POWER_KW;
+  const chargeEff = params.chargeEff ?? CHARGE_EFF_PV;
+  const dischargeEff = params.dischargeEff ?? DISCHARGE_EFF;
   const gridPrechargePowerKw = Math.min(
     params.gridPrechargePowerKw ?? MAX_GRID_PRECHARGE_POWER_KW,
     chargePowerKw,
@@ -4568,13 +4576,13 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
   let curtailedPv = 0;
 
   if (delta > eps) {
-    const totalStoreCap = Math.min(chargePowerKw * CHARGE_EFF_PV, Math.max(0, batCapKwh - curSoc));
+    const totalStoreCap = Math.min(chargePowerKw * chargeEff, Math.max(0, batCapKwh - curSoc));
     const pvStoreCap = Math.min(
-      surplusPv * CHARGE_EFF_PV,
+      surplusPv * chargeEff,
       totalStoreCap,
     );
     const gridStoreCap = allowGridPrecharge
-      ? Math.min(gridPrechargePowerKw * GRID_ROUNDTRIP_EFF, totalStoreCap)
+      ? Math.min(gridPrechargePowerKw * chargeEff, totalStoreCap)
       : 0;
 
     if (delta > Math.min(totalStoreCap, pvStoreCap + gridStoreCap) + eps) return null;
@@ -4582,25 +4590,25 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     let remainingStore = delta;
     let remainingInputCap = chargePowerKw;
     let pvStore = 0, gridStore = 0;
-    const pvOpportunityCost = (!zeroExport && sellPrice > 0) ? sellPrice / CHARGE_EFF_PV : 0;
-    const gridStoredCost = buyPrice / GRID_ROUNDTRIP_EFF;
+    const pvOpportunityCost = (!zeroExport && sellPrice > 0) ? sellPrice / chargeEff : 0;
+    const gridStoredCost = buyPrice / chargeEff;
 
     if (gridStoredCost < pvOpportunityCost) {
-      gridStore = Math.min(remainingStore, gridStoreCap, remainingInputCap * GRID_ROUNDTRIP_EFF);
+      gridStore = Math.min(remainingStore, gridStoreCap, remainingInputCap * chargeEff);
       remainingStore -= gridStore;
-      remainingInputCap -= gridStore / GRID_ROUNDTRIP_EFF;
-      pvStore = Math.min(remainingStore, pvStoreCap, remainingInputCap * CHARGE_EFF_PV);
+      remainingInputCap -= gridStore / chargeEff;
+      pvStore = Math.min(remainingStore, pvStoreCap, remainingInputCap * chargeEff);
     } else {
-      pvStore = Math.min(remainingStore, pvStoreCap, remainingInputCap * CHARGE_EFF_PV);
+      pvStore = Math.min(remainingStore, pvStoreCap, remainingInputCap * chargeEff);
       remainingStore -= pvStore;
-      remainingInputCap -= pvStore / CHARGE_EFF_PV;
-      gridStore = Math.min(remainingStore, gridStoreCap, remainingInputCap * GRID_ROUNDTRIP_EFF);
+      remainingInputCap -= pvStore / chargeEff;
+      gridStore = Math.min(remainingStore, gridStoreCap, remainingInputCap * chargeEff);
     }
 
     if (pvStore + gridStore + eps < delta) return null;
 
-    pvChargeInput = pvStore / CHARGE_EFF_PV;
-    gridChargeInput = gridStore / GRID_ROUNDTRIP_EFF;
+    pvChargeInput = pvStore / chargeEff;
+    gridChargeInput = gridStore / chargeEff;
     surplusPv = Math.max(0, surplusPv - pvChargeInput);
     importGrid += gridChargeInput;
     importCost += gridChargeInput * buyPrice;
@@ -4610,7 +4618,7 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     const availableDraw = Math.max(0, curSoc - minSoc);
     if (draw > availableDraw + eps) return null;
 
-    const delivered = draw * DISCHARGE_EFF;
+    const delivered = draw * dischargeEff;
     if (delivered > dischargePowerKw + eps) return null;
 
     selfBattery = Math.min(delivered, loadDeficit);
@@ -4662,6 +4670,8 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
   const sellTariffs  = options.sellTariffs ?? null;
   const chargePowerKw = options.chargePowerKw ?? options.batteryPowerKw ?? MAX_BATTERY_POWER_KW;
   const dischargePowerKw = options.dischargePowerKw ?? options.batteryPowerKw ?? MAX_BATTERY_POWER_KW;
+  const chargeEff = options.chargeEff ?? CHARGE_EFF_PV;
+  const dischargeEff = options.dischargeEff ?? DISCHARGE_EFF;
   const gridPrechargePowerKw = Math.min(
     options.gridPrechargePowerKw ?? MAX_GRID_PRECHARGE_POWER_KW,
     chargePowerKw,
@@ -4678,16 +4688,18 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
   const minState = Math.ceil((batCapKwh * MIN_SOC_SELF) / socStep);
   const initialState = Math.min(states - 1, Math.max(minState, Math.round((batCapKwh * TARGET_SOC_FRACTION) / socStep)));
   const chargeStepLimit = Number.isFinite(chargePowerKw)
-    ? Math.ceil(Math.max(chargePowerKw * CHARGE_EFF_PV, gridPrechargePowerKw * GRID_ROUNDTRIP_EFF) / socStep) + 1
+    ? Math.ceil(Math.max(chargePowerKw * chargeEff, gridPrechargePowerKw * chargeEff) / socStep) + 1
     : states - 1;
   const maxChargeSteps = Math.min(states - 1, chargeStepLimit);
-  const maxDischargeSteps = Math.min(states - 1, Math.ceil((dischargePowerKw / DISCHARGE_EFF) / socStep) + 1);
+  const maxDischargeSteps = Math.min(states - 1, Math.ceil((dischargePowerKw / dischargeEff) / socStep) + 1);
   const params = {
     batCapKwh,
     zeroExport,
     allowGridPrecharge: usePrecharge,
     chargePowerKw,
     dischargePowerKw,
+    chargeEff,
+    dischargeEff,
     gridPrechargePowerKw,
   };
 
@@ -4907,6 +4919,8 @@ function runEconSim() {
           useBattery: true,
           chargePowerKw: limits.chargePowerKw,
           dischargePowerKw: limits.dischargePowerKw,
+          chargeEff: limits.chargeEff,
+          dischargeEff: limits.dischargeEff,
           gridPrechargePowerKw: Math.min(MAX_GRID_PRECHARGE_POWER_KW, limits.chargePowerKw),
           baselineLoadKwh: loadProfile,
         })
@@ -4941,6 +4955,8 @@ function runEconSim() {
       chargePowerKw: limits.chargePowerKw,
       dischargePowerKw: limits.dischargePowerKw,
       standbyKw: limits.standbyKw,
+      chargeEff: limits.chargeEff,
+      dischargeEff: limits.dischargeEff,
       v4Result,
     };
   }
@@ -4975,7 +4991,8 @@ function runEconSim() {
     if (v4DiagEl) {
       // V4 diagnostics focus on physical feasibility now that battery wear cost is excluded.
       const standbyText = bestEcon.standbyKw > 0 ? ` · ${(bestEcon.standbyKw * 1000).toFixed(0)} W standby` : '';
-      v4DiagEl.textContent = `[${formatPowerLimitKw(bestEcon.chargePowerKw)} charge / ${formatPowerLimitKw(bestEcon.dischargePowerKw)} discharge${standbyText} · ${v4Result.diagnostics.socStep.toFixed(2)} kWh SOC step · curtail ${v4Result.diagnostics.curtailedPv.toFixed(0)} kWh · final SOC ${v4Result.diagnostics.finalSoc.toFixed(1)} kWh]`;
+      const effText = ` · ${(bestEcon.chargeEff * 100).toFixed(1)}% AC→bat / ${(bestEcon.dischargeEff * 100).toFixed(1)}% bat→AC`;
+      v4DiagEl.textContent = `[${formatPowerLimitKw(bestEcon.chargePowerKw)} charge / ${formatPowerLimitKw(bestEcon.dischargePowerKw)} discharge${standbyText}${effText} · ${v4Result.diagnostics.socStep.toFixed(2)} kWh SOC step · curtail ${v4Result.diagnostics.curtailedPv.toFixed(0)} kWh · final SOC ${v4Result.diagnostics.finalSoc.toFixed(1)} kWh]`;
     }
     if (v4ResDiv) v4ResDiv.style.display = 'block';
     if (typeof window.drawV3CashflowChart === 'function') {
@@ -5041,7 +5058,8 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
     const spec = INVERTER_SPECS[cfg.id] || {};
     const pvLimit = spec.totalPowerW ? `${(spec.totalPowerW / 1000).toFixed(0)} kW PV` : 'array PV';
     const standbyStr = r.standbyKw > 0 ? ` · ${(r.standbyKw * 1000).toFixed(0)} W standby` : '';
-    const limitsStr = `${pvLimit} · ${formatPowerLimitKw(r.chargePowerKw)} chg / ${formatPowerLimitKw(r.dischargePowerKw)} dis${standbyStr}`;
+    const effStr = ` · ${(r.chargeEff * 100).toFixed(1)}% AC→bat / ${(r.dischargeEff * 100).toFixed(1)}% bat→AC`;
+    const limitsStr = `${pvLimit} · ${formatPowerLimitKw(r.chargePowerKw)} chg / ${formatPowerLimitKw(r.dischargePowerKw)} dis${standbyStr}${effStr}`;
     tbody += `<tr style="--cfg-color:${cfg.cfgColor}">
       <td class="cfg-name"><span class="cfg-dot" style="background:${cfg.cfgColor}"></span>${cfg.short}</td>
       <td>${r.pvYield.toFixed(0)}</td>
@@ -5181,7 +5199,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
     `Buy tariff = APX + €${TIBBER_OPSLAG_EUR_KWH.toFixed(2)}/kWh (Tibber opslag/surcharge); sell = bare APX. ` +
     `Base load ${document.getElementById('econBaseLoadSlider').value} kWh/d + ` +
     `HP winter ${document.getElementById('econHpSlider').value} kWh/d (electrical). ` +
-    `PV→battery efficiency: ${CHARGE_EFF_PV * 100 | 0}%/${DISCHARGE_EFF * 100 | 0}%. ` +
+    `Battery converter efficiency: A/C 92.5% AC→bat and 92.5% bat→AC; F/G ${(CHARGE_EFF_PV * 100).toFixed(0)}%/${(DISCHARGE_EFF * 100).toFixed(0)}%. ` +
     `Economic comparison uses V4 optimizer for Options A, C, F and G only; A/C=\u221e kW charge, 18 kW discharge, 200 W standby; F=16 kW PV/10 kW battery, G=24 kW PV/10 kW battery. ` +
     `Battery degradation excluded. ` +
     `Heat pump COP not modeled. 5% SOC floor for all discharge strategies.`;
