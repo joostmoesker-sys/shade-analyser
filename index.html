@@ -5205,7 +5205,7 @@ function exportEconCsv() {
     ? lastHourlyPvKwh[bestId]
     : new Float64Array(lastHourlyPvKwh[bestId]);
 
-  let csv = 'Hour,Date,PV_kWh,OptionLoad_kWh,BaselineLoad_kWh,BuyTariff_EUR_kWh,SellTariff_EUR_kWh\n';
+  let csv = 'Hour,Date,PV_kWh,AdjustedLoad_kWh,BaselineLoad_kWh,BuyTariff_EUR_kWh,SellTariff_EUR_kWh\n';
   const { tariffProfile: tp, sellProfile: sp, opts, loadProfile, optionLoadProfiles } = lastEconResults;
   const exportLoadProfile = (optionLoadProfiles && optionLoadProfiles[bestId]) || loadProfile;
   for (let h = 0; h < 8760; h++) {
