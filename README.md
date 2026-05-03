@@ -44,6 +44,8 @@ Rows 7–8: P[7][1]──…──P[7][9] ─┐
 
 Each row is a series string; rows within a group are in parallel.
 
+In the V4 economic comparison, Option A uses unlimited charge capability, 18 kW discharge capability, and 200 W standby consumption.
+
 ---
 
 ### Option B — 3 MPPTs, Vertical Total Cross-Tied (V-TCT)
@@ -73,6 +75,8 @@ Row 8: P[8][1]──…──P[8][9] ► MPPT 8
 ```
 
 Shade on one row has no effect on any other row.
+
+In the V4 economic comparison, Option C uses unlimited charge capability, 18 kW discharge capability, and 200 W standby consumption.
 
 ---
 
@@ -258,7 +262,7 @@ The **Economic Forecast** panel (at the bottom of the right column) lets you com
 ### Battery Dispatch Logic
 
 1. **PV → load** (direct self-consumption, highest priority)
-2. **Surplus PV → battery** (charge at 95% efficiency, up to the option's battery power limit; F/G use 10 kW)
+2. **Surplus PV → battery** (charge at 95% efficiency, up to the option's charge limit; A/C are unlimited, F/G use 10 kW)
 3. **Remaining surplus PV → grid** (at sell tariff)
 4. **Battery → load** (discharge for self-use when PV insufficient, down to 5% SOC)
 5. **Grid → load** (import only what battery cannot cover)
@@ -396,6 +400,8 @@ Saldering (net metering) is abolished in 2027. The model uses the post-2027 Tibb
 | Terminal SOC | Penalised back to the initial 50% SOC to prevent end-of-year draining |
 | Dispatch model | Quantity-based SOC transitions; planner and executor use the same transition function |
 | Economic options | A, C, F, and G only |
+| A/C battery power | Unlimited charge, 18 kW discharge |
+| A/C standby consumption | 200 W continuous standby load |
 | F/G battery power | 10 kW charge/discharge |
 | F/G PV clipping | F: 16 kW PV, G: 24 kW PV |
 
