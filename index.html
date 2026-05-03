@@ -1370,6 +1370,15 @@ function getConfigEconomicLimits(cfg) {
 function formatPowerLimitKw(value) {
   return Number.isFinite(value) ? `${value.toFixed(0)} kW` : '\u221e kW';
 }
+function formatConverterEfficiency(chargeEff, dischargeEff) {
+  return `${(chargeEff * 100).toFixed(1)}% AC→bat / ${(dischargeEff * 100).toFixed(1)}% bat→AC`;
+}
+function formatEconomicLimitsText(econ, pvLimit = '') {
+  const prefix = pvLimit ? `${pvLimit} · ` : '';
+  const standbyText = econ.standbyKw > 0 ? ` · ${(econ.standbyKw * 1000).toFixed(0)} W standby` : '';
+  const effText = ` · ${formatConverterEfficiency(econ.chargeEff, econ.dischargeEff)}`;
+  return `${prefix}${formatPowerLimitKw(econ.chargePowerKw)} charge / ${formatPowerLimitKw(econ.dischargePowerKw)} discharge${standbyText}${effText}`;
+}
 
 // ── Inverter specs per configuration (WP6) ─────────────────────────────────
 const INVERTER_SPECS = {
@@ -4991,9 +5000,7 @@ function runEconSim() {
     }
     if (v4DiagEl) {
       // V4 diagnostics focus on physical feasibility now that battery wear cost is excluded.
-      const standbyText = bestEcon.standbyKw > 0 ? ` · ${(bestEcon.standbyKw * 1000).toFixed(0)} W standby` : '';
-      const effText = ` · ${(bestEcon.chargeEff * 100).toFixed(1)}% AC→bat / ${(bestEcon.dischargeEff * 100).toFixed(1)}% bat→AC`;
-      v4DiagEl.textContent = `[${formatPowerLimitKw(bestEcon.chargePowerKw)} charge / ${formatPowerLimitKw(bestEcon.dischargePowerKw)} discharge${standbyText}${effText} · ${v4Result.diagnostics.socStep.toFixed(2)} kWh SOC step · curtail ${v4Result.diagnostics.curtailedPv.toFixed(0)} kWh · final SOC ${v4Result.diagnostics.finalSoc.toFixed(1)} kWh]`;
+      v4DiagEl.textContent = `[${formatEconomicLimitsText(bestEcon)} · ${v4Result.diagnostics.socStep.toFixed(2)} kWh SOC step · curtail ${v4Result.diagnostics.curtailedPv.toFixed(0)} kWh · final SOC ${v4Result.diagnostics.finalSoc.toFixed(1)} kWh]`;
     }
     if (v4ResDiv) v4ResDiv.style.display = 'block';
     if (typeof window.drawV3CashflowChart === 'function') {
@@ -5058,9 +5065,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
       : `<span style="color:#6b7280">—</span>`;
     const spec = INVERTER_SPECS[cfg.id] || {};
     const pvLimit = spec.totalPowerW ? `${(spec.totalPowerW / 1000).toFixed(0)} kW PV` : 'array PV';
-    const standbyStr = r.standbyKw > 0 ? ` · ${(r.standbyKw * 1000).toFixed(0)} W standby` : '';
-    const effStr = ` · ${(r.chargeEff * 100).toFixed(1)}% AC→bat / ${(r.dischargeEff * 100).toFixed(1)}% bat→AC`;
-    const limitsStr = `${pvLimit} · ${formatPowerLimitKw(r.chargePowerKw)} chg / ${formatPowerLimitKw(r.dischargePowerKw)} dis${standbyStr}${effStr}`;
+    const limitsStr = formatEconomicLimitsText(r, pvLimit);
     tbody += `<tr style="--cfg-color:${cfg.cfgColor}">
       <td class="cfg-name"><span class="cfg-dot" style="background:${cfg.cfgColor}"></span>${cfg.short}</td>
       <td>${r.pvYield.toFixed(0)}</td>
