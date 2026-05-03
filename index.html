@@ -133,7 +133,7 @@
 
 <header>
   <h1>&#9728;&#65039; PV Array Shade Analyser</h1>
-  <p>Lucksolar LS-M120-340W &nbsp;&middot;&nbsp; 8&times;9 (72 panels) &nbsp;&middot;&nbsp; Neer, Netherlands &nbsp;&middot;&nbsp; Clear-sky irradiance model &nbsp;&middot;&nbsp; 7 Wiring Configs</p>
+  <p>Lucksolar LS-M120-340W &nbsp;&middot;&nbsp; 8&times;10 (80 panels) &nbsp;&middot;&nbsp; Neer, Netherlands &nbsp;&middot;&nbsp; Clear-sky irradiance model &nbsp;&middot;&nbsp; 7 Wiring Configs</p>
 </header>
 
 <div class="app-body">
@@ -1519,7 +1519,7 @@ self.onmessage = function(e) {
 'use strict';
 
 // ── Panel & array constants ─────────────────────────────────────────────────
-const ROWS = 8, COLS = 11;
+const ROWS = 8, COLS = 10;
 const BYPASS_VD = 0.5, VT_25 = 0.025693;
 const STC_IRRAD = 1000; // W/m²
 
@@ -1616,7 +1616,7 @@ const ROW_GROUPS4 = [[0,1],[2,3],[4,5],[6,7]]; // 2+2+2+2 rows (configs F/G — 
 const CONFIGS = [
   {
     id:'A', label:'Option A', short:'A \u2014 SP',
-    desc:'3 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20135 | 6\u20138, each = parallel strings of 11 \u00b7 economic model: unlimited charge, 18 kW discharge, 200 W standby',
+    desc:'3 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20135 | 6\u20138, each = parallel strings of 10 \u00b7 economic model: unlimited charge, 18 kW discharge, 200 W standby',
     cfgColor:'#38bdf8', mpptColors:COL3,
     econChargePowerKw: Infinity,
     econDischargePowerKw: 18,
@@ -1638,7 +1638,7 @@ const CONFIGS = [
   },
   {
     id:'C', label:'Option C', short:'C \u2014 1\u00d79',
-    desc:'8 MPPTs \u00b7 1 series string per row (11 panels each) \u00b7 economic model: unlimited charge, 18 kW discharge, 200 W standby',
+    desc:'8 MPPTs \u00b7 1 series string per row (10 panels each) \u00b7 economic model: unlimited charge, 18 kW discharge, 200 W standby',
     cfgColor:'#4ade80', mpptColors:COL8,
     econChargePowerKw: Infinity,
     econDischargePowerKw: 18,
@@ -1649,7 +1649,7 @@ const CONFIGS = [
   },
   {
     id:'F', label:'Option F', short:'F \u2014 16kW PV/10kW bat',
-    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d711 = 22 panels per MPPT) \u00b7 16 kW PV limit \u00b7 10 kW battery charge/discharge',
+    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d710 = 20 panels per MPPT) \u00b7 16 kW PV limit \u00b7 10 kW battery charge/discharge',
     cfgColor:'#22d3ee', mpptColors:COL4,
     econChargePowerKw: 10,
     econDischargePowerKw: 10,
@@ -1657,7 +1657,7 @@ const CONFIGS = [
   },
   {
     id:'G', label:'Option G', short:'G \u2014 24kW PV/10kW bat',
-    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d711 = 22 panels per MPPT) \u00b7 24 kW PV limit \u00b7 10 kW battery charge/discharge',
+    desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d710 = 20 panels per MPPT) \u00b7 24 kW PV limit \u00b7 10 kW battery charge/discharge',
     cfgColor:'#f59e0b', mpptColors:COL4,
     econChargePowerKw: 10,
     econDischargePowerKw: 10,
