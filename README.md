@@ -390,7 +390,7 @@ Saldering (net metering) is abolished in 2027. The model uses the post-2027 Tibb
 |---|---|
 | SOC states | 96 buckets plus endpoints (≈0.67 kWh at 64 kWh) |
 | Horizon | Full 8760-hour year |
-| Objective | Maximise export revenue − grid import cost − battery wear cost |
+| Objective | Maximise export revenue − grid import cost |
 | Terminal SOC | Penalised back to the initial 50% SOC to prevent end-of-year draining |
 | Dispatch model | Quantity-based SOC transitions; planner and executor use the same transition function |
 
@@ -402,13 +402,13 @@ Saldering (net metering) is abolished in 2027. The model uses the post-2027 Tibb
 | PV → battery | Used when its future value beats immediate positive export revenue |
 | PV → grid | Exported only when export is allowed and sell price is positive |
 | Grid → battery | Optional; selected only when enabled and cheaper than alternative stored energy |
-| Battery → load | Used when avoided import value exceeds future value and wear cost |
+| Battery → load | Used when avoided import value exceeds future value |
 | Battery → grid | Used only when export is allowed, sell price is positive, and no grid import remains in that hour |
 | Curtailment | Used for zero-export mode, capacity limits, or negative/zero sell prices |
 
 #### Diagnostics
 
-The V4 result line reports SOC bucket size, battery wear cost, curtailed PV, and final SOC. The monthly cashflow chart and July dispatch visualizer automatically use V4 when the optimizer is enabled.
+The V4 result line reports SOC bucket size, curtailed PV, and final SOC. Battery degradation is excluded because the battery is treated as already paid for. The monthly cashflow chart and July dispatch visualizer automatically use V4 when the optimizer is enabled.
 
 ---
 
