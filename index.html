@@ -4459,12 +4459,11 @@ function simulateBatteryAndEconomicsV3(pvKwh, loadKwh, tariffs, options = {}) {
 // ── V4 FULL-YEAR EURO OPTIMIZER ───────────────────────────────────────────────
 // Keeps V3 intact and adds a finer, quantity-based DP whose planner and executor
 // share the same transition/economics model. The objective is direct cashflow:
-// export revenue - grid import cost - battery throughput wear cost.
+// export revenue - grid import cost.
 function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, params) {
   const eps = V4_EPSILON_KWH;
   const batCapKwh = params.batCapKwh;
   const minSoc = batCapKwh * MIN_SOC_SELF;
-  const cycleCost = params.cycleCost ?? batteryParams.cycleCost ?? 0;
   const zeroExport = !!params.zeroExport;
   const allowGridPrecharge = !!params.allowGridPrecharge;
 
@@ -4481,7 +4480,7 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
   let pvExport = 0, batteryExport = 0, selfBattery = 0;
   let pvChargeInput = 0, gridChargeInput = 0;
   let batteryChargeStored = 0, batteryDischargeDrawn = 0;
-  let curtailedPv = 0, cycleWearCost = 0;
+  let curtailedPv = 0;
 
   if (delta > eps) {
     const totalStoreCap = Math.min(MAX_BATTERY_POWER_KW * CHARGE_EFF_PV, Math.max(0, batCapKwh - curSoc));
@@ -4518,7 +4517,6 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     importGrid += gridChargeInput;
     importCost += gridChargeInput * buyPrice;
     batteryChargeStored = delta;
-    cycleWearCost += batteryChargeStored * cycleCost;
   } else if (delta < -eps) {
     const draw = -delta;
     const availableDraw = Math.max(0, curSoc - minSoc);
@@ -4540,7 +4538,6 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     }
 
     batteryDischargeDrawn = draw;
-    cycleWearCost += batteryDischargeDrawn * cycleCost;
   }
 
   if (!zeroExport && sellPrice > 0 && surplusPv > eps) {
@@ -4550,7 +4547,7 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     curtailedPv = surplusPv;
   }
 
-  const cashflow = revenue - importCost - cycleWearCost;
+  const cashflow = revenue - importCost;
   return {
     cashflow,
     selfDirect,
@@ -4564,7 +4561,6 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     gridChargeInput,
     batteryChargeStored,
     batteryDischargeDrawn,
-    cycleWearCost,
     curtailedPv,
   };
 }
@@ -4594,7 +4590,6 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
     batCapKwh,
     zeroExport,
     allowGridPrecharge: usePrecharge,
-    cycleCost: batteryParams.cycleCost,
   };
 
   let dpNext = new Float64Array(states);
@@ -4648,14 +4643,13 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
   let importGrid = 0;
   let batteryFromPv = 0, batteryFromGrid = 0;
   let batteryChargedStored = 0, batteryDischargedDrawn = 0;
-  let curtailedPv = 0, cycleWearCost = 0;
+  let curtailedPv = 0;
   let revenue = 0, importCost = 0;
   const monthlyBaselineCost = new Float64Array(12);
   const monthlyImportCost = new Float64Array(12);
   const monthlyRevenue = new Float64Array(12);
   const monthlyPvExportRevenue = new Float64Array(12);
   const monthlyBatteryExportRevenue = new Float64Array(12);
-  const monthlyWearCost = new Float64Array(12);
   const monthlySavings = new Float64Array(12);
 
   const planStart = 180 * 24;
@@ -4679,7 +4673,6 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
     monthlyRevenue[month] += flow.revenue;
     monthlyPvExportRevenue[month] += flow.pvExport * sellPrice;
     monthlyBatteryExportRevenue[month] += flow.batteryExport * sellPrice;
-    monthlyWearCost[month] += flow.cycleWearCost;
 
     selfDirect += flow.selfDirect;
     selfBattery += flow.selfBattery;
@@ -4691,7 +4684,6 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
     batteryChargedStored += flow.batteryChargeStored;
     batteryDischargedDrawn += flow.batteryDischargeDrawn;
     curtailedPv += flow.curtailedPv;
-    cycleWearCost += flow.cycleWearCost;
     revenue += flow.revenue;
     importCost += flow.importCost;
 
@@ -4716,10 +4708,10 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
   }
 
   const baselineCost = loadKwh.reduce((s, l, i) => i < nH ? s + l * tariffs[i] : s, 0);
-  const totalCost = importCost + cycleWearCost;
+  const totalCost = importCost;
   const annualSavings = baselineCost - (totalCost - revenue);
   for (let m = 0; m < 12; m++) {
-    monthlySavings[m] = monthlyBaselineCost[m] - (monthlyImportCost[m] + monthlyWearCost[m] - monthlyRevenue[m]);
+    monthlySavings[m] = monthlyBaselineCost[m] - (monthlyImportCost[m] - monthlyRevenue[m]);
   }
 
   return {
@@ -4738,7 +4730,6 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
     batteryCapacityKwh: batCapKwh,
     diagnostics: {
       importCost:       Math.round(importCost * 100) / 100,
-      cycleWearCost:    Math.round(cycleWearCost * 100) / 100,
       pvExportRevenue:  Math.round(monthlyPvExportRevenue.reduce((a, b) => a + b, 0) * 100) / 100,
       batteryExportRevenue: Math.round(monthlyBatteryExportRevenue.reduce((a, b) => a + b, 0) * 100) / 100,
       curtailedPv:      Math.round(curtailedPv * 100) / 100,
@@ -4751,7 +4742,6 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
       revenue: Array.from(monthlyRevenue),
       pvExportRevenue: Array.from(monthlyPvExportRevenue),
       batteryExportRevenue: Array.from(monthlyBatteryExportRevenue),
-      wearCost: Array.from(monthlyWearCost),
       savings: Array.from(monthlySavings),
     },
     hourlyPlan,
@@ -4908,7 +4898,7 @@ function runEconSim() {
         v4DeltaEl.style.color = dv >= 0 ? '#28a745' : '#dc3545';
       }
       if (v4DiagEl) {
-        v4DiagEl.textContent = `[${v4Result.diagnostics.socStep.toFixed(2)} kWh SOC step · wear €${v4Result.diagnostics.cycleWearCost.toFixed(0)} · curtail ${v4Result.diagnostics.curtailedPv.toFixed(0)} kWh · final SOC ${v4Result.diagnostics.finalSoc.toFixed(1)} kWh]`;
+        v4DiagEl.textContent = `[${v4Result.diagnostics.socStep.toFixed(2)} kWh SOC step · curtail ${v4Result.diagnostics.curtailedPv.toFixed(0)} kWh · final SOC ${v4Result.diagnostics.finalSoc.toFixed(1)} kWh]`;
       }
       v4ResDiv.style.display = 'block';
       visualPlan = v4Result;
@@ -5116,7 +5106,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
     `Base load ${document.getElementById('econBaseLoadSlider').value} kWh/d + ` +
     `HP winter ${document.getElementById('econHpSlider').value} kWh/d (electrical). ` +
     `PV→battery efficiency: ${CHARGE_EFF_PV * 100 | 0}%/${DISCHARGE_EFF * 100 | 0}%. ` +
-    `V4 includes €${batteryParams.cycleCost.toFixed(3)}/kWh throughput wear cost; V1–V3 exclude degradation. ` +
+    `Battery degradation excluded; battery is treated as already paid for. ` +
     `Heat pump COP not modeled. 5% SOC floor for all discharge strategies.`;
 
   document.getElementById('econResultsDiv').style.display = 'block';
