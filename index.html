@@ -1399,7 +1399,7 @@ let batteryParams = {
   minProfitSpread:    0.06,   // minimum €/kWh spread to justify grid→battery→grid cycle
   selfUseMultiplier:  1.05,   // premium weight for self-use vs. export (value = price × multiplier)
   forecastHorizon:    120,    // hours to look ahead for DP planning (120h = 5-day rolling horizon)
-  cycleCost:          0.025,  // estimated cost per kWh cycle (wear, depreciation)
+  cycleCost:          0.025,  // legacy v2/v3 tuning value; v4 excludes battery wear costs
   useAdvancedStrategy: true,  // v2 smart dispatch on; false → v1 behaviour
   useV3DP:            true,   // v3 dynamic programming dispatch on
   useV4Euro:          true,   // v4 full-year euro optimizer on
@@ -4716,6 +4716,8 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
   const baselineCost = loadKwh.reduce((s, l, i) => i < nH ? s + l * tariffs[i] : s, 0);
   const totalCost = importCost;
   const annualSavings = baselineCost - (totalCost - revenue);
+  const batteryThroughput = (batteryChargedStored + batteryDischargedDrawn) / 2;
+  const equivalentFullCycles = batteryThroughput / (batCapKwh + 1e-9);
   for (let m = 0; m < 12; m++) {
     monthlySavings[m] = monthlyBaselineCost[m] - (monthlyImportCost[m] - monthlyRevenue[m]);
   }
@@ -4731,8 +4733,8 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
     cost:              Math.round(totalCost * 100) / 100,
     // V4 reports equivalent full cycles from throughput because the optimizer
     // uses partial kWh transitions rather than V2/V3's coarse event counter.
-    batteryThroughput: Math.round(((batteryChargedStored + batteryDischargedDrawn) / 2) * 100) / 100,
-    cycles:            Math.round(((batteryChargedStored + batteryDischargedDrawn) / 2) / (batCapKwh + 1e-9)),
+    batteryThroughput: Math.round(batteryThroughput * 100) / 100,
+    cycles:            Math.round(equivalentFullCycles),
     batteryCapacityKwh: batCapKwh,
     diagnostics: {
       importCost:       Math.round(importCost * 100) / 100,
