@@ -5203,7 +5203,9 @@ function initBatteryV2UI() {
     }
     wrap.style.display = 'block';
 
-    const cssW = c.parentElement ? c.parentElement.clientWidth : V3_CASHFLOW_CHART_MAX_WIDTH;
+    const cssW = (c.parentElement && c.parentElement.clientWidth > 0)
+      ? c.parentElement.clientWidth
+      : V3_CASHFLOW_CHART_MAX_WIDTH;
     c.width  = Math.min(cssW, V3_CASHFLOW_CHART_MAX_WIDTH);
     c.height = V3_CASHFLOW_CHART_HEIGHT;
     const ctx = c.getContext('2d');
