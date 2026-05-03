@@ -44,7 +44,7 @@ Rows 7–8: P[7][1]──…──P[7][9] ─┐
 
 Each row is a series string; rows within a group are in parallel.
 
-In the V4 economic comparison, Option A uses unlimited charge capability, 18 kW discharge capability, and 200 W standby consumption as option-specific economic assumptions rather than wiring changes.
+In the V4 economic comparison, Option A uses unlimited charge capability, 18 kW discharge capability, 200 W standby consumption, and 92.5% AC↔battery converter efficiency as option-specific economic assumptions rather than wiring changes.
 
 ---
 
@@ -76,7 +76,7 @@ Row 8: P[8][1]──…──P[8][9] ► MPPT 8
 
 Shade on one row has no effect on any other row.
 
-In the V4 economic comparison, Option C uses unlimited charge capability, 18 kW discharge capability, and 200 W standby consumption as option-specific economic assumptions rather than wiring changes.
+In the V4 economic comparison, Option C uses unlimited charge capability, 18 kW discharge capability, 200 W standby consumption, and 92.5% AC↔battery converter efficiency as option-specific economic assumptions rather than wiring changes.
 
 ---
 
@@ -119,6 +119,7 @@ Rows 7–8: ─► MPPT 4  (2 × 9 panels SP)
 Each MPPT input voltage = 1 series string Vmpp ≈ 38 V; input current = 2 × Impp ≈ 17.7 A.
 
 For the economic V4 comparison, Option F uses a 16 kW PV clipping limit and 10 kW battery charge/discharge limit. Option G uses the same wiring with a 24 kW PV clipping limit and 10 kW battery charge/discharge limit.
+Both high-voltage battery options use the default 95% AC↔battery converter efficiency.
 
 ---
 
