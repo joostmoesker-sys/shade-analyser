@@ -3496,7 +3496,7 @@ function simulateBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
       if (pvHourly[base + h] < 0.05) nightHours.push(base + h);
     }
     if (nightHours.length === 0) continue;
-    // Sort by sell price descending to pick the most profitable export hours
+    // Sort by actual sell price descending to pick the most profitable export hours
     nightHours.sort((a, b) => (sellTariffs ? sellTariffs[b] - sellTariffs[a] : tariffs[b] - tariffs[a]));
     const topN = Math.min(nightHours.length, 6);
     for (let i = 0; i < topN; i++) isSellHour[nightHours[i]] = 1;
@@ -4078,10 +4078,9 @@ function optimizeBatteryDP(pvSlice, loadSlice, tariffSlice, horizon, params, cur
   const dp     = Array.from({ length: n + 1 }, () => new Float64Array(states).fill(-1e9));
   const policy = Array.from({ length: n },     () => new Uint8Array(states));
 
-  // Terminal value: energy still stored at the end of the horizon is valued at
-  // average future sell price × selfUseMultiplier × 0.9.  The 0.9 discount accounts for
-  // uncertainty about whether the energy will actually be self-consumed beyond the horizon.
-  // Use sell tariff for terminal value since unused energy would ultimately be exported.
+  // Terminal value: energy still stored at the end of the horizon can either be exported
+  // or self-consumed later, so value it from average sell price with the user's self-use
+  // premium and a discount for uncertainty beyond the rolling horizon.
   const avgFutureSell = sellSlice
     ? sellSlice.slice(0, n).reduce((a, b) => a + b, 0) / n
     : tariffSlice.slice(0, n).reduce((a, b) => a + b, 0) / n * sellFactor;
@@ -4562,7 +4561,7 @@ function runEconSim() {
 
       // Draw dispatch visualizer with v3 plan (v3 wins priority if enabled)
       if (typeof window.drawDispatchVisualizer === 'function') {
-        window.drawDispatchVisualizer(v3Result.hourlyPlan, v3Result.batteryCapacityKwh);
+        window.drawDispatchVisualizer(v3Result.hourlyPlan, v3Result.batteryCapacityKwh || batCapKwh);
       }
     } else {
       if (v3ResDiv) v3ResDiv.style.display = 'none';
@@ -4572,7 +4571,7 @@ function runEconSim() {
 
       // Draw dispatch visualizer with v2 plan when v3 is disabled
       if (typeof window.drawDispatchVisualizer === 'function') {
-        window.drawDispatchVisualizer(v2Result.hourlyPlan, v2Result.batteryCapacityKwh);
+        window.drawDispatchVisualizer(v2Result.hourlyPlan, v2Result.batteryCapacityKwh || batCapKwh);
       }
     }
   } else if (typeof window.drawV3CashflowChart === 'function') {
@@ -5322,7 +5321,7 @@ function initBatteryV2UI() {
    * @param {Array} plan — hourlyPlan sample array from simulateBatteryAndEconomicsV2/V3
    * @param {number} batteryCapacityKwh — selected battery capacity for SOC scaling
    */
-  window.drawDispatchVisualizer = function drawDispatchVisualizer(plan, batteryCapacityKwh = BATTERY_CAPACITY_KWH) {
+  window.drawDispatchVisualizer = function drawDispatchVisualizer(plan, batteryCapacityKwh) {
     const c = document.getElementById('dispatchCanvas');
     if (!c || !plan || plan.length === 0) return;
     const ctx = c.getContext('2d');
@@ -5339,7 +5338,8 @@ function initBatteryV2UI() {
 
     if (plan.length < 2) return;
 
-    const maxSoc   = batteryCapacityKwh || BATTERY_CAPACITY_KWH;
+    const selectedCapacity = parseFloat(document.getElementById('econBatSizeSelect')?.value);
+    const maxSoc   = batteryCapacityKwh || selectedCapacity || BATTERY_CAPACITY_KWH;
     const maxPrice = Math.max(...plan.map(p => p.price)) * 1.1 || 0.4;
     const n        = plan.length;
 
