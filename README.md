@@ -13,7 +13,7 @@ No server, no build step — open `index.html` directly in any modern browser.
 | **Panel model** | Lucksolar LS-MD120-340W — single-diode model (5 parameters) |
 | **Shade interaction** | Click or drag panels to shade/unshade; presets for common scenarios |
 | **Wiring configs** | Wiring options are computed simultaneously for instant comparison; economic V4 comparison focuses on A, C, F, and G |
-| **Solar irradiance** | Clear-sky model for Neer, Netherlands (lat 51.27°N, lon 5.99°E) — date picker + time slider |
+| **Solar irradiance** | Live clear-sky view plus yearly simulation from hourly 2025 historical weather for the array location |
 | **Physical sections** | Top 5 rows (tilt −30°, az 220°) and bottom 3 rows (tilt 30°, az 255°) with independent POA irradiance |
 | **IV + PV curves** | Live canvas-based plot per selected config — no external charting library |
 | **MPP tracking** | Maximum power point (★) computed per MPPT; power detail cards shown |
@@ -116,11 +116,13 @@ The 8-row array is physically divided into two sections with different mounting 
 
 A coloured section-boundary line is drawn on the canvas between rows 5 and 6.
 
-### Clear-Sky Irradiance Model
+### Irradiance and Weather Model
 
 Location: **Neer, Netherlands** (lat 51.27°N, lon 5.99°E)
 
-Solar position is computed using the Spencer equations for declination and equation of time, with the correct ENU vector formula for azimuth. Clear-sky direct normal irradiance uses the Meinel transmittance with Netherlands turbidity (τ=0.88). Plane-of-array (POA) irradiance uses the isotropic sky diffuse model.
+Solar position is computed using the Spencer equations for declination and equation of time, with the correct ENU vector formula for azimuth.
+The live view uses a clear-sky direct normal irradiance model with Netherlands turbidity (τ=0.88).
+The yearly simulation can fetch hourly 2025 historical archive weather for the selected array location and uses the measured GHI/DNI/diffuse irradiance to calculate plane-of-array (POA) production. If the archive is unavailable, it falls back to monthly Kc cloud-correction factors.
 
 The `irr[r][c]` array (POA / 1000 W/m²) is multiplied by the user-painted `shade[r][c]` to give the effective irradiance fraction used in all physics calculations:
 
@@ -235,7 +237,7 @@ The **Economic Forecast** panel (at the bottom of the right column) lets you com
 | **64 kWh Battery** | ✅ On | 64 kWh LFP battery, capex excluded (already paid for) |
 | **Grid Pre-charge** | Off | Charge battery from grid during cheapest hours on days with predicted low PV yield |
 | **Base load** | 12 kWh/day | Household appliances + lighting + EV slow-charge |
-| **HP winter** | 28 kWh/day | Heat pump electrical demand at peak winter (electrical kWh, COP not modeled) |
+| **HP winter** | 28 kWh/day | Heat pump reference electrical demand at design winter conditions; hourly load is adjusted by outdoor temperature and expected COP when weather data is available |
 | **Sell factor** | 0.85× | Sell tariff = buy tariff × factor (Dutch feed-in / SDE++ range) |
 | **Battery size** | 64 kWh | Sensitivity: 32 / 64 / 96 kWh |
 
@@ -252,7 +254,7 @@ The **Economic Forecast** panel (at the bottom of the right column) lets you com
 ### House Load Model
 
 - **Base**: 12 kWh/day, distributed with morning peak (06–09 h) and evening peak (18–22 h)
-- **Heat pump**: seasonal — full load Dec–Jan, tapering through autumn/spring, zero Jun–Aug
+- **Heat pump**: hourly — uses 2025 outdoor temperature from the weather archive and an expected air-source heat-pump COP curve; seasonal monthly fractions are only used as an offline fallback
 - **Variation**: ±5% deterministic daily variation (based on a fixed `sin(doy)` formula — fully reproducible) for realism
 - Total yearly load ≈ 9–11 MWh (realistic for a Dutch large detached house + heat pump)
 
@@ -286,11 +288,11 @@ Real-world estimate: derate by 15–25% for cloud losses
 
 ### Assumptions & Limitations
 
-- **Clear-sky model** — no clouds, aerosols, or soiling. Real yield is 15–25% lower.
+- **Hourly weather** — yearly PV uses 2025 historical archive irradiance when online; the clear-sky/monthly Kc model is only a fallback when weather cannot be loaded.
 - Fixed shade pattern applied uniformly across all 8760 hours (clear-sky irradiance varies with sun position; shade mask does not change seasonally, except tree foliage).
 - Battery capex excluded entirely (already paid for scenario).
 - Battery degradation not modeled (single-year snapshot).
-- Heat pump modeled as electrical load, COP not applied (conservative — actual savings could be higher if thermal storage is also considered).
+- Heat pump thermal storage and defrost cycles are not modeled; electrical use is estimated from outdoor temperature and expected COP.
 - Sell tariff = buy tariff × factor (default 0.85). Dutch saldering rules may allow higher rates.
 
 ### Export

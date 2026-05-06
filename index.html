@@ -308,7 +308,7 @@
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:0.77rem;color:#9ca3af">
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
           <input type="checkbox" id="weatherToggle" checked style="accent-color:#38bdf8;width:13px;height:13px">
-          Weather-adjusted &nbsp;<span style="color:#38bdf8">(Cloud Correction 2025 — KNMI/PVGIS Kc, Neer NL)</span>
+          Weather-adjusted &nbsp;<span style="color:#38bdf8">(hourly 2025 archive weather for array location)</span>
         </label>
 
         <span id="simModeLabel" style="font-size:0.71rem;color:#4b5563"></span>
@@ -321,7 +321,7 @@
       </div>
       <div id="simResultsDiv" style="display:none">
         <div id="simWeatherBadge" style="display:none;margin-bottom:8px;font-size:0.72rem;color:#38bdf8;background:#0c2233;border:1px solid #1e4060;border-radius:5px;padding:5px 10px">
-          ☁ Using 2025 KNMI/PVGIS data — beam/diffuse split applied per month
+          ☁ Using hourly 2025 weather — real irradiance and temperature drive PV/economics
         </div>
         <div class="comp-wrap">
           <table class="comp-table">
@@ -526,18 +526,19 @@
 <script type="text/x-worker" id="simWorkerSrc">
 'use strict';
 // ── Constants received via the 'run' postMessage ───────────────────────────
-let ROWS, COLS, SECTION_DIV, STC_IRRAD, BYPASS_VD, NEER_LAT;
+let ROWS, COLS, SECTION_DIV, STC_IRRAD, BYPASS_VD, SIM_LAT_RAD, SIM_LON;
 let PNL, SECTIONS, CONFIGS, MONTHLY_KC, FOLIAGE;
 let MAX_SHADOW_LEN, MAX_SHADOW_AXIS;
 let PANEL_POS;   // precomputed flat [{x,y}], length ROWS*COLS
 let DOY_TO_MONTH; // precomputed int[365], 0-11
 let INVERTER_SPECS_W; // inverter specs for clipping
 let DYNAMIC_PRICES; // Float64, length 12*24, flat [month*24+hour]
+let HOURLY_WEATHER; // optional historical weather arrays, length 8760
 
 // ── DST for Neer NL, 2024 reference year ───────────────────────────────────
 // Spring forward: March 31 = DOY 91; Fall back: October 27 = DOY 301.
 // Neer uses CET (UTC+1) in winter and CEST (UTC+2) in summer.
-const NEER_LON          = 5.99;  // degrees East
+const NEER_DEFAULT_LON  = 5.99;  // degrees East
 const UTC_OFFSET_WINTER = 1;     // CET  (Central European Time)
 const UTC_OFFSET_SUMMER = 2;     // CEST (Central European Summer Time)
 const DST_START_DOY     = 91;    // March 31, 2024 (last Sunday of March)
@@ -554,12 +555,13 @@ function solarPosition(doy, clockHour, dst) {
               - 0.006758*Math.cos(2*B) + 0.000907*Math.sin(2*B)
               - 0.002697*Math.cos(3*B) + 0.001480*Math.sin(3*B);
   const utcOff = dst ? UTC_OFFSET_SUMMER : UTC_OFFSET_WINTER;
-  const solarH = clockHour + ET/60 + (NEER_LON - 15*utcOff) / 15;
+  const solarH = clockHour + ET/60 + ((SIM_LON || NEER_DEFAULT_LON) - 15*utcOff) / 15;
   const omega  = (solarH - 12) * 15 * Math.PI / 180;
-  const sinAlt = Math.sin(dec)*Math.sin(NEER_LAT) + Math.cos(dec)*Math.cos(NEER_LAT)*Math.cos(omega);
+  const latRad = SIM_LAT_RAD || (51.27 * Math.PI / 180);
+  const sinAlt = Math.sin(dec)*Math.sin(latRad) + Math.cos(dec)*Math.cos(latRad)*Math.cos(omega);
   const alt    = Math.asin(Math.max(-1, Math.min(1, sinAlt)));
   const sun_e  = -Math.cos(dec) * Math.sin(omega);
-  const sun_n  =  Math.sin(dec) * Math.cos(NEER_LAT) - Math.cos(dec) * Math.sin(NEER_LAT) * Math.cos(omega);
+  const sun_n  =  Math.sin(dec) * Math.cos(latRad) - Math.cos(dec) * Math.sin(latRad) * Math.cos(omega);
   const az     = ((Math.atan2(sun_e, sun_n) * 180 / Math.PI) + 360) % 360;
   return { altitude: alt * 180 / Math.PI, azimuth: az };
 }
@@ -909,13 +911,16 @@ self.onmessage = function(e) {
 
   // Unpack constants
   ROWS=d.ROWS; COLS=d.COLS; SECTION_DIV=d.SECTION_DIV;
-  STC_IRRAD=d.STC_IRRAD; BYPASS_VD=d.BYPASS_VD; NEER_LAT=d.NEER_LAT;
+  STC_IRRAD=d.STC_IRRAD; BYPASS_VD=d.BYPASS_VD;
+  SIM_LAT_RAD=(d.SIM_LAT ?? 51.27) * Math.PI / 180;
+  SIM_LON=d.SIM_LON ?? NEER_DEFAULT_LON;
   PNL=d.PNL; SECTIONS=d.SECTIONS; CONFIGS=d.CONFIGS; MONTHLY_KC=d.MONTHLY_KC;
   MAX_SHADOW_LEN=d.MAX_SHADOW_LEN; MAX_SHADOW_AXIS=d.MAX_SHADOW_AXIS;
   DOY_TO_MONTH=d.DOY_TO_MONTH; PANEL_POS=d.PANEL_POS;
   FOLIAGE = d.FOLIAGE || [1,1,1,1,1,1,1,1,1,1,1,1];
   INVERTER_SPECS_W = d.INVERTER_SPECS || {};
   DYNAMIC_PRICES = d.DYNAMIC_PRICES || null;
+  HOURLY_WEATHER = d.HOURLY_WEATHER || null;
 
   const sceneTrees = d.sceneTrees;
   const shadeLevel = d.shadeLevel;
@@ -970,14 +975,20 @@ self.onmessage = function(e) {
       if (sp.altitude < 0.5) continue;
 
       const sinA = Math.sin(sp.altitude * Math.PI / 180);
-      const cs   = clearSkyIrr(sinA, doy);
+      const hourIdx = (doy - 1) * 24 + hour;
+      const weather = (useWeather && HOURLY_WEATHER) ? HOURLY_WEATHER : null;
+      const cs = weather ? {
+        ghi: Math.max(0, weather.ghi[hourIdx] || 0),
+        dni: Math.max(0, weather.dni[hourIdx] || 0),
+        dhi: Math.max(0, weather.dhi[hourIdx] || 0),
+      } : clearSkyIrr(sinA, doy);
 
-      // POA fraction per section with Kc applied
+      // POA fraction per section, using hourly historical weather when available.
       const frac = [
         Math.min(1, poaIrradiance(cs.dni, cs.dhi, cs.ghi, sp.altitude, sp.azimuth,
-          SECTIONS[0].tilt, SECTIONS[0].azimuth) * kc / STC_IRRAD),
+          SECTIONS[0].tilt, SECTIONS[0].azimuth) * (weather ? 1 : kc) / STC_IRRAD),
         Math.min(1, poaIrradiance(cs.dni, cs.dhi, cs.ghi, sp.altitude, sp.azimuth,
-          SECTIONS[1].tilt, SECTIONS[1].azimuth) * kc / STC_IRRAD),
+          SECTIONS[1].tilt, SECTIONS[1].azimuth) * (weather ? 1 : kc) / STC_IRRAD),
       ];
       
       // Compute beam fraction for each section
@@ -986,12 +997,12 @@ self.onmessage = function(e) {
           Math.cos(sp.altitude*Math.PI/180)*Math.sin(sp.azimuth*Math.PI/180)*Math.sin(SECTIONS[0].tilt*Math.PI/180)*Math.sin(SECTIONS[0].azimuth*Math.PI/180) +
           Math.cos(sp.altitude*Math.PI/180)*Math.cos(sp.azimuth*Math.PI/180)*Math.sin(SECTIONS[0].tilt*Math.PI/180)*Math.cos(SECTIONS[0].azimuth*Math.PI/180) +
           Math.sin(sp.altitude*Math.PI/180)*Math.cos(SECTIONS[0].tilt*Math.PI/180)
-        ) * kc / STC_IRRAD) / frac[0]) : 0.5,
+        ) * (weather ? 1 : kc) / STC_IRRAD) / frac[0]) : 0.5,
         frac[1] > 0 ? Math.min(1, Math.max(0, cs.dni * Math.max(0,
           Math.cos(sp.altitude*Math.PI/180)*Math.sin(sp.azimuth*Math.PI/180)*Math.sin(SECTIONS[1].tilt*Math.PI/180)*Math.sin(SECTIONS[1].azimuth*Math.PI/180) +
           Math.cos(sp.altitude*Math.PI/180)*Math.cos(sp.azimuth*Math.PI/180)*Math.sin(SECTIONS[1].tilt*Math.PI/180)*Math.cos(SECTIONS[1].azimuth*Math.PI/180) +
           Math.sin(sp.altitude*Math.PI/180)*Math.cos(SECTIONS[1].tilt*Math.PI/180)
-        ) * kc / STC_IRRAD) / frac[1]) : 0.5,
+        ) * (weather ? 1 : kc) / STC_IRRAD) / frac[1]) : 0.5,
       ];
 
       // Fill flat irr[] (section boundary at SECTION_DIV)
@@ -1059,7 +1070,7 @@ self.onmessage = function(e) {
         if (spec && spec.totalPowerW && totalP > spec.totalPowerW) totalP = spec.totalPowerW;
         monthlyEnergy[cfg.id][month] += totalP / 1000;
         // Track per-hour output for battery economic simulation
-        hourlyKwh[cfg.id][(doy - 1) * 24 + hour] = totalP / 1000;
+        hourlyKwh[cfg.id][hourIdx] = totalP / 1000;
         if (dynPrice > 0) configRevenueDynamic[cfg.id][month] += (totalP / 1000) * dynPrice;
       }
       
@@ -3583,6 +3594,70 @@ function updateLeafletShadows() {
 
 let simWorker = null; // non-null while simulation is running
 let _simWorkers = []; // array of workers for multi-worker mode
+let historicalWeatherCache = null;
+let lastHistoricalWeather = null;
+
+function getSimulationLocation() {
+  if (typeof enuToLatLng === 'function') {
+    return enuToLatLng(arraySceneX || 0, arraySceneY || 0, arrayOriginLat || NEER.lat, arrayOriginLng || NEER.lon);
+  }
+  return { lat: NEER.lat, lng: NEER.lon };
+}
+
+function normaliseHistoricalWeather(raw, lat, lng) {
+  const hourly = raw && raw.hourly ? raw.hourly : {};
+  const ghi = hourly.shortwave_radiation || [];
+  const dni = hourly.direct_normal_irradiance || [];
+  const dhi = hourly.diffuse_radiation || [];
+  const temp = hourly.temperature_2m || [];
+  if (ghi.length < 8760 || temp.length < 8760) {
+    throw new Error(`Incomplete historical weather response: expected 8760 hourly values, got GHI=${ghi.length}, temp=${temp.length}`);
+  }
+
+  const out = {
+    lat, lng,
+    source: 'Open-Meteo ERA5 archive 2025',
+    ghi: new Float64Array(8760),
+    dni: new Float64Array(8760),
+    dhi: new Float64Array(8760),
+    temperature2m: new Float64Array(8760),
+  };
+  for (let h = 0; h < 8760; h++) {
+    const g = Math.max(0, Number(ghi[h]) || 0);
+    let d = Math.max(0, Number(dni[h]) || 0);
+    let f = Math.max(0, Number(dhi[h]) || 0);
+    if (d === 0 && f === 0 && g > 0) {
+      // Conservative rule-of-thumb fallback for the rare case where the archive returns GHI but no
+      // split fields. The 35% diffuse share is intentionally high to avoid overstating sharp beam
+      // shadows under cloudy Dutch conditions; the remaining 65% is treated as beam-equivalent.
+      f = g * 0.35;
+      d = g * 0.65;
+    }
+    out.ghi[h] = g;
+    out.dni[h] = d;
+    out.dhi[h] = f;
+    out.temperature2m[h] = Number.isFinite(Number(temp[h])) ? Number(temp[h]) : 10;
+  }
+  return out;
+}
+
+async function loadHistoricalWeather2025(lat, lng) {
+  const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  if (historicalWeatherCache && historicalWeatherCache.key === key) return historicalWeatherCache.data;
+  const url = new URL('https://archive-api.open-meteo.com/v1/archive');
+  url.searchParams.set('latitude', lat.toFixed(5));
+  url.searchParams.set('longitude', lng.toFixed(5));
+  url.searchParams.set('start_date', '2025-01-01');
+  url.searchParams.set('end_date', '2025-12-31');
+  url.searchParams.set('hourly', 'temperature_2m,shortwave_radiation,direct_normal_irradiance,diffuse_radiation');
+  url.searchParams.set('timezone', 'Europe/Amsterdam');
+  const resp = await fetch(url.toString());
+  if (!resp.ok) throw new Error(`Weather HTTP ${resp.status}`);
+  const data = normaliseHistoricalWeather(await resp.json(), lat, lng);
+  historicalWeatherCache = { key, data };
+  lastHistoricalWeather = data;
+  return data;
+}
 
 /**
  * Run the yearly simulation in dedicated Web Workers.
@@ -3597,7 +3672,7 @@ let _simWorkers = []; // array of workers for multi-worker mode
  *   4. Flat Float32Arrays + precomputed panel positions remove per-step allocation.
  *   5. Solar position computed from (doy, clockHour, dst) — no new Date() inside loop.
  */
-function runYearlySimulation() {
+async function runYearlySimulation() {
   if (simWorker) return; // already running
 
   const useWeather = document.getElementById('weatherToggle').checked;
@@ -3616,6 +3691,21 @@ function runYearlySimulation() {
   document.getElementById('simStatusLabel').textContent    = 'Initialising…';
   document.getElementById('simModeLabel').textContent =
     useWeather ? `☁ weather-adjusted · ${nWorkers} worker${nWorkers>1?'s':''}` : `☀ clear-sky only · ${nWorkers} worker${nWorkers>1?'s':''}`;
+
+  const simLocation = getSimulationLocation();
+  let hourlyWeather = null;
+  if (useWeather) {
+    try {
+      document.getElementById('simStatusLabel').textContent = 'Loading hourly 2025 weather…';
+      hourlyWeather = await loadHistoricalWeather2025(simLocation.lat, simLocation.lng);
+      document.getElementById('simModeLabel').textContent =
+        `☁ hourly 2025 weather · ${nWorkers} worker${nWorkers>1?'s':''}`;
+    } catch (err) {
+      console.warn('Hourly weather unavailable; falling back to monthly Kc factors.', err);
+      document.getElementById('simModeLabel').textContent =
+        `☁ monthly Kc fallback · ${nWorkers} worker${nWorkers>1?'s':''}`;
+    }
+  }
 
   // Precompute DOY → month (0-11) lookup for 2024 reference year
   const DOY_TO_MONTH = new Array(365);
@@ -3731,7 +3821,9 @@ function runYearlySimulation() {
     // Send all needed data to the worker (structured-clone transfer)
     worker.postMessage({
       type: 'run',
-      ROWS, COLS, SECTION_DIV, STC_IRRAD, BYPASS_VD, NEER_LAT,
+      ROWS, COLS, SECTION_DIV, STC_IRRAD, BYPASS_VD,
+      SIM_LAT: simLocation.lat,
+      SIM_LON: simLocation.lng,
       PNL: { ...PNL },
       SECTIONS: SECTIONS.map(s => ({ tilt: s.tilt, azimuth: s.azimuth })),
       CONFIGS:  CONFIGS_slim,
@@ -3739,6 +3831,11 @@ function runYearlySimulation() {
       FOLIAGE: [...FOLIAGE],
       MAX_SHADOW_LEN, MAX_SHADOW_AXIS,
       DYNAMIC_PRICES: Float64Array.from({length:12*24}, (_,i) => HOURLY_APX_PRICE_2025[Math.floor(i/24)][i%24]),
+      HOURLY_WEATHER: hourlyWeather ? {
+        ghi: hourlyWeather.ghi,
+        dni: hourlyWeather.dni,
+        dhi: hourlyWeather.dhi,
+      } : null,
       sceneTrees: sceneTrees.map(t => ({ x:t.x, y:t.y, height:t.height, crownRadius:t.crownRadius, hasUnderstoryFoliage:t.hasUnderstoryFoliage !== false })),
       shadeLevel, useWeather,
       DOY_TO_MONTH, PANEL_POS,
@@ -3774,10 +3871,19 @@ function formatROI(cost, annualProfit) {
 /**
  * Precompute yearly house load profile.
  * Base: 12 kWh/day with morning/evening peaks.
- * Heat pump: seasonal component, 0 in summer, up to hpWinterDailyKwh in Dec/Jan.
+ * Heat pump: uses hourly outdoor temperature and expected COP when available.
  * @returns Float64Array(8760) — kWh per hour
  */
-function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDailyKwh = HP_WINTER_DEFAULT_KWH) {
+function heatPumpCOP(outdoorTempC) {
+  // Simplified air-source heat-pump COP curve for low-temperature heating.
+  // Actual COP varies by model and flow temperature. These rule-of-thumb values are centred on
+  // common Dutch air-to-water heat pumps with low-temperature emitters: ~2.75 at −5°C, a gradual
+  // ~0.085 COP/°C improvement, and broad 1.8–5.2 bounds to avoid unrealistic extremes.
+  // Replace with measured manufacturer/site COP data when available.
+  return Math.max(1.8, Math.min(5.2, 2.75 + 0.085 * (outdoorTempC + 5)));
+}
+
+function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDailyKwh = HP_WINTER_DEFAULT_KWH, hourlyOutdoorTempC = null) {
   // Normalised base load hourly shape (24 values sum to 1.0)
   // Morning peak 06-09, evening peak 18-22, minimal night
   const baseShape = [
@@ -3789,8 +3895,7 @@ function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDail
   const bpSum = baseShape.reduce((a, b) => a + b, 0);
   const baseNorm = baseShape.map(x => x / bpSum);
 
-  // Heat pump daily kWh by month (electrical demand, Dutch heat pump, rough COP=3.5 not modeled)
-  // Scales from hpWinterDailyKwh at peak winter to 0 in summer.
+  // Fallback heat-pump daily kWh by month when hourly weather is unavailable.
   const hpMonthFrac = [1.00, 0.90, 0.65, 0.18, 0.00, 0.00, 0.00, 0.00, 0.07, 0.35, 0.80, 0.95];
 
   // HP runs mostly in the evening/night heating hours: 15-23h
@@ -3802,6 +3907,12 @@ function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDail
   ];
   const hpSum = hpShape.reduce((a, b) => a + b, 0);
   const hpNorm = hpShape.map(x => x / hpSum);
+  const hasHourlyTemp = hourlyOutdoorTempC && hourlyOutdoorTempC.length >= 8760;
+  // Engineering sizing assumptions for Dutch/Limburg conditions, not code-standard citations:
+  // indoor gains keep heating mostly off above 16°C; −5°C represents a cold winter design point.
+  const heatBalanceTempC = 16;
+  const designOutdoorTempC = -5;
+  const designThermalKwhPerDay = hpWinterDailyKwh * heatPumpCOP(designOutdoorTempC);
 
   const load = new Float64Array(8760);
   for (let doy = 1; doy <= 365; doy++) {
@@ -3811,7 +3922,19 @@ function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDail
     const baseDay = baseDailyKwh * variation;
     const hpDay   = hpWinterDailyKwh * hpMonthFrac[month];
     for (let h = 0; h < 24; h++) {
-      load[(doy - 1) * 24 + h] = baseDay * baseNorm[h] + hpDay * hpNorm[h];
+      const idx = (doy - 1) * 24 + h;
+      let hpKwh;
+      if (hasHourlyTemp) {
+        const outdoor = hourlyOutdoorTempC[idx];
+        // 1.35 is a rule-of-thumb cold-snap margin, not empirical calibration: hours below the
+        // −5°C design point can exceed nominal demand, but a few extreme hours should not dominate.
+        const heatFrac = Math.max(0, Math.min(1.35, (heatBalanceTempC - outdoor) / (heatBalanceTempC - designOutdoorTempC)));
+        const thermalKwh = (designThermalKwhPerDay / 24) * heatFrac;
+        hpKwh = thermalKwh / heatPumpCOP(outdoor);
+      } else {
+        hpKwh = hpDay * hpNorm[h];
+      }
+      load[idx] = baseDay * baseNorm[h] + hpKwh;
     }
   }
   return load;
@@ -5267,7 +5390,17 @@ async function runEconSim() {
   const useGridPrecharge = document.getElementById('econGridPrechargeToggle').checked;
   const zeroExport  = document.getElementById('econZeroExportToggle').checked;
 
-  const loadProfile    = precomputeYearlyLoad(baseDayKwh, hpWinterKwh);
+  let weatherForLoad = lastHistoricalWeather;
+  if (!weatherForLoad) {
+    try {
+      const loc = getSimulationLocation();
+      document.getElementById('econStatusLabel').textContent = 'Loading hourly temperature…';
+      weatherForLoad = await loadHistoricalWeather2025(loc.lat, loc.lng);
+    } catch (err) {
+      console.warn('Hourly temperature unavailable; falling back to seasonal heat-pump load.', err);
+    }
+  }
+  const loadProfile    = precomputeYearlyLoad(baseDayKwh, hpWinterKwh, weatherForLoad?.temperature2m);
   const energyTax      = parseFloat(document.getElementById('econEnergyTaxSlider').value) / 100;
   const inkoopOpslag   = parseFloat(document.getElementById('econInkoopOpslagSlider').value) / 100;
   const verkoopOpslag  = parseFloat(document.getElementById('econVerkoopOpslagSlider').value) / 100;
