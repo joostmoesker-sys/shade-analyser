@@ -538,7 +538,7 @@ let HOURLY_WEATHER; // optional historical weather arrays, length 8760
 // ── DST for Neer NL, 2024 reference year ───────────────────────────────────
 // Spring forward: March 31 = DOY 91; Fall back: October 27 = DOY 301.
 // Neer uses CET (UTC+1) in winter and CEST (UTC+2) in summer.
-const DEFAULT_SIM_LON   = 5.99;  // degrees East
+const NEER_DEFAULT_LON  = 5.99;  // degrees East
 const UTC_OFFSET_WINTER = 1;     // CET  (Central European Time)
 const UTC_OFFSET_SUMMER = 2;     // CEST (Central European Summer Time)
 const DST_START_DOY     = 91;    // March 31, 2024 (last Sunday of March)
@@ -555,7 +555,7 @@ function solarPosition(doy, clockHour, dst) {
               - 0.006758*Math.cos(2*B) + 0.000907*Math.sin(2*B)
               - 0.002697*Math.cos(3*B) + 0.001480*Math.sin(3*B);
   const utcOff = dst ? UTC_OFFSET_SUMMER : UTC_OFFSET_WINTER;
-  const solarH = clockHour + ET/60 + ((SIM_LON || DEFAULT_SIM_LON) - 15*utcOff) / 15;
+  const solarH = clockHour + ET/60 + ((SIM_LON || NEER_DEFAULT_LON) - 15*utcOff) / 15;
   const omega  = (solarH - 12) * 15 * Math.PI / 180;
   const latRad = SIM_LAT_RAD || (51.27 * Math.PI / 180);
   const sinAlt = Math.sin(dec)*Math.sin(latRad) + Math.cos(dec)*Math.cos(latRad)*Math.cos(omega);
@@ -913,7 +913,7 @@ self.onmessage = function(e) {
   ROWS=d.ROWS; COLS=d.COLS; SECTION_DIV=d.SECTION_DIV;
   STC_IRRAD=d.STC_IRRAD; BYPASS_VD=d.BYPASS_VD;
   SIM_LAT_RAD=(d.SIM_LAT ?? 51.27) * Math.PI / 180;
-  SIM_LON=d.SIM_LON ?? DEFAULT_SIM_LON;
+  SIM_LON=d.SIM_LON ?? NEER_DEFAULT_LON;
   PNL=d.PNL; SECTIONS=d.SECTIONS; CONFIGS=d.CONFIGS; MONTHLY_KC=d.MONTHLY_KC;
   MAX_SHADOW_LEN=d.MAX_SHADOW_LEN; MAX_SHADOW_AXIS=d.MAX_SHADOW_AXIS;
   DOY_TO_MONTH=d.DOY_TO_MONTH; PANEL_POS=d.PANEL_POS;
@@ -3610,7 +3610,9 @@ function normaliseHistoricalWeather(raw, lat, lng) {
   const dni = hourly.direct_normal_irradiance || [];
   const dhi = hourly.diffuse_radiation || [];
   const temp = hourly.temperature_2m || [];
-  if (ghi.length < 8760 || temp.length < 8760) throw new Error('Incomplete historical weather response');
+  if (ghi.length < 8760 || temp.length < 8760) {
+    throw new Error(`Incomplete historical weather response: expected 8760 hourly values, got GHI=${ghi.length}, temp=${temp.length}`);
+  }
 
   const out = {
     lat, lng,
@@ -3625,9 +3627,9 @@ function normaliseHistoricalWeather(raw, lat, lng) {
     let d = Math.max(0, Number(dni[h]) || 0);
     let f = Math.max(0, Number(dhi[h]) || 0);
     if (d === 0 && f === 0 && g > 0) {
-      // Conservative engineering estimate for missing beam/diffuse fields, not a cited irradiance
-      // decomposition model: NL cloudiness often leaves a substantial diffuse share, so use a
-      // fixed 35% diffuse / 65% beam-equivalent GHI split.
+      // Conservative engineering fallback for the rare case where the archive returns GHI but no
+      // split fields. It is only a coarse PV-loss estimate for this app, so use a substantial
+      // 35% diffuse share and leave 65% as beam-equivalent input.
       f = g * 0.35;
       d = g * 0.65;
     }
@@ -3874,8 +3876,9 @@ function formatROI(cost, annualProfit) {
  */
 function heatPumpCOP(outdoorTempC) {
   // Simplified air-source heat-pump COP curve for low-temperature heating.
-  // Actual COP varies by model and flow temperature; these are engineering approximations based on
-  // typical Dutch air-to-water units: ~2.75 at −5°C, improving by ~0.085 COP/°C, clamped to bounds.
+  // Actual COP varies by model and flow temperature; these non-manufacturer-specific engineering
+  // approximations represent typical Dutch air-to-water units: ~2.75 at −5°C, improving by
+  // ~0.085 COP/°C, clamped to bounds. Replace with measured COP data if available.
   return Math.max(1.8, Math.min(5.2, 2.75 + 0.085 * (outdoorTempC + 5)));
 }
 
@@ -3922,7 +3925,8 @@ function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDail
       let hpKwh;
       if (hasHourlyTemp) {
         const outdoor = hourlyOutdoorTempC[idx];
-        // Allow up to 135% of design heat demand during colder-than-design snaps.
+        // 1.35 is a conservative cold-snap margin so hours below the −5°C design point can exceed
+        // nominal demand without letting a few extreme hours dominate the annual load.
         const heatFrac = Math.max(0, Math.min(1.35, (heatBalanceTempC - outdoor) / (heatBalanceTempC - designOutdoorTempC)));
         const thermalKwh = (designThermalKwhPerDay / 24) * heatFrac;
         hpKwh = thermalKwh / heatPumpCOP(outdoor);
