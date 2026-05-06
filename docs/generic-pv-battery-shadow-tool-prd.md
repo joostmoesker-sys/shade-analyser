@@ -181,7 +181,7 @@ Workflowtabs:
 
 Belangrijke UI-keuzes:
 
-- 2D-kaart is leidend; 3D-preview ondersteunt schaduwinzicht.
+- 2D-kaart is leidend; 3D-preview ondersteunt inzicht in schaduw.
 - Alle objecten zijn direct selecteerbaar op kaart of in projectboom.
 - Complexe bekabeling is desktop-first.
 - Beginners starten met templates; experts kunnen handmatig specificaties aanpassen.
@@ -344,7 +344,7 @@ Advies: bouw client-side-first, maar ontwerp data-adapters zodat een serverless 
 
 | Risico | Impact | Mitigatie |
 |---|---|---|
-| Wiring-editor wordt te complex | Hoog | Begin met serie/paralleltemplates; TCT als advanced feature later |
+| Wiring-editor wordt te complex | Hoog | Begin met serie/parallel-templates; TCT als advanced feature later |
 | Boomschaduw is lastig realistisch | Middel | Start met vereenvoudigde geometrie, dichtheid en seizoensfactor |
 | Historische weerdata is benadering | Middel | Toon databron en resolutie; ondersteun meerdere bronnen |
 | Volledig client-side wordt traag | Hoog | Gebruik workers, caching en later WASM voor hotspots |
