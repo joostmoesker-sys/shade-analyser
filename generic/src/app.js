@@ -69,6 +69,7 @@ function bindDom() {
     "monthlyChart",
     "exportDialog",
     "exportText",
+    "notificationRegion",
   ]) {
     dom[id] = document.getElementById(id);
   }
@@ -691,14 +692,25 @@ function importProject(event) {
       persist();
       render();
     } catch (error) {
-      const reason = error instanceof SyntaxError ? "Het bestand bevat geen geldige JSON." : "De projectstructuur kon niet worden gelezen.";
+      const reason = error instanceof SyntaxError ? "Het bestand bevat geen geldige JSON." : `De projectstructuur kon niet worden gelezen (${error.name}).`;
       const guidance = "Gebruik een export uit deze generic tool met schemaVersion, location, panelTypes en scenarios.";
-      alert(`${reason} ${guidance} Details: ${error.message}`);
+      showNotification("error", "Import mislukt", `${reason} ${guidance} Details: ${error.message}`);
     } finally {
       event.target.value = "";
     }
   });
   reader.readAsText(file);
+}
+
+function showNotification(type, title, message) {
+  const item = document.createElement("div");
+  item.className = `notification ${type}`;
+  const strong = document.createElement("strong");
+  strong.textContent = title;
+  const text = document.createElement("div");
+  text.textContent = message;
+  item.append(strong, text);
+  dom.notificationRegion.replaceChildren(item);
 }
 
 function persist() {

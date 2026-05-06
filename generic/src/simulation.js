@@ -10,8 +10,9 @@ const IMPORT_BALANCING_COST_EUR_PER_KWH = 0.02;
 const DIRECT_CONSUMPTION_FACTOR = 0.45;
 // Fast-preview assumption: at most this share of unused battery throughput is economically exported.
 const BATTERY_EXPORT_FRACTION = 0.35;
-// Fast-preview battery cap: avoid unrealistic monthly throughput from a small battery.
-const DAILY_BATTERY_CYCLES = 3;
+// Fast-preview battery caps: avoid unrealistic monthly throughput from a small battery.
+const MAX_MONTHLY_STORAGE_CYCLES = 24;
+const DAILY_BATTERY_FULL_POWER_HOURS = 3;
 // Orientation approximation around due south for Dutch roof-mounted arrays.
 const MIN_ORIENTATION_FACTOR = 0.62;
 const ORIENTATION_COSINE_WEIGHT = 0.18;
@@ -152,8 +153,8 @@ function simulateBatteryEconomics(monthlyPvKwh, monthlyLoadKwh, battery) {
     const direct = Math.min(pv, load * DIRECT_CONSUMPTION_FACTOR);
     const surplus = Math.max(0, pv - direct);
     const deficit = Math.max(0, load - direct);
-    const monthlyThroughputCap = battery.capacityKwh * 24;
-    const charge = Math.min(surplus, monthlyThroughputCap, battery.maxPowerKw * MONTH_DAYS[month] * DAILY_BATTERY_CYCLES);
+    const monthlyThroughputCap = battery.capacityKwh * MAX_MONTHLY_STORAGE_CYCLES;
+    const charge = Math.min(surplus, monthlyThroughputCap, estimateMonthlyBatteryPowerThroughput(battery, month));
     const delivered = Math.min(deficit, charge * efficiency);
     chargedKwh += charge;
     batteryToLoadKwh += delivered;
@@ -170,6 +171,10 @@ function simulateBatteryEconomics(monthlyPvKwh, monthlyLoadKwh, battery) {
     standbyLossKwh,
     cycles: battery.capacityKwh > 0 ? chargedKwh / battery.capacityKwh : 0,
   };
+}
+
+function estimateMonthlyBatteryPowerThroughput(battery, month) {
+  return battery.maxPowerKw * MONTH_DAYS[month] * DAILY_BATTERY_FULL_POWER_HOURS;
 }
 
 function toRad(degrees) {

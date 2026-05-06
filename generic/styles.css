@@ -108,6 +108,27 @@ label {
   gap: 8px;
 }
 
+.notification-region {
+  min-height: 0;
+  padding: 0 24px;
+}
+
+.notification {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #172033;
+  padding: 12px 14px;
+}
+
+.notification.error {
+  border-color: var(--danger);
+}
+
+.notification strong {
+  display: block;
+}
+
 .button-row.end { justify-content: flex-end; }
 
 .file-button {
