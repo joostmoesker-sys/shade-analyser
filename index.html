@@ -1223,6 +1223,7 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
   let importCost = importGrid * buyPrice;
   let revenue = 0;
   let pvExport = 0, batteryExport = 0, selfBattery = 0;
+  let batteryExportRequest = 0;
   let pvChargeInput = 0, gridChargeInput = 0;
   let batteryChargeStored = 0, batteryDischargeDrawn = 0;
   let curtailedPv = 0;
@@ -1278,7 +1279,7 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     const remainingDelivered = delivered - selfBattery;
     if (remainingDelivered > eps) {
       if (zeroExport || loadDeficit > eps || sellPrice <= 0) return null;
-      batteryExport = remainingDelivered;
+      batteryExportRequest = remainingDelivered;
     }
 
     batteryDischargeDrawn = draw;
@@ -1289,13 +1290,14 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     pvExport = Math.min(surplusPv, remainingGridExportCap);
     revenue += pvExport * sellPrice;
     remainingGridExportCap -= pvExport;
-    curtailedPv += Math.max(0, surplusPv - pvExport);
+    curtailedPv = Math.max(0, surplusPv - pvExport);
   } else if (surplusPv > eps) {
-    curtailedPv += surplusPv;
+    curtailedPv = surplusPv;
   }
 
-  if (batteryExport > eps) {
-    if (batteryExport > remainingGridExportCap + eps) return null;
+  if (batteryExportRequest > eps) {
+    if (batteryExportRequest > remainingGridExportCap + eps) return null;
+    batteryExport = batteryExportRequest;
     revenue += batteryExport * sellPrice;
   }
 
@@ -5082,6 +5084,7 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
   let importCost = importGrid * buyPrice;
   let revenue = 0;
   let pvExport = 0, batteryExport = 0, selfBattery = 0;
+  let batteryExportRequest = 0;
   let pvChargeInput = 0, gridChargeInput = 0;
   let batteryChargeStored = 0, batteryDischargeDrawn = 0;
   let curtailedPv = 0;
@@ -5140,7 +5143,7 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     const remainingDelivered = delivered - selfBattery;
     if (remainingDelivered > eps) {
       if (zeroExport || loadDeficit > eps || sellPrice <= 0) return null;
-      batteryExport = remainingDelivered;
+      batteryExportRequest = remainingDelivered;
     }
 
     batteryDischargeDrawn = draw;
@@ -5151,13 +5154,14 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     pvExport = Math.min(surplusPv, remainingGridExportCap);
     revenue += pvExport * sellPrice;
     remainingGridExportCap -= pvExport;
-    curtailedPv += Math.max(0, surplusPv - pvExport);
+    curtailedPv = Math.max(0, surplusPv - pvExport);
   } else if (surplusPv > eps) {
-    curtailedPv += surplusPv;
+    curtailedPv = surplusPv;
   }
 
-  if (batteryExport > eps) {
-    if (batteryExport > remainingGridExportCap + eps) return null;
+  if (batteryExportRequest > eps) {
+    if (batteryExportRequest > remainingGridExportCap + eps) return null;
+    batteryExport = batteryExportRequest;
     revenue += batteryExport * sellPrice;
   }
 
