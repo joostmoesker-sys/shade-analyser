@@ -1595,13 +1595,16 @@ const HOURLY_APX_PRICE_2025 = [
 ];
 
 const RAW_APX_PRICE_SOURCE_2025 = 'Energy-Charts API NL-LU day-ahead spot prices 2025';
-const MIN_RAW_APX_HOURS_2025 = 8500; // ≥97% coverage; DST/time-zone edge gaps are filled by fallback.
+const HOURS_PER_YEAR_2025 = 365 * 24;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const MIN_RAW_APX_HOURS_2025 = Math.floor(HOURS_PER_YEAR_2025 * 0.97); // DST/time-zone edge gaps are filled by fallback.
 let rawApxPriceCache2025 = null;
 
 function syntheticApxPriceForHourIndex(hourIdx) {
   const doy = Math.floor(hourIdx / 24) + 1;
   const h = hourIdx % 24;
-  const date = new Date(2025, 0, doy);
+  const date = new Date(2025, 0, 1);
+  date.setDate(date.getDate() + doy - 1);
   const month = date.getMonth();
   const dow = date.getDay();
   const isWknd = dow === 0 || dow === 6;
@@ -1612,7 +1615,7 @@ function syntheticApxPriceForHourIndex(hourIdx) {
 }
 
 function generateSyntheticApxPrices2025() {
-  const prices = new Float64Array(8760);
+  const prices = new Float64Array(HOURS_PER_YEAR_2025);
   for (let h = 0; h < prices.length; h++) prices[h] = syntheticApxPriceForHourIndex(h);
   return prices;
 }
@@ -1656,8 +1659,8 @@ function normaliseRawApxPrices2025(raw) {
     hour: '2-digit',
     hourCycle: 'h23',
   });
-  const sum = new Float64Array(8760);
-  const count = new Uint16Array(8760);
+  const sum = new Float64Array(HOURS_PER_YEAR_2025);
+  const count = new Uint16Array(HOURS_PER_YEAR_2025);
 
   for (let i = 0; i < rawPrices.length; i++) {
     const parts = Object.fromEntries(fmt.formatToParts(new Date(unixSeconds[i] * 1000)).map(p => [p.type, p.value]));
@@ -1666,10 +1669,10 @@ function normaliseRawApxPrices2025(raw) {
     const month = Number(parts.month);
     const day = Number(parts.day);
     const hour = Number(parts.hour);
-    const doy = Math.floor((Date.UTC(year, month - 1, day) - Date.UTC(2025, 0, 1)) / 86400000) + 1;
+    const doy = Math.floor((Date.UTC(year, month - 1, day) - Date.UTC(2025, 0, 1)) / MS_PER_DAY) + 1;
     const idx = (doy - 1) * 24 + hour;
     const price = normaliseApxPricePoint(rawPrices[i], priceScale);
-    if (idx >= 0 && idx < 8760 && Number.isFinite(price)) {
+    if (idx >= 0 && idx < HOURS_PER_YEAR_2025 && Number.isFinite(price)) {
       sum[idx] += price;
       count[idx]++;
     }
@@ -1684,7 +1687,7 @@ function normaliseRawApxPrices2025(raw) {
     }
   }
   if (rawHours < MIN_RAW_APX_HOURS_2025) {
-    throw new Error(`Incomplete APX price response: mapped ${rawHours}/8760 hours; expected at least ${MIN_RAW_APX_HOURS_2025} hours (97% coverage)`);
+    throw new Error(`Incomplete APX price response: mapped ${rawHours}/${prices.length} hours; expected at least ${MIN_RAW_APX_HOURS_2025} hours (97% coverage)`);
   }
   prices.rawHours = rawHours;
   prices.source = RAW_APX_PRICE_SOURCE_2025;
@@ -1700,7 +1703,7 @@ async function loadRawApxPrices2025() {
   let lastErr = null;
   for (const url of urls) {
     try {
-      const resp = await fetch(url, { cache: 'force-cache' });
+      const resp = await fetch(url);
       if (!resp.ok) throw new Error(`APX HTTP ${resp.status}`);
       rawApxPriceCache2025 = normaliseRawApxPrices2025(await resp.json());
       return rawApxPriceCache2025;
@@ -3956,8 +3959,8 @@ function generateYearlyTariffs(inkoopOpslag = INKOOP_OPSLAG_DEFAULT, energyTax =
   // Buy tariff: bare APX price + energy tax + inkoop opslag.
   // Exported kWh are sold at the bare APX price + verkoop opslag — see generateYearlySellTariffs().
   const overhead = inkoopOpslag + energyTax;
-  const tariffs = new Float64Array(8760);
-  const prices = apxPrices && apxPrices.length >= 8760 ? apxPrices : generateSyntheticApxPrices2025();
+  const tariffs = new Float64Array(HOURS_PER_YEAR_2025);
+  const prices = apxPrices && apxPrices.length >= HOURS_PER_YEAR_2025 ? apxPrices : generateSyntheticApxPrices2025();
   for (let h = 0; h < tariffs.length; h++) {
     tariffs[h] = prices[h] + overhead;
   }
@@ -3972,8 +3975,8 @@ function generateYearlyTariffs(inkoopOpslag = INKOOP_OPSLAG_DEFAULT, energyTax =
  * @param {Float64Array} [apxPrices] — €/kWh bare APX spot prices, length 8760
  */
 function generateYearlySellTariffs(verkoopOpslag = VERKOOP_OPSLAG_DEFAULT, apxPrices = null) {
-  const tariffs = new Float64Array(8760);
-  const prices = apxPrices && apxPrices.length >= 8760 ? apxPrices : generateSyntheticApxPrices2025();
+  const tariffs = new Float64Array(HOURS_PER_YEAR_2025);
+  const prices = apxPrices && apxPrices.length >= HOURS_PER_YEAR_2025 ? apxPrices : generateSyntheticApxPrices2025();
   for (let h = 0; h < tariffs.length; h++) {
     tariffs[h] = prices[h] + verkoopOpslag; // APX + verkoop opslag
   }
