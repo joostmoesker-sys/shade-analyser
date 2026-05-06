@@ -120,7 +120,9 @@ A coloured section-boundary line is drawn on the canvas between rows 5 and 6.
 
 Location: **Neer, Netherlands** (lat 51.27°N, lon 5.99°E)
 
-Solar position is computed using the Spencer equations for declination and equation of time, with the correct ENU vector formula for azimuth. The live view uses a clear-sky direct normal irradiance model with Netherlands turbidity (τ=0.88). The yearly simulation can fetch hourly 2025 historical archive weather for the selected array location and uses the measured GHI/DNI/diffuse irradiance to calculate plane-of-array (POA) production; if the archive is unavailable it falls back to monthly Kc cloud-correction factors.
+Solar position is computed using the Spencer equations for declination and equation of time, with the correct ENU vector formula for azimuth.
+The live view uses a clear-sky direct normal irradiance model with Netherlands turbidity (τ=0.88).
+The yearly simulation can fetch hourly 2025 historical archive weather for the selected array location and uses the measured GHI/DNI/diffuse irradiance to calculate plane-of-array (POA) production. If the archive is unavailable, it falls back to monthly Kc cloud-correction factors.
 
 The `irr[r][c]` array (POA / 1000 W/m²) is multiplied by the user-painted `shade[r][c]` to give the effective irradiance fraction used in all physics calculations:
 

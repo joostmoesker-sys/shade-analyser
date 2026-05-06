@@ -3625,8 +3625,8 @@ function normaliseHistoricalWeather(raw, lat, lng) {
     let d = Math.max(0, Number(dni[h]) || 0);
     let f = Math.max(0, Number(dhi[h]) || 0);
     if (d === 0 && f === 0 && g > 0) {
-      // Conservative Erbs-style fallback for missing beam/diffuse fields: NL cloudiness often leaves
-      // a substantial diffuse share, so split GHI into 35% diffuse and 65% beam-equivalent input.
+      // Simplified conservative fallback for missing beam/diffuse fields: NL cloudiness often leaves
+      // a substantial diffuse share, so use a fixed 35% diffuse / 65% beam-equivalent GHI split.
       f = g * 0.35;
       d = g * 0.65;
     }
@@ -3872,8 +3872,9 @@ function formatROI(cost, annualProfit) {
  * @returns Float64Array(8760) — kWh per hour
  */
 function heatPumpCOP(outdoorTempC) {
-  // Simple air-source heat-pump COP curve for low-temperature heating:
-  // about 2.75 at −5°C, improving by ~0.085 COP/°C, clamped to realistic operating bounds.
+  // Simplified air-source heat-pump COP curve for low-temperature heating.
+  // Actual COP varies by model and flow temperature; this approximates 2.75 at −5°C,
+  // improving by ~0.085 COP/°C, clamped to realistic operating bounds.
   return Math.max(1.8, Math.min(5.2, 2.75 + 0.085 * (outdoorTempC + 5)));
 }
 
