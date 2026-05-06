@@ -31,6 +31,7 @@ const state = {
   selectedId: null,
   map: null,
   drag: null,
+  mapResizeTimer: null,
   searchTimer: null,
   searchAbortController: null,
 };
@@ -41,7 +42,10 @@ document.addEventListener("DOMContentLoaded", () => {
   bindDom();
   bindEvents();
   render();
-  new ResizeObserver(() => renderOsmMap()).observe(dom.osmMap);
+  new ResizeObserver(() => {
+    clearTimeout(state.mapResizeTimer);
+    state.mapResizeTimer = setTimeout(renderOsmMap, 120);
+  }).observe(dom.osmMap);
   requestAnimationFrame(renderOsmMap);
 });
 
@@ -539,7 +543,7 @@ function renderOsmMap() {
   ensureMapState();
   const rect = dom.osmMap.getBoundingClientRect();
   if (rect.width < 10 || rect.height < 10) {
-    requestAnimationFrame(renderOsmMap);
+    setMapStatus("Kaart wordt klaargezet…");
     return;
   }
 
@@ -783,7 +787,7 @@ function runAllScenarios() {
 }
 
 function scheduleLocationAutocomplete() {
-  window.clearTimeout(state.searchTimer);
+  clearTimeout(state.searchTimer);
   const query = dom.locationSearchInput.value.trim();
 
   if (query.length < LOCATION_SEARCH_MIN_LENGTH) {
