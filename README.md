@@ -260,11 +260,11 @@ The **Economic Forecast** panel (at the bottom of the right column) lets you com
 
 ### Tariff Model
 
-Synthetic Dutch dynamic APX/EPEX tariff profile, based on the 12×24 monthly-hourly price matrix (`HOURLY_APX_PRICE_2025`):
-- Summer midday prices can go near zero (solar duck curve)
-- Winter evening peaks 17–20 h: 0.15–0.40 €/kWh
-- Weekend discount ~18%
-- Daily variation ±10% (deterministic seed)
+Hourly Dutch APX/EPEX day-ahead prices for 2025 are loaded as raw spot prices (€/kWh) from the Energy-Charts NL-LU API and aligned to the same 8760-hour 2025 timeline as the historical weather simulation. These prices are used for both yearly dynamic PV revenue and the economic buy/sell tariff profiles:
+- Buy tariff = raw APX spot price + import surcharge + energy tax
+- Sell tariff = raw APX spot price + export surcharge
+- Negative or very low spot-price hours are preserved instead of clamped away
+- If the raw price API is unavailable, the app falls back to the older synthetic 12×24 monthly-hourly matrix so offline use still works
 
 ### Output Metrics
 
@@ -301,7 +301,7 @@ Click **💾 Export CSV** to download an hourly CSV with: Hour, Date, PV_kWh, Lo
 
 ### Customisation
 
-To use a custom load profile or tariff series, edit the `precomputeYearlyLoad()` or `generateYearlyTariffs()` functions in the `<script>` block of `index.html`. Both return `Float64Array(8760)` and are easy to replace with real measured data.
+To use a custom load profile or tariff series, edit the `precomputeYearlyLoad()`, `loadRawApxPrices2025()`, or `generateYearlyTariffs()` functions in the `<script>` block of `index.html`. These profiles use `Float64Array(8760)` and are easy to replace with measured data.
 
 ```js
 // Example: override with real measured load data
