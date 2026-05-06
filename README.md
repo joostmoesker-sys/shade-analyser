@@ -249,7 +249,7 @@ The **Economic Forecast** panel (at the bottom of the right column) lets you com
 4. **Battery → load** (discharge for self-use when PV insufficient, down to 5% SOC)
 5. **Grid → load** (import only what battery cannot cover)
 6. **Battery → grid**: the V4 optimizer can sell from the battery in any profitable hour; it is no longer restricted to a fixed top-6 daily sell window
-7. **Optional grid pre-charge**: on days where next-day PV < next-day load, charge battery during 4 cheapest hours at (deficit / 0.80) kWh
+7. **Optional grid pre-charge**: on days where next-day PV < next-day load, charge battery during the cheapest hours using the selected option's charge/discharge efficiency assumptions
 
 ### House Load Model
 
@@ -395,7 +395,7 @@ Saldering (net metering) is abolished in 2027. The model uses the post-2027 Tibb
 | PV → load | Served first as the physical self-consumption baseline |
 | PV → battery | Used when its future value beats immediate positive export revenue |
 | PV → grid | Exported only when export is allowed and sell price is positive, up to the 17 kW grid-meter cap |
-| Grid → battery | Optional; selected only when enabled and cheaper than alternative stored energy |
+| Grid → battery | Optional; selected only when enabled and cheaper than alternative stored energy; V4 applies the selected option's inverter-level charge efficiency on grid charging and discharge efficiency when the stored energy is later used |
 | Battery → load | Used when avoided import value exceeds future value |
 | Battery → grid | Used only when export is allowed, sell price is positive, no grid import remains in that hour, and the 17 kW grid-meter export cap has room after PV export |
 | Curtailment | Used for zero-export mode, capacity limits, or negative/zero sell prices |

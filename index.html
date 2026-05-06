@@ -358,7 +358,7 @@
         </label>
         <label>
           <input type="checkbox" id="econGridPrechargeToggle" style="accent-color:#fbbf24;width:13px;height:13px">
-          Grid Pre-charge <span style="color:#fbbf24;font-size:.7rem">(80% round-trip, low-PV days only)</span>
+          Grid Pre-charge <span style="color:#fbbf24;font-size:.7rem">(uses inverter efficiencies, low-PV days only)</span>
         </label>
         <label>
           <input type="checkbox" id="econZeroExportToggle" style="accent-color:#f87171;width:13px;height:13px">
@@ -1232,6 +1232,8 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     const totalStoreCap = Math.min(chargePowerKw * chargeEff, Math.max(0, batCapKwh - curSoc));
     const pvStoreCap = Math.min(surplusPv * chargeEff, totalStoreCap);
     const gridStoreCap = allowGridPrecharge
+      // Grid pre-charge uses the same inverter-level charge efficiency as PV
+      // charging; discharge efficiency is applied later when stored energy is used.
       ? Math.min(gridPrechargePowerKw * chargeEff, totalStoreCap)
       : 0;
 
@@ -5096,6 +5098,8 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
       totalStoreCap,
     );
     const gridStoreCap = allowGridPrecharge
+      // Grid pre-charge uses the same inverter-level charge efficiency as PV
+      // charging; discharge efficiency is applied later when stored energy is used.
       ? Math.min(gridPrechargePowerKw * chargeEff, totalStoreCap)
       : 0;
 
