@@ -477,7 +477,7 @@ let MAX_SHADOW_LEN, MAX_SHADOW_AXIS;
 let PANEL_POS;   // precomputed flat [{x,y}], length ROWS*COLS
 let DOY_TO_MONTH; // precomputed int[365], 0-11
 let INVERTER_SPECS_W; // inverter specs for clipping
-let DYNAMIC_PRICES; // Float64, length 12*24, flat [month*24+hour]
+let DYNAMIC_PRICES; // Float64, length 8760, flat [day-of-year hour]
 let HOURLY_WEATHER; // optional historical weather arrays, length 8760
 
 // ── DST for Neer NL, 2024 reference year ───────────────────────────────────
@@ -986,7 +986,7 @@ self.onmessage = function(e) {
 
       // Accumulate per-panel energy using half-cut model:
       // when shaded, one half-string is at shade*G and the other at full G.
-      const dynPrice = DYNAMIC_PRICES ? DYNAMIC_PRICES[month * 24 + hour] : 0;
+      const dynPrice = DYNAMIC_PRICES ? DYNAMIC_PRICES[hourIdx] : NaN;
       for (let i = 0; i < ROWS * COLS; i++) {
         const sh = _shade[i];
         const Gu = _irr[i];
@@ -1016,7 +1016,7 @@ self.onmessage = function(e) {
         monthlyEnergy[cfg.id][month] += totalP / 1000;
         // Track per-hour output for battery economic simulation
         hourlyKwh[cfg.id][hourIdx] = totalP / 1000;
-        if (dynPrice > 0) configRevenueDynamic[cfg.id][month] += (totalP / 1000) * dynPrice;
+        if (Number.isFinite(dynPrice)) configRevenueDynamic[cfg.id][month] += (totalP / 1000) * dynPrice;
       }
       
       // Compute no-shade baseline (only if trees exist)
@@ -1043,7 +1043,7 @@ self.onmessage = function(e) {
           }
           if (spec && spec.totalPowerW && totalP > spec.totalPowerW) totalP = spec.totalPowerW;
           noShadeEnergy[cfg.id][month] += totalP / 1000;
-          if (dynPrice > 0) noShadeRevenueDynamic[cfg.id][month] += (totalP / 1000) * dynPrice;
+          if (Number.isFinite(dynPrice)) noShadeRevenueDynamic[cfg.id][month] += (totalP / 1000) * dynPrice;
         }
         _shade.set(savedShade);
       } else {
@@ -1561,8 +1561,8 @@ const MONTHLY_KC = [
 // May–Sep: full canopy; Oct: partial drop (70%); Nov–Dec: mostly bare.
 const FOLIAGE = [0.25, 0.25, 0.25, 0.55, 1.00, 1.00, 1.00, 1.00, 1.00, 0.70, 0.30, 0.30];
 
-// ── Dutch APX/EPEX hourly price profile 2025 (€/kWh, indicative) ──────────
-// Represents typical wholesale spot prices for NL 2025:
+// ── Dutch APX/EPEX hourly price profile fallback 2025 (€/kWh, synthetic) ───
+// Used only when raw hourly day-ahead prices cannot be fetched:
 // – Winter (Dec–Feb): high flat prices, morning+evening peaks
 // – Spring/Fall: moderate, mild duck curve
 // – Summer (Jun–Aug): pronounced solar duck curve, near-zero/negative midday
@@ -1593,6 +1593,129 @@ const HOURLY_APX_PRICE_2025 = [
   // Dec
   [0.098,0.088,0.080,0.075,0.074,0.076,0.090,0.115,0.138,0.132,0.122,0.116,0.112,0.108,0.108,0.114,0.132,0.168,0.198,0.190,0.165,0.142,0.120,0.100],
 ];
+
+const RAW_APX_PRICE_SOURCE_2025 = 'Energy-Charts API NL-LU day-ahead spot prices 2025';
+let rawApxPriceCache2025 = null;
+
+function syntheticApxPriceForHourIndex(hourIdx) {
+  const doy = Math.floor(hourIdx / 24) + 1;
+  const h = hourIdx % 24;
+  const date = new Date(2025, 0, doy);
+  const month = date.getMonth();
+  const dow = date.getDay();
+  const isWknd = dow === 0 || dow === 6;
+  const dailyVar = 1 + 0.10 * Math.sin(doy * 1.7 + month * 0.4);
+  let p = HOURLY_APX_PRICE_2025[month][h];
+  if (isWknd) p *= 0.82;
+  return Math.max(0.005, Math.min(0.80, p * dailyVar));
+}
+
+function generateSyntheticApxPrices2025() {
+  const prices = new Float64Array(8760);
+  for (let h = 0; h < prices.length; h++) prices[h] = syntheticApxPriceForHourIndex(h);
+  return prices;
+}
+
+function normaliseApxPricePoint(rawPrice, priceScale) {
+  const price = Number(rawPrice);
+  return Number.isFinite(price) ? price / priceScale : NaN;
+}
+
+function normaliseRawApxPrices2025(raw) {
+  const unixSeconds = [];
+  const rawPrices = [];
+  const addPoint = (ts, price) => {
+    const t = Number(ts);
+    if (Number.isFinite(t) && Number.isFinite(Number(price))) {
+      unixSeconds.push(t);
+      rawPrices.push(Number(price));
+    }
+  };
+
+  if (Array.isArray(raw)) {
+    raw.forEach(p => addPoint(p.unix_seconds ?? p.unixSeconds ?? p.timestamp ?? p.time, p.price ?? p.value));
+  } else {
+    const data = raw?.data ?? raw?.values ?? raw;
+    if (Array.isArray(data)) {
+      data.forEach(p => addPoint(p.unix_seconds ?? p.unixSeconds ?? p.timestamp ?? p.time, p.price ?? p.value));
+    } else if (Array.isArray(data?.unix_seconds) && Array.isArray(data?.price)) {
+      const n = Math.min(data.unix_seconds.length, data.price.length);
+      for (let i = 0; i < n; i++) addPoint(data.unix_seconds[i], data.price[i]);
+    }
+  }
+
+  if (!rawPrices.length) throw new Error('No hourly price points in APX response');
+  const maxAbs = rawPrices.reduce((m, p) => Math.max(m, Math.abs(p)), 0);
+  const priceScale = maxAbs > 5 ? 1000 : 1; // Energy-Charts reports EUR/MWh; app uses EUR/kWh.
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Amsterdam',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  });
+  const sum = new Float64Array(8760);
+  const count = new Uint16Array(8760);
+
+  for (let i = 0; i < rawPrices.length; i++) {
+    const parts = Object.fromEntries(fmt.formatToParts(new Date(unixSeconds[i] * 1000)).map(p => [p.type, p.value]));
+    const year = Number(parts.year);
+    if (year !== 2025) continue;
+    const month = Number(parts.month);
+    const day = Number(parts.day);
+    const hour = Number(parts.hour);
+    const doy = Math.floor((Date.UTC(year, month - 1, day) - Date.UTC(2025, 0, 1)) / 86400000) + 1;
+    const idx = (doy - 1) * 24 + hour;
+    const price = normaliseApxPricePoint(rawPrices[i], priceScale);
+    if (idx >= 0 && idx < 8760 && Number.isFinite(price)) {
+      sum[idx] += price;
+      count[idx]++;
+    }
+  }
+
+  const prices = generateSyntheticApxPrices2025();
+  let rawHours = 0;
+  for (let h = 0; h < prices.length; h++) {
+    if (count[h] > 0) {
+      prices[h] = sum[h] / count[h];
+      rawHours++;
+    }
+  }
+  if (rawHours < 8500) throw new Error(`Incomplete APX price response: mapped ${rawHours}/8760 hours`);
+  prices.rawHours = rawHours;
+  prices.source = RAW_APX_PRICE_SOURCE_2025;
+  return prices;
+}
+
+async function loadRawApxPrices2025() {
+  if (rawApxPriceCache2025) return rawApxPriceCache2025;
+  const urls = [
+    'https://api.energy-charts.info/price?bzn=NL-LU&start=2024-12-31&end=2026-01-01',
+    'https://api.energy-charts.info/price?bzn=NL&start=2024-12-31&end=2026-01-01',
+  ];
+  let lastErr = null;
+  for (const url of urls) {
+    try {
+      const resp = await fetch(url, { cache: 'force-cache' });
+      if (!resp.ok) throw new Error(`APX HTTP ${resp.status}`);
+      rawApxPriceCache2025 = normaliseRawApxPrices2025(await resp.json());
+      return rawApxPriceCache2025;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('APX prices unavailable');
+}
+
+async function getApxPrices2025() {
+  try {
+    return await loadRawApxPrices2025();
+  } catch (err) {
+    console.warn('Raw hourly 2025 APX prices unavailable; using synthetic fallback matrix.', err);
+    return generateSyntheticApxPrices2025();
+  }
+}
 
 // ── Block structure helpers ────────────────────────────────────────────────
 const ROW_GROUPS  = [[0,1],[2,4],[5,7]];       // 2+3+3 rows: 1–2 | 3–5 | 6–8 (configs A/B)
@@ -1682,7 +1805,7 @@ function applyInverterClipping(mpp, spec) {
 }
 
 // Economic constants (WP8) — Dutch 2025 dynamic APX/EPEX energy pricing
-// Revenue is always computed using the HOURLY_APX_PRICE_2025 profile (per-hour).
+// Revenue is computed from raw hourly 2025 APX prices; HOURLY_APX_PRICE_2025 is offline fallback only.
 // Saldering ON  → full APX retail rate (you offset your consumption at the spot price).
 // Saldering OFF → feed-in rate = APX × FEED_IN_FACTOR (lower wholesale/feed-in tariff).
 const FEED_IN_FACTOR  = 0.70;  // feed-in ≈ 70 % of APX spot (no saldering / direct feed-in)
@@ -3582,6 +3705,8 @@ async function runYearlySimulation() {
         `☁ monthly Kc fallback · ${nWorkers} worker${nWorkers>1?'s':''}`;
     }
   }
+  document.getElementById('simStatusLabel').textContent = 'Loading hourly 2025 APX prices…';
+  const apxPrices = await getApxPrices2025();
 
   // Precompute DOY → month (0-11) lookup for 2024 reference year
   const DOY_TO_MONTH = new Array(365);
@@ -3706,7 +3831,7 @@ async function runYearlySimulation() {
       MONTHLY_KC: [...MONTHLY_KC],
       FOLIAGE: [...FOLIAGE],
       MAX_SHADOW_LEN, MAX_SHADOW_AXIS,
-      DYNAMIC_PRICES: Float64Array.from({length:12*24}, (_,i) => HOURLY_APX_PRICE_2025[Math.floor(i/24)][i%24]),
+      DYNAMIC_PRICES: apxPrices,
       HOURLY_WEATHER: hourlyWeather ? {
         ghi: hourlyWeather.ghi,
         dni: hourlyWeather.dni,
@@ -3817,55 +3942,37 @@ function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDail
 }
 
 /**
- * Generate full 8760-hour tariff array from the 12×24 APX price matrix.
- * Adds weekend discount (−18%) and daily variation (±10% deterministic).
+ * Generate full 8760-hour tariff array from raw hourly APX spot prices.
+ * Falls back to the synthetic 12×24 matrix only when the raw APX series is unavailable.
  * @param {number} [inkoopOpslag]  — €/kWh energy-company buy surcharge (default: INKOOP_OPSLAG_DEFAULT)
  * @param {number} [energyTax]     — €/kWh energy tax / belasting on imports (default: ENERGY_TAX_DEFAULT)
+ * @param {Float64Array} [apxPrices] — €/kWh bare APX spot prices, length 8760
  * @returns Float64Array(8760) — €/kWh buy tariff
  */
-function generateYearlyTariffs(inkoopOpslag = INKOOP_OPSLAG_DEFAULT, energyTax = ENERGY_TAX_DEFAULT) {
+function generateYearlyTariffs(inkoopOpslag = INKOOP_OPSLAG_DEFAULT, energyTax = ENERGY_TAX_DEFAULT, apxPrices = null) {
   // Buy tariff: bare APX price + energy tax + inkoop opslag.
   // Exported kWh are sold at the bare APX price + verkoop opslag — see generateYearlySellTariffs().
   const overhead = inkoopOpslag + energyTax;
   const tariffs = new Float64Array(8760);
-  for (let doy = 1; doy <= 365; doy++) {
-    const date   = new Date(2025, 0, doy);
-    const month  = date.getMonth();
-    const dow    = date.getDay();           // 0=Sun, 6=Sat
-    const isWknd = dow === 0 || dow === 6;
-    // Deterministic daily variation ±10% — simulates day-ahead price volatility
-    const dailyVar = 1 + 0.10 * Math.sin(doy * 1.7 + month * 0.4);
-    for (let h = 0; h < 24; h++) {
-      let p = HOURLY_APX_PRICE_2025[month][h];
-      if (isWknd) p *= 0.82;  // weekend lower demand → lower prices
-      p *= dailyVar;
-      // Buy = APX + tax + inkoop opslag; clamp at reasonable bounds
-      tariffs[(doy - 1) * 24 + h] = Math.max(0.005, Math.min(0.80, p)) + overhead;
-    }
+  const prices = apxPrices && apxPrices.length >= 8760 ? apxPrices : generateSyntheticApxPrices2025();
+  for (let h = 0; h < tariffs.length; h++) {
+    tariffs[h] = prices[h] + overhead;
   }
   return tariffs;
 }
 
 /**
- * Sell tariff profile (8760 h): APX price + verkoop opslag.
+ * Sell tariff profile (8760 h): raw hourly APX price + verkoop opslag.
  * Post-2027 (saldering abolished) the grid feed-in rate is the hourly APX spot price
  * plus the energy company's sell surcharge (verkoop opslag, default 0 €/kWh).
  * @param {number} [verkoopOpslag] — €/kWh energy-company sell surcharge (default: VERKOOP_OPSLAG_DEFAULT)
+ * @param {Float64Array} [apxPrices] — €/kWh bare APX spot prices, length 8760
  */
-function generateYearlySellTariffs(verkoopOpslag = VERKOOP_OPSLAG_DEFAULT) {
+function generateYearlySellTariffs(verkoopOpslag = VERKOOP_OPSLAG_DEFAULT, apxPrices = null) {
   const tariffs = new Float64Array(8760);
-  for (let doy = 1; doy <= 365; doy++) {
-    const date   = new Date(2025, 0, doy);
-    const month  = date.getMonth();
-    const dow    = date.getDay();
-    const isWknd = dow === 0 || dow === 6;
-    const dailyVar = 1 + 0.10 * Math.sin(doy * 1.7 + month * 0.4);
-    for (let h = 0; h < 24; h++) {
-      let p = HOURLY_APX_PRICE_2025[month][h];
-      if (isWknd) p *= 0.82;
-      p *= dailyVar;
-      tariffs[(doy - 1) * 24 + h] = Math.max(0.005, Math.min(0.80, p)) + verkoopOpslag; // APX + verkoop opslag
-    }
+  const prices = apxPrices && apxPrices.length >= 8760 ? apxPrices : generateSyntheticApxPrices2025();
+  for (let h = 0; h < tariffs.length; h++) {
+    tariffs[h] = prices[h] + verkoopOpslag; // APX + verkoop opslag
   }
   return tariffs;
 }
@@ -5294,8 +5401,10 @@ async function runEconSim() {
   const energyTax      = parseFloat(document.getElementById('econEnergyTaxSlider').value) / 100;
   const inkoopOpslag   = parseFloat(document.getElementById('econInkoopOpslagSlider').value) / 100;
   const verkoopOpslag  = parseFloat(document.getElementById('econVerkoopOpslagSlider').value) / 100;
-  const tariffProfile  = generateYearlyTariffs(inkoopOpslag, energyTax);   // buy = APX + tax + inkoop opslag
-  const sellProfile    = generateYearlySellTariffs(verkoopOpslag);          // sell = APX + verkoop opslag
+  document.getElementById('econStatusLabel').textContent = 'Loading hourly 2025 APX prices…';
+  const apxPrices      = await getApxPrices2025();
+  const tariffProfile  = generateYearlyTariffs(inkoopOpslag, energyTax, apxPrices);   // buy = APX + tax + inkoop opslag
+  const sellProfile    = generateYearlySellTariffs(verkoopOpslag, apxPrices);          // sell = APX + verkoop opslag
 
   const opts = { useBattery, useGridPrecharge, zeroExport, batCapKwh, sellFactor, sellTariffs: sellProfile };
 
