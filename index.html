@@ -1628,7 +1628,7 @@ const CONFIGS = [
   },
 ];
 
-// Economic comparison uses only the three baseline configurations.
+// Economic comparison uses only configurations A, F, and G.
 const ECON_COMPARISON_CONFIG_IDS = ['A', 'F', 'G'];
 
 function getEconomicComparisonConfigs() {
@@ -6290,8 +6290,8 @@ document.getElementById('runEconBtn').addEventListener('click', () => {
 // Export CSV
 document.getElementById('econExportBtn').addEventListener('click', exportEconCsv);
 
-// Battery toggle: battery always enabled — no listener needed.
-// Grid pre-charge toggle: always enabled — no listener needed.
+// Battery: always enabled — no toggle or listener needed.
+// Grid pre-charge: always enabled — no toggle or listener needed.
 document.getElementById('econZeroExportToggle').addEventListener('change', () => {
   if (lastEconResults) setTimeout(runEconSim, 20);
 });
