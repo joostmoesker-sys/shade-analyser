@@ -265,10 +265,22 @@ label {
   font-size: 0.82rem;
 }
 
-.legend {
+.legend,
+.map-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.map-controls {
+  gap: 6px;
+}
+
+.map-controls button {
+  width: 34px;
+  padding-inline: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
 }
 
 .legend span {
@@ -283,28 +295,85 @@ label {
   display: inline-block;
 }
 
+.legend-location { background: #ef4444; border-radius: 50%; }
 .legend-array { background: #38bdf8; border-radius: 3px; }
 .legend-tree { background: #22c55e; border-radius: 50%; }
 .legend-building { background: #f97316; border-radius: 3px; }
 
-#sceneCanvas {
-  display: block;
+.osm-map {
+  position: relative;
   width: 100%;
   height: min(72vh, 720px);
   min-height: 620px;
-  background:
-    linear-gradient(#16243a 1px, transparent 1px),
-    linear-gradient(90deg, #16243a 1px, transparent 1px),
-    #0b1220;
-  background-size: 40px 40px;
+  overflow: hidden;
+  background: #0b1220;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.osm-map:active {
+  cursor: grabbing;
+}
+
+.tile-layer,
+#sceneCanvas {
+  position: absolute;
+  inset: 0;
+}
+
+.tile-layer img {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  user-select: none;
+}
+
+#sceneCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.map-attribution {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  border-radius: 6px;
+  background: rgb(15 23 42 / 0.78);
+  color: var(--muted);
+  padding: 3px 6px;
+  font-size: 0.68rem;
 }
 
 .canvas-shape {
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .canvas-shape.selected {
   filter: drop-shadow(0 0 8px rgb(56 189 248 / 0.9));
+}
+
+.location-marker {
+  pointer-events: none;
+  filter: drop-shadow(0 2px 6px rgb(15 23 42 / 0.85));
+}
+
+.search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.search-results {
+  display: grid;
+  gap: 6px;
+}
+
+.search-result {
+  width: 100%;
+  text-align: left;
 }
 
 .validation-item.warning { border-color: var(--warning); }

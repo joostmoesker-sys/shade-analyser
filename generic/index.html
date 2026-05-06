@@ -63,21 +63,38 @@
     <section class="canvas-panel">
       <div class="canvas-toolbar">
         <div>
-          <strong>Projectcanvas</strong>
-          <span id="canvasHint">Plaats arrays en schaduwobjecten in een generiek lokaal coördinatenvlak.</span>
+          <strong>OSM kaartcanvas</strong>
+          <span id="canvasHint">Zoek een adres of klik op de OpenStreetMap-kaart om de projectlocatie te kiezen.</span>
+        </div>
+        <div class="map-controls" aria-label="Kaartbediening">
+          <button id="zoomOutBtn" type="button" aria-label="Uitzoomen">−</button>
+          <button id="zoomInBtn" type="button" aria-label="Inzoomen">+</button>
         </div>
         <div class="legend">
+          <span><i class="legend-location"></i>Projectlocatie</span>
           <span><i class="legend-array"></i>PV-array</span>
           <span><i class="legend-tree"></i>Boom</span>
           <span><i class="legend-building"></i>Gebouw</span>
         </div>
       </div>
-      <svg id="sceneCanvas" viewBox="0 0 1000 620" role="img" aria-label="Projectcanvas met PV-arrays en schaduwobjecten"></svg>
+      <div id="osmMap" class="osm-map" role="application" aria-label="OpenStreetMap kaart voor projectlocatie">
+        <div id="tileLayer" class="tile-layer" aria-hidden="true"></div>
+        <svg id="sceneCanvas" viewBox="0 0 1000 620" role="img" aria-label="Kaartoverlay met projectlocatie, PV-arrays en schaduwobjecten"></svg>
+        <div class="map-attribution">© OpenStreetMap contributors</div>
+      </div>
     </section>
 
     <aside class="editor-panel">
       <section id="locationSection" class="card workflow-section">
         <h2>Locatie</h2>
+        <label>
+          Adres of postcode zoeken
+          <div class="search-row">
+            <input id="locationSearchInput" type="search" placeholder="Bijv. Dam 1 Amsterdam of 3011 Rotterdam" />
+            <button id="locationSearchBtn" type="button">Zoeken</button>
+          </div>
+        </label>
+        <div id="locationSearchResults" class="search-results" aria-live="polite"></div>
         <div class="grid two">
           <label>
             Locatienaam

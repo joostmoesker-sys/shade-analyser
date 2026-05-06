@@ -22,10 +22,15 @@ Implemented in this slice
 - Added panel type creation/editing so users can enter custom panel specifications.
 - Added UI controls for extra object types, wiring mode selection, weather profile/year, tariffs, array loss details, and CSV result export.
 - Added scenario renaming, run-all-scenarios preview execution, and a results comparison table for simulated scenarios.
+- Replaced the empty local-grid canvas with a vanilla OpenStreetMap slippy map under the existing SVG project overlay.
+- Added address/postcode search via OpenStreetMap Nominatim in the Locatie workflow.
+- Added map click location selection that updates project name, latitude and longitude fields.
+- Added basic map pan/zoom controls while preserving existing PV-array and shadow-object overlay rendering for phase-2 work.
 
 Next planned implementation items
 ---------------------------------
-- Implement interactive panel/string selection on the canvas instead of mode-based wiring only.
+- Make phase-2 object placement use map coordinates instead of local overlay coordinates.
+- Implement interactive panel/string selection on top of the map canvas instead of mode-based wiring only.
 - Add hourly weather import/cache model and replace monthly preview factors with hourly simulation inputs.
 - Add per-panel shade/production heatmap output.
 - Add battery dispatch strategies for grid pre-charge and dynamic tariffs.

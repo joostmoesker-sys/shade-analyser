@@ -17,6 +17,7 @@ import {
   normalizeProject,
   STORAGE_KEY,
 } from "./model.js";
+import { DEFAULT_MAP_ZOOM, TILE_SIZE, buildTileLayout, latLonToPixel, pixelToLatLon } from "./map.js";
 import { runPreviewSimulation } from "./simulation.js";
 import { validateProject } from "./validation.js";
 import { buildWiringSummary, WIRING_MODES } from "./wiring.js";
@@ -25,6 +26,8 @@ const state = {
   project: loadProject(),
   activeStep: "location",
   selectedId: null,
+  map: null,
+  drag: null,
 };
 
 const dom = {};
@@ -33,6 +36,10 @@ document.addEventListener("DOMContentLoaded", () => {
   bindDom();
   bindEvents();
   render();
+});
+
+window.addEventListener("resize", () => {
+  if (dom.osmMap) renderOsmMap();
 });
 
 function bindDom() {
@@ -49,7 +56,14 @@ function bindDom() {
     "runAllScenariosBtn",
     "workflowNav",
     "projectTree",
+    "osmMap",
+    "tileLayer",
     "sceneCanvas",
+    "zoomOutBtn",
+    "zoomInBtn",
+    "locationSearchInput",
+    "locationSearchBtn",
+    "locationSearchResults",
     "locationNameInput",
     "locationElevationInput",
     "locationLatInput",
@@ -99,6 +113,7 @@ function bindEvents() {
   dom.newProjectBtn.addEventListener("click", () => {
     state.project = createProject();
     state.selectedId = null;
+    state.map = null;
     persist();
     render();
   });
@@ -114,6 +129,17 @@ function bindEvents() {
   dom.runSimulationBtn.addEventListener("click", runSimulation);
   dom.runSimulationBtnSecondary.addEventListener("click", runSimulation);
   dom.runAllScenariosBtn.addEventListener("click", runAllScenarios);
+  dom.zoomOutBtn.addEventListener("click", () => zoomMap(-1));
+  dom.zoomInBtn.addEventListener("click", () => zoomMap(1));
+  dom.locationSearchBtn.addEventListener("click", searchLocation);
+  dom.locationSearchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      searchLocation();
+    }
+  });
+  dom.osmMap.addEventListener("click", selectMapLocation);
+  dom.osmMap.addEventListener("pointerdown", startMapDrag);
   dom.addTreeBtn.addEventListener("click", () => addSceneObject(createTree()));
   dom.addBuildingBtn.addEventListener("click", () => addSceneObject(createBuilding()));
   dom.addChimneyBtn.addEventListener("click", () => addSceneObject(createChimney()));
@@ -132,8 +158,8 @@ function bindEvents() {
   bindInput(dom.scenarioNameInput, (value, scenario) => { scenario.name = value; });
   bindInput(dom.locationNameInput, (value) => { state.project.location.name = value; });
   bindNumber(dom.locationElevationInput, (value) => { state.project.location.elevationM = value; });
-  bindNumber(dom.locationLatInput, (value) => { state.project.location.latitude = value; });
-  bindNumber(dom.locationLonInput, (value) => { state.project.location.longitude = value; });
+  bindNumber(dom.locationLatInput, (value) => { updateProjectLocation({ latitude: value }); });
+  bindNumber(dom.locationLonInput, (value) => { updateProjectLocation({ longitude: value }); });
 
   bindNumber(dom.dailyLoadInput, (value, scenario) => { scenario.load.baseKwhPerDay = value; });
   bindNumber(dom.heatPumpWinterInput, (value, scenario) => { scenario.load.heatPumpWinterKwhPerDay = value; });
@@ -480,6 +506,7 @@ function renderResults(scenario) {
 }
 
 function renderCanvas(scenario) {
+  renderOsmMap();
   const svg = dom.sceneCanvas;
   clear(svg);
 
@@ -489,20 +516,46 @@ function renderCanvas(scenario) {
   defs.append(arrow);
   svg.append(defs);
 
-  for (let x = 0; x <= 1000; x += 100) {
-    svg.append(svgEl("line", { x1: x, y1: 0, x2: x, y2: 620, stroke: "#1f2a3f", "stroke-width": 1 }));
-  }
-  for (let y = 0; y <= 620; y += 100) {
-    svg.append(svgEl("line", { x1: 0, y1: y, x2: 1000, y2: y, stroke: "#1f2a3f", "stroke-width": 1 }));
-  }
-
   svg.append(svgEl("line", { x1: 940, y1: 95, x2: 940, y2: 35, stroke: "#38bdf8", "stroke-width": 3, "marker-end": "url(#northArrow)" }));
   const north = svgEl("text", { x: 930, y: 118, fill: "#9ca3af", "font-size": 16 });
   north.textContent = "N";
   svg.append(north);
 
+  renderLocationMarker(svg);
   scenario.sceneObjects.forEach((object) => renderSceneObject(svg, object));
   scenario.arrays.forEach((array) => renderArray(svg, array));
+}
+
+function renderOsmMap() {
+  ensureMapState();
+  const rect = dom.osmMap.getBoundingClientRect();
+  const width = Math.max(1, rect.width);
+  const height = Math.max(1, rect.height);
+  const layout = buildTileLayout(state.map.centerLatitude, state.map.centerLongitude, state.map.zoom, width, height);
+  dom.tileLayer.replaceChildren(...layout.tiles.map((tile) => {
+    const image = document.createElement("img");
+    image.src = `https://tile.openstreetmap.org/${tile.z}/${tile.x}/${tile.y}.png`;
+    image.alt = "";
+    image.loading = "lazy";
+    image.referrerPolicy = "no-referrer";
+    image.style.left = `${tile.left}px`;
+    image.style.top = `${tile.top}px`;
+    image.width = TILE_SIZE;
+    image.height = TILE_SIZE;
+    return image;
+  }));
+}
+
+function renderLocationMarker(svg) {
+  const marker = svgEl("g", { class: "location-marker" });
+  marker.append(
+    svgEl("circle", { cx: 500, cy: 310, r: 13, fill: "#ef4444", stroke: "#fecaca", "stroke-width": 3 }),
+    svgEl("circle", { cx: 500, cy: 310, r: 4, fill: "#fff" }),
+  );
+  const label = svgEl("text", { x: 518, y: 306, fill: "#fff", "font-size": 14, "paint-order": "stroke", stroke: "#0f172a", "stroke-width": 4 });
+  label.textContent = state.project.location.name || "Projectlocatie";
+  marker.append(label);
+  svg.append(marker);
 }
 
 function renderSceneObject(svg, object) {
@@ -517,7 +570,10 @@ function renderSceneObject(svg, object) {
       "stroke-width": object.id === state.selectedId ? 4 : 2,
       class: `canvas-shape${object.id === state.selectedId ? " selected" : ""}`,
     });
-    crown.addEventListener("click", () => selectItem(object.id, "objects"));
+    crown.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectItem(object.id, "objects");
+    });
     svg.append(crown);
   } else {
     const width = Math.max(24, object.widthM * 7);
@@ -535,7 +591,10 @@ function renderSceneObject(svg, object) {
       transform: `rotate(${object.rotationDeg ?? 0} ${object.x} ${object.y})`,
       class: `canvas-shape${object.id === state.selectedId ? " selected" : ""}`,
     });
-    rect.addEventListener("click", () => selectItem(object.id, "objects"));
+    rect.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectItem(object.id, "objects");
+    });
     svg.append(rect);
   }
 }
@@ -550,7 +609,10 @@ function renderArray(svg, array) {
     transform: `translate(${array.x - width / 2} ${array.y - height / 2}) rotate(${array.azimuthDeg - 180} ${width / 2} ${height / 2})`,
     class: `canvas-shape${array.id === state.selectedId ? " selected" : ""}`,
   });
-  group.addEventListener("click", () => selectItem(array.id, "arrays"));
+  group.addEventListener("click", (event) => {
+    event.stopPropagation();
+    selectItem(array.id, "arrays");
+  });
 
   for (let row = 0; row < array.rows; row += 1) {
     for (let column = 0; column < array.columns; column += 1) {
@@ -676,6 +738,142 @@ function runAllScenarios() {
   persist();
   render();
   showNotification("ok", "Scenario's gesimuleerd", `${completed} van ${state.project.scenarios.length} scenario's hebben geldige previewresultaten.`);
+}
+
+async function searchLocation() {
+  const query = dom.locationSearchInput.value.trim();
+  if (!query) {
+    showNotification("error", "Geen zoekterm", "Voer een adres, plaats of postcode in om te zoeken.");
+    return;
+  }
+
+  dom.locationSearchResults.replaceChildren(searchStatus("Zoeken…"));
+  try {
+    const url = new URL("https://nominatim.openstreetmap.org/search");
+    url.searchParams.set("format", "jsonv2");
+    url.searchParams.set("limit", "5");
+    url.searchParams.set("addressdetails", "1");
+    url.searchParams.set("q", query);
+    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`Nominatim antwoordde met HTTP ${response.status}.`);
+    const results = await response.json();
+    renderLocationSearchResults(Array.isArray(results) ? results : []);
+  } catch (error) {
+    dom.locationSearchResults.replaceChildren(searchStatus("Zoeken mislukt. Controleer de internetverbinding of probeer later opnieuw."));
+    showNotification("error", "Locatie zoeken mislukt", error.message);
+  }
+}
+
+function renderLocationSearchResults(results) {
+  if (!results.length) {
+    dom.locationSearchResults.replaceChildren(searchStatus("Geen locaties gevonden."));
+    return;
+  }
+
+  dom.locationSearchResults.replaceChildren(...results.map((result) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "search-result";
+    button.textContent = result.display_name;
+    button.addEventListener("click", () => {
+      updateProjectLocation({
+        latitude: Number(result.lat),
+        longitude: Number(result.lon),
+        name: result.display_name,
+      });
+      dom.locationSearchInput.value = result.display_name;
+      dom.locationSearchResults.replaceChildren(searchStatus("Locatie geselecteerd."));
+      persist();
+      render();
+    });
+    return button;
+  }));
+}
+
+function selectMapLocation(event) {
+  if (state.drag?.suppressClick) {
+    state.drag.suppressClick = false;
+    return;
+  }
+
+  ensureMapState();
+  const rect = dom.osmMap.getBoundingClientRect();
+  const center = latLonToPixel(state.map.centerLatitude, state.map.centerLongitude, state.map.zoom);
+  const x = center.x + event.clientX - rect.left - rect.width / 2;
+  const y = center.y + event.clientY - rect.top - rect.height / 2;
+  const location = pixelToLatLon(x, y, state.map.zoom);
+  updateProjectLocation({
+    latitude: location.latitude,
+    longitude: location.longitude,
+    name: "Geselecteerde kaartlocatie",
+  });
+  state.activeStep = "location";
+  persist();
+  render();
+}
+
+function startMapDrag(event) {
+  if (event.button !== 0 || event.target.closest(".map-controls") || event.target.closest(".canvas-shape")) return;
+
+  ensureMapState();
+  const center = latLonToPixel(state.map.centerLatitude, state.map.centerLongitude, state.map.zoom);
+  state.drag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    centerX: center.x,
+    centerY: center.y,
+    suppressClick: false,
+  };
+  dom.osmMap.setPointerCapture(event.pointerId);
+  dom.osmMap.addEventListener("pointermove", dragMap);
+  dom.osmMap.addEventListener("pointerup", endMapDrag, { once: true });
+  dom.osmMap.addEventListener("pointercancel", endMapDrag, { once: true });
+}
+
+function dragMap(event) {
+  if (!state.drag || event.pointerId !== state.drag.pointerId) return;
+  const dx = event.clientX - state.drag.startX;
+  const dy = event.clientY - state.drag.startY;
+  if (Math.hypot(dx, dy) > 5) state.drag.suppressClick = true;
+  const center = pixelToLatLon(state.drag.centerX - dx, state.drag.centerY - dy, state.map.zoom);
+  state.map.centerLatitude = center.latitude;
+  state.map.centerLongitude = center.longitude;
+  renderOsmMap();
+}
+
+function endMapDrag(event) {
+  if (state.drag && event.pointerId === state.drag.pointerId) {
+    dom.osmMap.releasePointerCapture(event.pointerId);
+  }
+  dom.osmMap.removeEventListener("pointermove", dragMap);
+}
+
+function zoomMap(delta) {
+  ensureMapState();
+  state.map.zoom = Math.min(20, Math.max(2, state.map.zoom + delta));
+  render();
+}
+
+function ensureMapState() {
+  if (!state.map) {
+    state.map = {
+      centerLatitude: state.project.location.latitude,
+      centerLongitude: state.project.location.longitude,
+      zoom: DEFAULT_MAP_ZOOM,
+    };
+  }
+}
+
+function updateProjectLocation({ latitude, longitude, name }) {
+  const nextLatitude = latitude ?? state.project.location.latitude;
+  const nextLongitude = longitude ?? state.project.location.longitude;
+  state.project.location.latitude = clampCoordinate(nextLatitude, -85.05112878, 85.05112878);
+  state.project.location.longitude = clampCoordinate(nextLongitude, -180, 180);
+  if (name) state.project.location.name = name;
+  ensureMapState();
+  state.map.centerLatitude = state.project.location.latitude;
+  state.map.centerLongitude = state.project.location.longitude;
 }
 
 function renderScenarioComparison() {
@@ -845,6 +1043,13 @@ function textLine(label, value) {
   return line;
 }
 
+function searchStatus(text) {
+  const item = document.createElement("p");
+  item.className = "muted";
+  item.textContent = text;
+  return item;
+}
+
 function mpptOptions(scenario, array) {
   const inverter = findInverter(scenario, array.inverterId);
   return (inverter?.mppts ?? []).map((mppt, index) => ({
@@ -899,6 +1104,7 @@ function importProject(event) {
       assertImportLooksLikeProject(parsedProject);
       state.project = normalizeProject(parsedProject);
       state.selectedId = null;
+      state.map = null;
       persist();
       render();
     } catch (error) {
@@ -965,6 +1171,10 @@ function objectFill(type) {
   if (type === "dormer") return "#a855f7";
   if (type === "free") return "#eab308";
   return "#f97316";
+}
+
+function clampCoordinate(value, min, max) {
+  return Math.min(max, Math.max(min, Number(value)));
 }
 
 function roundForCsv(value) {
