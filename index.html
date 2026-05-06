@@ -3627,9 +3627,9 @@ function normaliseHistoricalWeather(raw, lat, lng) {
     let d = Math.max(0, Number(dni[h]) || 0);
     let f = Math.max(0, Number(dhi[h]) || 0);
     if (d === 0 && f === 0 && g > 0) {
-      // Conservative engineering fallback for the rare case where the archive returns GHI but no
-      // split fields. It is only a coarse PV-loss estimate for this app, so use a substantial
-      // 35% diffuse share and leave 65% as beam-equivalent input.
+      // Conservative rule-of-thumb fallback for the rare case where the archive returns GHI but no
+      // split fields. The 35% diffuse share is intentionally high to avoid overstating sharp beam
+      // shadows under cloudy Dutch conditions; the remaining 65% is treated as beam-equivalent.
       f = g * 0.35;
       d = g * 0.65;
     }
@@ -3876,9 +3876,10 @@ function formatROI(cost, annualProfit) {
  */
 function heatPumpCOP(outdoorTempC) {
   // Simplified air-source heat-pump COP curve for low-temperature heating.
-  // Actual COP varies by model and flow temperature; these non-manufacturer-specific engineering
-  // approximations represent typical Dutch air-to-water units: ~2.75 at −5°C, improving by
-  // ~0.085 COP/°C, clamped to bounds. Replace with measured COP data if available.
+  // Actual COP varies by model and flow temperature. These rule-of-thumb values are centred on
+  // common Dutch air-to-water heat pumps with low-temperature emitters: ~2.75 at −5°C, a gradual
+  // ~0.085 COP/°C improvement, and broad 1.8–5.2 bounds to avoid unrealistic extremes.
+  // Replace with measured manufacturer/site COP data when available.
   return Math.max(1.8, Math.min(5.2, 2.75 + 0.085 * (outdoorTempC + 5)));
 }
 
@@ -3925,8 +3926,8 @@ function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDail
       let hpKwh;
       if (hasHourlyTemp) {
         const outdoor = hourlyOutdoorTempC[idx];
-        // 1.35 is a conservative cold-snap margin so hours below the −5°C design point can exceed
-        // nominal demand without letting a few extreme hours dominate the annual load.
+        // 1.35 is a rule-of-thumb cold-snap margin, not empirical calibration: hours below the
+        // −5°C design point can exceed nominal demand, but a few extreme hours should not dominate.
         const heatFrac = Math.max(0, Math.min(1.35, (heatBalanceTempC - outdoor) / (heatBalanceTempC - designOutdoorTempC)));
         const thermalKwh = (designThermalKwhPerDay / 24) * heatFrac;
         hpKwh = thermalKwh / heatPumpCOP(outdoor);
