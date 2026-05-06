@@ -755,7 +755,7 @@ async function searchLocation() {
     url.searchParams.set("addressdetails", "1");
     url.searchParams.set("q", query);
     const response = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!response.ok) throw new Error(`Nominatim antwoordde met HTTP ${response.status}.`);
+    if (!response.ok) throw new Error(`Nominatim antwoordde met HTTP-status ${response.status}.`);
     const results = await response.json();
     renderLocationSearchResults(Array.isArray(results) ? results : []);
   } catch (error) {
@@ -1108,7 +1108,7 @@ function importProject(event) {
       persist();
       render();
     } catch (error) {
-      const reason = error instanceof SyntaxError ? "Het bestand bevat geen geldige JSON." : "Bestand lijkt geen ondersteund projectexportbestand te zijn.";
+      const reason = error instanceof SyntaxError ? "Het bestand bevat geen geldige JSON." : "Het bestand lijkt geen ondersteund projectexportbestand te zijn.";
       const guidance = "Gebruik een export uit deze generic tool met schemaVersion, location, panelTypes en scenarios.";
       showNotification("error", "Import mislukt", `${reason} ${guidance} Details: ${error.message}`);
     } finally {
