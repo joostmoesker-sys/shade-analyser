@@ -43,8 +43,10 @@ function bindDom() {
     "importProjectInput",
     "projectNameInput",
     "scenarioSelect",
+    "scenarioNameInput",
     "duplicateScenarioBtn",
     "runSimulationBtn",
+    "runAllScenariosBtn",
     "workflowNav",
     "projectTree",
     "sceneCanvas",
@@ -84,6 +86,7 @@ function bindDom() {
     "resultCards",
     "monthlyChart",
     "lossDetails",
+    "scenarioComparison",
     "exportDialog",
     "exportText",
     "notificationRegion",
@@ -110,6 +113,7 @@ function bindEvents() {
   });
   dom.runSimulationBtn.addEventListener("click", runSimulation);
   dom.runSimulationBtnSecondary.addEventListener("click", runSimulation);
+  dom.runAllScenariosBtn.addEventListener("click", runAllScenarios);
   dom.addTreeBtn.addEventListener("click", () => addSceneObject(createTree()));
   dom.addBuildingBtn.addEventListener("click", () => addSceneObject(createBuilding()));
   dom.addChimneyBtn.addEventListener("click", () => addSceneObject(createChimney()));
@@ -125,6 +129,7 @@ function bindEvents() {
     state.project.activeScenarioId = value;
     state.selectedId = null;
   });
+  bindInput(dom.scenarioNameInput, (value, scenario) => { scenario.name = value; });
   bindInput(dom.locationNameInput, (value) => { state.project.location.name = value; });
   bindNumber(dom.locationElevationInput, (value) => { state.project.location.elevationM = value; });
   bindNumber(dom.locationLatInput, (value) => { state.project.location.latitude = value; });
@@ -187,6 +192,7 @@ function renderSections() {
 
 function renderProjectBasics(scenario) {
   setValue(dom.projectNameInput, state.project.name);
+  setValue(dom.scenarioNameInput, scenario.name);
   dom.scenarioSelect.replaceChildren(...state.project.scenarios.map((item) => {
     const option = document.createElement("option");
     option.value = item.id;
@@ -431,6 +437,7 @@ function renderResults(scenario) {
     dom.resultCards.replaceChildren(empty);
     dom.monthlyChart.replaceChildren();
     dom.lossDetails.replaceChildren();
+    renderScenarioComparison();
     return;
   }
 
@@ -469,6 +476,7 @@ function renderResults(scenario) {
     );
     return item;
   }));
+  renderScenarioComparison();
 }
 
 function renderCanvas(scenario) {
@@ -649,6 +657,67 @@ function runSimulation() {
     state.activeStep = "simulation";
     render();
   }
+}
+
+function runAllScenarios() {
+  const originalScenarioId = state.project.activeScenarioId;
+  let completed = 0;
+
+  for (const scenario of state.project.scenarios) {
+    const { results } = runPreviewSimulation(state.project, scenario);
+    if (results) {
+      scenario.results = results;
+      completed += 1;
+    }
+  }
+
+  state.project.activeScenarioId = originalScenarioId;
+  state.activeStep = "results";
+  persist();
+  render();
+  showNotification("ok", "Scenario's gesimuleerd", `${completed} van ${state.project.scenarios.length} scenario's hebben geldige previewresultaten.`);
+}
+
+function renderScenarioComparison() {
+  const completed = state.project.scenarios.filter((scenario) => scenario.results);
+  if (!completed.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Nog geen scenarioresultaten beschikbaar.";
+    dom.scenarioComparison.replaceChildren(empty);
+    return;
+  }
+
+  const table = document.createElement("table");
+  const header = document.createElement("tr");
+  ["Scenario", "PV kWh", "Eigenverbruik", "Import kWh", "Export kWh", "Waarde", "Accucycli"].forEach((label) => {
+    const th = document.createElement("th");
+    th.textContent = label;
+    header.append(th);
+  });
+  const thead = document.createElement("thead");
+  thead.append(header);
+  const tbody = document.createElement("tbody");
+  completed.forEach((scenario) => {
+    const result = scenario.results;
+    const tr = document.createElement("tr");
+    [
+      scenario.name,
+      format(result.yearlyPvKwh),
+      `${format(result.selfConsumptionPct)}%`,
+      format(result.importKwh),
+      format(result.exportKwh),
+      `€${format(result.annualValueEur)}`,
+      format(result.battery.cycles),
+    ].forEach((value) => {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.append(td);
+    });
+    tbody.append(tr);
+  });
+  table.append(thead, tbody);
+  dom.scenarioComparison.replaceChildren(table);
 }
 
 function renderValidationMessages(messages) {

@@ -329,6 +329,33 @@ label {
   background: #0f172a;
 }
 
+.comparison-table {
+  overflow-x: auto;
+}
+
+.comparison-table table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+}
+
+.comparison-table th,
+.comparison-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  text-align: right;
+}
+
+.comparison-table th:first-child,
+.comparison-table td:first-child {
+  text-align: left;
+}
+
+.comparison-table th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .bar {
   display: grid;
   align-items: end;

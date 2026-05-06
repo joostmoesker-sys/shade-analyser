@@ -38,9 +38,14 @@
           Scenario
           <select id="scenarioSelect"></select>
         </label>
+        <label>
+          Scenarionaam
+          <input id="scenarioNameInput" type="text" />
+        </label>
         <div class="button-row">
           <button id="duplicateScenarioBtn" type="button">Scenario kopiëren</button>
           <button id="runSimulationBtn" type="button" class="primary">Preview simulatie</button>
+          <button id="runAllScenariosBtn" type="button">Alle scenario's</button>
         </div>
       </section>
 
@@ -209,6 +214,8 @@
         <div id="monthlyChart" class="monthly-chart" aria-label="Maandopbrengst grafiek"></div>
         <h3>Verlies- en arraydetails</h3>
         <div id="lossDetails" class="editor-stack"></div>
+        <h3>Scenariovergelijking</h3>
+        <div id="scenarioComparison" class="comparison-table"></div>
       </section>
     </aside>
   </main>

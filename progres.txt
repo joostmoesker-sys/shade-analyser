@@ -21,11 +21,11 @@ Implemented in this slice
 - Updated technical validation and preview simulation to use wiring summaries instead of a hard-coded row-string assumption.
 - Added panel type creation/editing so users can enter custom panel specifications.
 - Added UI controls for extra object types, wiring mode selection, weather profile/year, tariffs, array loss details, and CSV result export.
+- Added scenario renaming, run-all-scenarios preview execution, and a results comparison table for simulated scenarios.
 
 Next planned implementation items
 ---------------------------------
 - Implement interactive panel/string selection on the canvas instead of mode-based wiring only.
-- Add scenario comparison views and duplicate/compare result tables.
 - Add hourly weather import/cache model and replace monthly preview factors with hourly simulation inputs.
 - Add per-panel shade/production heatmap output.
 - Add battery dispatch strategies for grid pre-charge and dynamic tariffs.
