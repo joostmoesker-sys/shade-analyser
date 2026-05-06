@@ -3,7 +3,7 @@ import { findInverter, findPanelType } from "./model.js";
 export function validateProject(project, scenario) {
   const messages = [];
 
-  if (!project.location.latitude || !project.location.longitude) {
+  if (project.location.latitude == null || project.location.longitude == null) {
     messages.push(error("Locatie", "Latitude en longitude zijn nodig voor zonpositie en weerdata."));
   }
 

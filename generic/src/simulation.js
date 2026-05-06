@@ -5,6 +5,7 @@ const MONTHS = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "
 const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const DUTCH_YIELD_FACTORS = [0.025, 0.045, 0.085, 0.115, 0.135, 0.135, 0.13, 0.115, 0.085, 0.06, 0.04, 0.025];
 const HEAT_PUMP_FACTORS = [1, 0.9, 0.65, 0.35, 0.12, 0.02, 0, 0, 0.12, 0.35, 0.7, 0.95];
+const IMPORT_BALANCING_COST_EUR_PER_KWH = 0.02;
 
 export function runPreviewSimulation(project, scenario) {
   const validation = validateProject(project, scenario);
@@ -28,7 +29,7 @@ export function runPreviewSimulation(project, scenario) {
   const importKwh = Math.max(0, yearlyLoadKwh - selfConsumptionKwh);
   const buyPrice = 0.31;
   const sellPrice = 0.09;
-  const annualValueEur = selfConsumptionKwh * buyPrice + exportKwh * sellPrice - importKwh * 0.02;
+  const annualValueEur = selfConsumptionKwh * buyPrice + exportKwh * sellPrice - importKwh * IMPORT_BALANCING_COST_EUR_PER_KWH;
 
   return {
     validation,
@@ -91,7 +92,7 @@ function estimateShadowLoss(scenario, array) {
     const dx = object.x - array.x;
     const dy = object.y - array.y;
     const distance = Math.hypot(dx, dy);
-    const density = (object.densityPct ?? object.shadeDensityPct ?? 100) / 100;
+    const density = (object.shadeDensityPct ?? 100) / 100;
     const height = object.heightM ?? 4;
     const reach = object.type === "tree" ? height * 12 + (object.crownRadiusM ?? 0) * 8 : height * 9;
     const southBias = dy > -80 ? 1 : 0.55;

@@ -199,7 +199,7 @@ function renderObjectEditor(scenario) {
       item.append(
         numberField("Kruinradius (m)", object.crownRadiusM, (value) => { object.crownRadiusM = value; }),
         numberField("Stamhoogte (m)", object.trunkHeightM, (value) => { object.trunkHeightM = value; }),
-        numberField("Dichtheid (%)", object.densityPct, (value) => { object.densityPct = value; }),
+        numberField("Dichtheid (%)", object.shadeDensityPct, (value) => { object.shadeDensityPct = value; }),
         numberField("Seizoensfactor (%)", object.seasonalFactorPct, (value) => { object.seasonalFactorPct = value; }),
       );
     } else {
@@ -413,7 +413,7 @@ function renderSceneObject(svg, object) {
       cy: object.y,
       r: Math.max(14, object.crownRadiusM * 5),
       fill: "#22c55e",
-      "fill-opacity": 0.45 + (object.densityPct ?? 60) / 250,
+      "fill-opacity": 0.45 + (object.shadeDensityPct ?? 60) / 250,
       stroke: object.id === state.selectedId ? "#7dd3fc" : "#86efac",
       "stroke-width": object.id === state.selectedId ? 4 : 2,
       class: `canvas-shape${object.id === state.selectedId ? " selected" : ""}`,
@@ -691,7 +691,8 @@ function importProject(event) {
       persist();
       render();
     } catch (error) {
-      alert(`Project kon niet worden geïmporteerd: ${error.message}`);
+      const reason = error instanceof SyntaxError ? "Het bestand bevat geen geldige JSON." : "De projectstructuur kon niet worden gelezen.";
+      alert(`${reason} Details: ${error.message}`);
     } finally {
       event.target.value = "";
     }

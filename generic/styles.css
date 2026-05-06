@@ -264,7 +264,7 @@ label {
 }
 
 .legend-array { background: #38bdf8; }
-.legend-tree { background: #22c55e; border-radius: 50% !important; }
+.legend i.legend-tree { background: #22c55e; border-radius: 50%; }
 .legend-building { background: #f97316; }
 
 #sceneCanvas {

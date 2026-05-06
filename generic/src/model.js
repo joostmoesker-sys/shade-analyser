@@ -87,7 +87,7 @@ export function createTree(x = 300, y = 260) {
     heightM: 12,
     crownRadiusM: 4,
     trunkHeightM: 3,
-    densityPct: 70,
+    shadeDensityPct: 70,
     seasonalFactorPct: 80,
   };
 }
@@ -198,7 +198,7 @@ export function normalizeProject(value) {
   project.scenarios = project.scenarios.map((scenario, index) => ({
     id: scenario.id || makeId("scenario"),
     name: scenario.name || `Scenario ${index + 1}`,
-    sceneObjects: Array.isArray(scenario.sceneObjects) ? scenario.sceneObjects : [],
+    sceneObjects: Array.isArray(scenario.sceneObjects) ? scenario.sceneObjects.map(normalizeSceneObject) : [],
     arrays: Array.isArray(scenario.arrays) ? scenario.arrays : [],
     inverters: Array.isArray(scenario.inverters) && scenario.inverters.length ? scenario.inverters : [createInverter()],
     battery: { ...fallback.scenarios[0].battery, ...(scenario.battery ?? {}) },
@@ -215,6 +215,16 @@ export function normalizeProject(value) {
 
 export function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeSceneObject(object) {
+  if (!object || typeof object !== "object") return object;
+  if (object.type === "tree" && object.shadeDensityPct == null && object.densityPct != null) {
+    const normalized = { ...object, shadeDensityPct: object.densityPct };
+    delete normalized.densityPct;
+    return normalized;
+  }
+  return object;
 }
 
 export function makeId(prefix) {
