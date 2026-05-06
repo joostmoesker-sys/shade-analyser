@@ -388,6 +388,19 @@
         </select>
       </div>
 
+      <!-- Controls row 3: post-2027 price overhead parameters -->
+      <div class="econ-param-row">
+        <label title="Energiebelasting per geïmporteerde kWh">Tax (belasting):</label>
+        <input type="range" id="econEnergyTaxSlider" min="0" max="20" value="11" step="1">
+        <span id="econEnergyTaxVal" style="color:#f87171;min-width:44px">11 ct/kWh</span>
+        <label style="margin-left:8px" title="Opslag voor het energiebedrijf bij inkoop van stroom">Inkoop opslag:</label>
+        <input type="range" id="econInkoopOpslagSlider" min="0" max="10" value="3" step="1">
+        <span id="econInkoopOpslagVal" style="color:#fb923c;min-width:44px">3 ct/kWh</span>
+        <label style="margin-left:8px" title="Opslag voor het energiebedrijf bij verkoop van stroom aan net">Verkoop opslag:</label>
+        <input type="range" id="econVerkoopOpslagSlider" min="0" max="10" value="0" step="1">
+        <span id="econVerkoopOpslagVal" style="color:#4ade80;min-width:44px">0 ct/kWh</span>
+      </div>
+
       <!-- Results (hidden until run) -->
       <div id="econResultsDiv" style="display:none">
 
@@ -1778,7 +1791,10 @@ const TERMINAL_SOC_VALUE_DISCOUNT = 0.9; // discount uncertain value beyond DP h
 const EXPORT_SOC_LIMIT_FRACTION = 0.7; // conservative fraction of export-available SOC
 const EXPORT_POWER_LIMIT_FRACTION = 0.6; // reserve inverter headroom while exporting
 const SELL_PRICE_FACTOR_DEF   = 0.85;  // default sell tariff = buy tariff × 0.85 (legacy / override)
-const TIBBER_OPSLAG_EUR_KWH   = 0.04;  // Tibber fixed surcharge on every imported kWh (exported: bare APX)
+// Post-2027 Dutch electricity price model — configurable via UI sliders
+const ENERGY_TAX_DEFAULT      = 0.11;  // €/kWh — energy tax (belasting) on every imported kWh
+const INKOOP_OPSLAG_DEFAULT   = 0.03;  // €/kWh — energy company buy surcharge (inkoop opslag)
+const VERKOOP_OPSLAG_DEFAULT  = 0.00;  // €/kWh — energy company sell surcharge (verkoop opslag)
 const V3_CASHFLOW_CHART_MAX_WIDTH = 720;
 const V3_CASHFLOW_CHART_HEIGHT    = 190;
 
@@ -3804,11 +3820,14 @@ function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDail
 /**
  * Generate full 8760-hour tariff array from the 12×24 APX price matrix.
  * Adds weekend discount (−18%) and daily variation (±10% deterministic).
+ * @param {number} [inkoopOpslag]  — €/kWh energy-company buy surcharge (default: INKOOP_OPSLAG_DEFAULT)
+ * @param {number} [energyTax]     — €/kWh energy tax / belasting on imports (default: ENERGY_TAX_DEFAULT)
  * @returns Float64Array(8760) — €/kWh buy tariff
  */
-function generateYearlyTariffs() {
-  // Buy tariff: bare APX price + Tibber fixed opslag (surcharge on all imports).
-  // Exported kWh are sold at the bare APX price — see generateYearlySellTariffs().
+function generateYearlyTariffs(inkoopOpslag = INKOOP_OPSLAG_DEFAULT, energyTax = ENERGY_TAX_DEFAULT) {
+  // Buy tariff: bare APX price + energy tax + inkoop opslag.
+  // Exported kWh are sold at the bare APX price + verkoop opslag — see generateYearlySellTariffs().
+  const overhead = inkoopOpslag + energyTax;
   const tariffs = new Float64Array(8760);
   for (let doy = 1; doy <= 365; doy++) {
     const date   = new Date(2025, 0, doy);
@@ -3821,18 +3840,20 @@ function generateYearlyTariffs() {
       let p = HOURLY_APX_PRICE_2025[month][h];
       if (isWknd) p *= 0.82;  // weekend lower demand → lower prices
       p *= dailyVar;
-      // Buy = APX + Tibber opslag; clamp at reasonable bounds
-      tariffs[(doy - 1) * 24 + h] = Math.max(0.005, Math.min(0.80, p)) + TIBBER_OPSLAG_EUR_KWH;
+      // Buy = APX + tax + inkoop opslag; clamp at reasonable bounds
+      tariffs[(doy - 1) * 24 + h] = Math.max(0.005, Math.min(0.80, p)) + overhead;
     }
   }
   return tariffs;
 }
 
 /**
- * Sell tariff profile (8760 h): bare APX price without any opslag.
- * Post-2027 (saldering abolished) the grid feed-in rate is simply the hourly APX spot price.
+ * Sell tariff profile (8760 h): APX price + verkoop opslag.
+ * Post-2027 (saldering abolished) the grid feed-in rate is the hourly APX spot price
+ * plus the energy company's sell surcharge (verkoop opslag, default 0 €/kWh).
+ * @param {number} [verkoopOpslag] — €/kWh energy-company sell surcharge (default: VERKOOP_OPSLAG_DEFAULT)
  */
-function generateYearlySellTariffs() {
+function generateYearlySellTariffs(verkoopOpslag = VERKOOP_OPSLAG_DEFAULT) {
   const tariffs = new Float64Array(8760);
   for (let doy = 1; doy <= 365; doy++) {
     const date   = new Date(2025, 0, doy);
@@ -3844,7 +3865,7 @@ function generateYearlySellTariffs() {
       let p = HOURLY_APX_PRICE_2025[month][h];
       if (isWknd) p *= 0.82;
       p *= dailyVar;
-      tariffs[(doy - 1) * 24 + h] = Math.max(0.005, Math.min(0.80, p)); // bare APX
+      tariffs[(doy - 1) * 24 + h] = Math.max(0.005, Math.min(0.80, p)) + verkoopOpslag; // APX + verkoop opslag
     }
   }
   return tariffs;
@@ -5247,8 +5268,11 @@ async function runEconSim() {
   const zeroExport  = document.getElementById('econZeroExportToggle').checked;
 
   const loadProfile    = precomputeYearlyLoad(baseDayKwh, hpWinterKwh);
-  const tariffProfile  = generateYearlyTariffs();      // buy = APX + TIBBER_OPSLAG
-  const sellProfile    = generateYearlySellTariffs();  // sell = bare APX
+  const energyTax      = parseFloat(document.getElementById('econEnergyTaxSlider').value) / 100;
+  const inkoopOpslag   = parseFloat(document.getElementById('econInkoopOpslagSlider').value) / 100;
+  const verkoopOpslag  = parseFloat(document.getElementById('econVerkoopOpslagSlider').value) / 100;
+  const tariffProfile  = generateYearlyTariffs(inkoopOpslag, energyTax);   // buy = APX + tax + inkoop opslag
+  const sellProfile    = generateYearlySellTariffs(verkoopOpslag);          // sell = APX + verkoop opslag
 
   const opts = { useBattery, useGridPrecharge, zeroExport, batCapKwh, sellFactor, sellTariffs: sellProfile };
 
@@ -5587,10 +5611,14 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
     + `among A/C/F/G.`;
 
   // ── Note ─────────────────────────────────────────────────────────────────
+  const _tax   = parseFloat(document.getElementById('econEnergyTaxSlider').value);
+  const _inkoop = parseFloat(document.getElementById('econInkoopOpslagSlider').value);
+  const _verkoop = parseFloat(document.getElementById('econVerkoopOpslagSlider').value);
   document.getElementById('econNoteText').textContent =
     `Completed in ${elapsedMs} ms. Clear-sky model (optimistic — real yield 15–25% lower with clouds). ` +
     `Battery capex excluded (already paid for). ` +
-    `Buy tariff = APX + €${TIBBER_OPSLAG_EUR_KWH.toFixed(2)}/kWh (Tibber opslag/surcharge); sell = bare APX. ` +
+    `Buy tariff = APX + ${_tax} ct/kWh tax + ${_inkoop} ct/kWh inkoop opslag; ` +
+    `sell = APX + ${_verkoop} ct/kWh verkoop opslag. ` +
     `Base load ${document.getElementById('econBaseLoadSlider').value} kWh/d + ` +
     `HP winter ${document.getElementById('econHpSlider').value} kWh/d (electrical). ` +
     `Battery converter efficiency: A/C 92.5% AC→bat and 92.5% bat→AC; F/G ${(CHARGE_EFF_PV * 100).toFixed(0)}%/${(DISCHARGE_EFF * 100).toFixed(0)}%. ` +
@@ -6273,6 +6301,21 @@ document.getElementById('econHpSlider').addEventListener('input', function () {
 // Sell price factor slider
 document.getElementById('econSellFactorSlider').addEventListener('input', function () {
   document.getElementById('econSellFactorVal').textContent = (this.value / 100).toFixed(2) + '×';
+});
+
+// Energy tax slider
+document.getElementById('econEnergyTaxSlider').addEventListener('input', function () {
+  document.getElementById('econEnergyTaxVal').textContent = this.value + ' ct/kWh';
+});
+
+// Inkoop opslag slider
+document.getElementById('econInkoopOpslagSlider').addEventListener('input', function () {
+  document.getElementById('econInkoopOpslagVal').textContent = this.value + ' ct/kWh';
+});
+
+// Verkoop opslag slider
+document.getElementById('econVerkoopOpslagSlider').addEventListener('input', function () {
+  document.getElementById('econVerkoopOpslagVal').textContent = this.value + ' ct/kWh';
 });
 
 // Run economic analysis button
