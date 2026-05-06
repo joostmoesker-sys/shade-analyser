@@ -692,7 +692,7 @@ function importProject(event) {
       persist();
       render();
     } catch (error) {
-      const reason = error instanceof SyntaxError ? "Het bestand bevat geen geldige JSON." : `De projectstructuur kon niet worden gelezen (${error.name}).`;
+      const reason = error instanceof SyntaxError ? "Het bestand bevat geen geldige JSON." : "Bestand lijkt geen ondersteund projectexportbestand te zijn.";
       const guidance = "Gebruik een export uit deze generic tool met schemaVersion, location, panelTypes en scenarios.";
       showNotification("error", "Import mislukt", `${reason} ${guidance} Details: ${error.message}`);
     } finally {
@@ -734,7 +734,7 @@ function svgEl(name, attrs = {}) {
 }
 
 function clear(element) {
-  while (element.firstChild) element.firstChild.remove();
+  element.replaceChildren();
 }
 
 function format(value) {

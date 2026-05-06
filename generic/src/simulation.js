@@ -28,6 +28,8 @@ const BUILDING_HEIGHT_SHADOW_MULTIPLIER = 9;
 const SOUTH_BIAS_Y_THRESHOLD = -80;
 const NORTH_OBJECT_SHADOW_BIAS = 0.55;
 const SHADOW_LOSS_SCALE = 16;
+// Typical fast-preview annual yield per installed kWp for Dutch conditions before orientation, tilt and shade losses.
+const DUTCH_BASE_YIELD_KWH_PER_KWP = 930;
 
 export function runPreviewSimulation(project, scenario) {
   const validation = validateProject(project, scenario);
@@ -95,8 +97,7 @@ function simulateArray(project, scenario, array) {
   const shadowLossPct = estimateShadowLoss(scenario, array);
   const inverterFactor = Math.min(1, (inverter.efficiencyPct ?? 96) / 100);
   const mpptClipFactor = Math.min(1, mppt.maxPowerKw / Math.max(dcKwp, 0.1));
-  const baseYieldKwhPerKwp = 930;
-  const annualKwh = dcKwp * baseYieldKwhPerKwp * orientationFactor * tiltFactor * (1 - shadowLossPct / 100) * inverterFactor * mpptClipFactor;
+  const annualKwh = dcKwp * DUTCH_BASE_YIELD_KWH_PER_KWP * orientationFactor * tiltFactor * (1 - shadowLossPct / 100) * inverterFactor * mpptClipFactor;
 
   return {
     arrayId: array.id,
@@ -141,6 +142,7 @@ function simulateBatteryEconomics(monthlyPvKwh, monthlyLoadKwh, battery) {
     };
   }
 
+  // Split round-trip efficiency evenly across charge and discharge in this monthly balance model.
   const efficiency = Math.sqrt((battery.roundTripEfficiencyPct ?? 90) / 100);
   const standbyLossKwh = battery.standbyW * 24 * 365 / 1000;
   let chargedKwh = 0;

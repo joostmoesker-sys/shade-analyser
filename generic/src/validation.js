@@ -67,7 +67,7 @@ function validateArray(project, scenario, array, messages) {
   const panelsPerString = array.columns;
   const parallelStrings = array.rows;
   const coldVoc = panelsPerString * panel.voc * COLD_VOC_TEMPERATURE_FACTOR;
-  const hotVmp = panelsPerString * panel.vmp * HOT_VMP_TEMPERATURE_FACTOR;
+  const hotVmpp = panelsPerString * panel.vmp * HOT_VMP_TEMPERATURE_FACTOR;
   const stringCurrent = panel.imp * parallelStrings;
   const stringIsc = panel.isc * parallelStrings;
   const dcKw = array.rows * array.columns * panel.pmaxW / 1000;
@@ -76,8 +76,8 @@ function validateArray(project, scenario, array, messages) {
     messages.push(error(array.name, `Koude Voc ${round(coldVoc)} V is hoger dan MPPT max ${mppt.maxVoltage} V.`));
   }
 
-  if (hotVmp < mppt.minVoltage) {
-    messages.push(error(array.name, `Warme Vmpp ${round(hotVmp)} V is lager dan MPPT minimum ${mppt.minVoltage} V.`));
+  if (hotVmpp < mppt.minVoltage) {
+    messages.push(error(array.name, `Warme Vmpp ${round(hotVmpp)} V is lager dan MPPT minimum ${mppt.minVoltage} V.`));
   }
 
   if (stringCurrent > mppt.maxCurrent) {

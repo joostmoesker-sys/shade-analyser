@@ -280,13 +280,12 @@ label {
 .legend i {
   width: 13px;
   height: 13px;
-  border-radius: 3px;
   display: inline-block;
 }
 
-.legend-array { background: #38bdf8; }
-.legend .legend-tree { background: #22c55e; border-radius: 50%; }
-.legend-building { background: #f97316; }
+.legend-array { background: #38bdf8; border-radius: 3px; }
+.legend-tree { background: #22c55e; border-radius: 50%; }
+.legend-building { background: #f97316; border-radius: 3px; }
 
 #sceneCanvas {
   display: block;
