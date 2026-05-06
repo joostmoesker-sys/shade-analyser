@@ -1595,6 +1595,7 @@ const HOURLY_APX_PRICE_2025 = [
 ];
 
 const RAW_APX_PRICE_SOURCE_2025 = 'Energy-Charts API NL-LU day-ahead spot prices 2025';
+const MIN_RAW_APX_HOURS_2025 = 8500; // ≥97% coverage; DST/time-zone edge gaps are filled by fallback.
 let rawApxPriceCache2025 = null;
 
 function syntheticApxPriceForHourIndex(hourIdx) {
@@ -1682,7 +1683,9 @@ function normaliseRawApxPrices2025(raw) {
       rawHours++;
     }
   }
-  if (rawHours < 8500) throw new Error(`Incomplete APX price response: mapped ${rawHours}/8760 hours`);
+  if (rawHours < MIN_RAW_APX_HOURS_2025) {
+    throw new Error(`Incomplete APX price response: mapped ${rawHours}/8760 hours; expected at least ${MIN_RAW_APX_HOURS_2025} hours (97% coverage)`);
+  }
   prices.rawHours = rawHours;
   prices.source = RAW_APX_PRICE_SOURCE_2025;
   return prices;
