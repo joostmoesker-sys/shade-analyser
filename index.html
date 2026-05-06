@@ -133,7 +133,7 @@
 
 <header>
   <h1>&#9728;&#65039; PV Array Shade Analyser</h1>
-  <p>Lucksolar LS-M120-340W &nbsp;&middot;&nbsp; 8&times;10 (80 panels) &nbsp;&middot;&nbsp; Neer, Netherlands &nbsp;&middot;&nbsp; Clear-sky irradiance model &nbsp;&middot;&nbsp; 7 Wiring Configs</p>
+  <p>Lucksolar LS-M120-340W &nbsp;&middot;&nbsp; 8&times;10 (80 panels) &nbsp;&middot;&nbsp; Neer, Netherlands &nbsp;&middot;&nbsp; Clear-sky irradiance model &nbsp;&middot;&nbsp; 3 Wiring Configs (A, F, G)</p>
 </header>
 
 <div class="app-body">
@@ -313,12 +313,6 @@
 
         <span id="simModeLabel" style="font-size:0.71rem;color:#4b5563"></span>
       </div>
-      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:0.77rem;color:#9ca3af">
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
-          <input type="checkbox" id="salderingToggle" aria-label="Saldering net metering toggle" style="accent-color:#4ade80;width:13px;height:13px">
-          Saldering (net metering) &nbsp;<span style="color:#ef4444;font-size:.7rem">Abolished 2027 — post-2027 model always active (sell at bare APX)</span>
-        </label>
-      </div>
       <div id="simResultsDiv" style="display:none">
         <div id="simWeatherBadge" style="display:none;margin-bottom:8px;font-size:0.72rem;color:#38bdf8;background:#0c2233;border:1px solid #1e4060;border-radius:5px;padding:5px 10px">
           ☁ Using hourly 2025 weather — real irradiance and temperature drive PV/economics
@@ -352,14 +346,6 @@
 
       <!-- Controls row 1: toggles + run button -->
       <div class="econ-ctrl-row">
-        <label>
-          <input type="checkbox" id="econBatteryToggle" checked style="accent-color:#4ade80;width:13px;height:13px">
-          Enable Battery <span style="color:#4ade80;font-size:.7rem">(already paid for — no capex)</span>
-        </label>
-        <label>
-          <input type="checkbox" id="econGridPrechargeToggle" style="accent-color:#fbbf24;width:13px;height:13px">
-          Grid Pre-charge <span style="color:#fbbf24;font-size:.7rem">(80% round-trip, low-PV days only)</span>
-        </label>
         <label>
           <input type="checkbox" id="econZeroExportToggle" style="accent-color:#f87171;width:13px;height:13px">
           Zero export <span style="color:#f87171;font-size:.7rem">(no selling to grid — curtail surplus PV)</span>
@@ -442,53 +428,12 @@
 
         <!-- ── V4 economic comparison details ── -->
         <div id="battery-v2-panel" style="margin-top:16px; padding:14px; background:#0f2237; border:2px solid #0d6efd; border-radius:8px;">
-          <h4 style="margin:0 0 10px 0; color:#60a5fa; font-size:0.9rem;">🚀 V4 Economic Comparison — Options A, C, F &amp; G</h4>
+          <h4 style="margin:0 0 10px 0; color:#60a5fa; font-size:0.9rem;">🚀 V4 Economic Comparison — Options A, F &amp; G</h4>
           <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end; font-size:0.8rem; color:#d1d5db;">
-            <span style="color:#9ca3af">Runs the full-year V4 optimizer for Options A, C, F and G.</span>
-            <label style="display:none;align-items:center;gap:5px;">
-              <input type="checkbox" id="useAdvancedStrategy" checked style="accent-color:#0d6efd;">
-              Use v2 Smart Dispatch
-            </label>
-            <div style="display:none">
-              <label>Min Profit Spread (€/kWh): <span id="spreadVal" style="color:#fbbf24;">0.06</span></label><br>
-              <input type="range" id="minSpread" min="0.02" max="0.15" step="0.01" value="0.06" style="width:140px;">
-            </div>
-            <div style="display:none">
-              <label>Self-use Premium: <span id="multiplierVal" style="color:#fbbf24;">1.05</span>×</label><br>
-              <input type="range" id="selfMultiplier" min="1.0" max="1.20" step="0.01" value="1.05" style="width:140px;">
-            </div>
+            <span style="color:#9ca3af">Runs the full-year V4 optimizer for Options A, F and G.</span>
             <button id="runV2Btn" style="padding:7px 18px; background:#0d6efd; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.8rem;">Re-run V4 Comparison</button>
           </div>
-          <div style="margin-top:12px; padding-top:10px; border-top:1px solid #1e3a5f; font-size:0.8rem; color:#d1d5db; display:flex; gap:16px; flex-wrap:wrap; align-items:center;">
-            <label style="display:none"><strong style="color:#22c55e;">V3 Forecast Horizon:</strong></label>
-            <select id="horizonSelect" style="display:none; margin-left:4px; padding:4px 10px; border-radius:4px; background:#1e3a5f; color:#d1d5db; border:1px solid #374151;">
-              <option value="24">24 hours</option>
-              <option value="48">48 hours</option>
-              <option value="96">96 hours</option>
-              <option value="120" selected>120 hours (5-day look-ahead)</option>
-            </select>
-            <label style="margin-left:8px; display:none; align-items:center; gap:5px;">
-              <input type="checkbox" id="useV3DP" checked style="accent-color:#22c55e;">
-              Use V3 Dynamic Programming
-            </label>
-            <label style="margin-left:8px; display:flex; align-items:center; gap:5px;">
-              <input type="checkbox" id="useV4Euro" checked aria-label="Show best-option V4 details" style="accent-color:#fbbf24;">
-              Show best-option V4 details
-            </label>
-          </div>
-          <div id="v2-results" style="margin-top:10px; display:none; font-size:0.88rem; color:#d1d5db;">
-            <strong style="color:#60a5fa;">v2 Annual Savings (best config):</strong>
-            <span id="v2Savings" style="color:#4ade80; font-weight:700; font-size:1rem;"></span> €
-            <span id="v2Delta" style="font-weight:bold; margin-left:6px;"></span>
-          </div>
-          <div id="v3-results" style="margin-top:6px; display:none; font-size:0.88rem; color:#d1d5db;">
-            <strong style="color:#22c55e;">v3 Annual Savings (best config):</strong>
-            <span id="v3Savings" style="color:#4ade80; font-weight:700; font-size:1rem;"></span> €
-            <span id="v3DeltaV1" style="font-weight:bold; margin-left:6px;"></span>
-            <span id="v3DeltaV2" style="font-weight:bold; margin-left:6px; color:#60a5fa;"></span>
-            <span id="v3Horizon" style="margin-left:6px; color:#9ca3af; font-size:0.78rem;"></span>
-          </div>
-          <div id="v4-results" style="margin-top:6px; display:none; font-size:0.88rem; color:#d1d5db;">
+          <div id="v4-results" style="margin-top:10px; display:none; font-size:0.88rem; color:#d1d5db;">
             <strong style="color:#fbbf24;">Best-option V4 Euro Optimizer:</strong>
             <span id="v4Savings" style="color:#4ade80; font-weight:700; font-size:1rem;"></span> €
             <span id="v4DeltaV3" style="font-weight:bold; margin-left:6px;"></span>
@@ -497,7 +442,7 @@
           <div id="v3CashflowWrap" class="v3-cashflow-chart-wrap">
             <canvas id="v3CashflowChart" width="720" height="190" style="border:1px solid #374151; border-radius:4px; width:100%; max-width:720px; display:block;"></canvas>
             <div style="font-size:0.7rem; color:#6b7280; margin-top:4px;">
-              V3/V4 monthly cashflow — <span style="color:#4ade80;">■</span> savings
+              V4 monthly cashflow — <span style="color:#4ade80;">■</span> savings
               · <span style="color:#60a5fa;">■</span> baseline grid cost
               · <span style="color:#f97316;">■</span> import cost
               · <span style="color:#22c55e;">■</span> export revenue
@@ -1231,6 +1176,8 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
   if (delta > eps) {
     const totalStoreCap = Math.min(chargePowerKw * chargeEff, Math.max(0, batCapKwh - curSoc));
     const pvStoreCap = Math.min(surplusPv * chargeEff, totalStoreCap);
+    // Grid pre-charge uses the same inverter-level charge efficiency as PV
+    // charging; discharge efficiency is applied later when stored energy is used.
     const gridStoreCap = allowGridPrecharge
       ? Math.min(gridPrechargePowerKw * chargeEff, totalStoreCap)
       : 0;
@@ -1664,28 +1611,6 @@ const CONFIGS = [
     blocks: ROW_GROUPS.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'sp',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
   },
   {
-    id:'B', label:'Option B', short:'B \u2014 TCT',
-    desc:'3 MPPTs \u00b7 V-TCT: same row groups as A (1\u20132 | 3\u20135 | 6\u20138), cross-tied (cols in series, rows in \u2225 per col) \u00b7 economic model: unlimited charge, 18 kW discharge, 200 W standby',
-    cfgColor:'#a78bfa', mpptColors:['#a78bfa','#c4b5fd','#7c3aed'],
-    econChargePowerKw: Infinity,
-    econDischargePowerKw: 18,
-    econStandbyKw: 0.2,
-    econChargeEff: 0.925,
-    econDischargeEff: 0.925,
-    blocks: ROW_GROUPS.map(([r0,r1],i)=>({r0,r1,c0:0,c1:COLS-1,topo:'v-tct',label:`MPPT ${i+1} (rows ${r0+1}\u2013${r1+1})`})),
-  },
-  {
-    id:'C', label:'Option C', short:'C \u2014 1\u00d79',
-    desc:'8 MPPTs \u00b7 1 series string per row (10 panels each) \u00b7 economic model: unlimited charge, 18 kW discharge, 200 W standby',
-    cfgColor:'#4ade80', mpptColors:COL8,
-    econChargePowerKw: Infinity,
-    econDischargePowerKw: 18,
-    econStandbyKw: 0.2,
-    econChargeEff: 0.925,
-    econDischargeEff: 0.925,
-    blocks: Array.from({length:ROWS},(_,r)=>({r0:r,r1:r,c0:0,c1:COLS-1,topo:'series',label:`MPPT ${r+1} (row ${r+1})`})),
-  },
-  {
     id:'F', label:'Option F', short:'F \u2014 16kW PV/10kW bat',
     desc:'4 MPPTs \u00b7 SP: row groups 1\u20132 | 3\u20134 | 5\u20136 | 7\u20138 (2\u00d710 = 20 panels per MPPT) \u00b7 16 kW PV limit \u00b7 10 kW battery charge/discharge',
     cfgColor:'#22d3ee', mpptColors:COL4,
@@ -1703,44 +1628,11 @@ const CONFIGS = [
   },
 ];
 
-// Economic comparison is intentionally limited to the options with defined V4
-// battery power, standby, and converter-efficiency assumptions for this scenario.
-const ECON_COMPARISON_CONFIG_IDS = ['A', 'B', 'C', 'F', 'G'];
-
-// Sub-variants for A/B/C with AC discharge power limited to 5, 10 or 15 kW.
-// These share the same wiring (and therefore PV yield) as their parent config.
-// pvFromId points to the parent config whose simulated hourly PV data is reused.
-// Standby consumption and converter efficiency are inherited from the parent config
-// (A / B / C in CONFIGS) and are NOT redefined here.
-const ECON_ABC_VARIANTS = [
-  // ── Option A variants (SP wiring) ──────────────────────────────────────────
-  { id:'A5',  label:'Option A 5kW',  short:'A \u2014 SP / 5kW dis',  cfgColor:'#7dd3fc', pvFromId:'A',
-    econChargePowerKw:Infinity, econDischargePowerKw: 5  },
-  { id:'A10', label:'Option A 10kW', short:'A \u2014 SP / 10kW dis', cfgColor:'#38bdf8', pvFromId:'A',
-    econChargePowerKw:Infinity, econDischargePowerKw:10  },
-  { id:'A15', label:'Option A 15kW', short:'A \u2014 SP / 15kW dis', cfgColor:'#0284c7', pvFromId:'A',
-    econChargePowerKw:Infinity, econDischargePowerKw:15  },
-  // ── Option B variants (V-TCT wiring) ───────────────────────────────────────
-  { id:'B5',  label:'Option B 5kW',  short:'B \u2014 TCT / 5kW dis',  cfgColor:'#c4b5fd', pvFromId:'B',
-    econChargePowerKw:Infinity, econDischargePowerKw: 5  },
-  { id:'B10', label:'Option B 10kW', short:'B \u2014 TCT / 10kW dis', cfgColor:'#a78bfa', pvFromId:'B',
-    econChargePowerKw:Infinity, econDischargePowerKw:10  },
-  { id:'B15', label:'Option B 15kW', short:'B \u2014 TCT / 15kW dis', cfgColor:'#7c3aed', pvFromId:'B',
-    econChargePowerKw:Infinity, econDischargePowerKw:15  },
-  // ── Option C variants (per-row wiring) ─────────────────────────────────────
-  { id:'C5',  label:'Option C 5kW',  short:'C \u2014 1\u00d711 / 5kW dis',  cfgColor:'#86efac', pvFromId:'C',
-    econChargePowerKw:Infinity, econDischargePowerKw: 5  },
-  { id:'C10', label:'Option C 10kW', short:'C \u2014 1\u00d711 / 10kW dis', cfgColor:'#4ade80', pvFromId:'C',
-    econChargePowerKw:Infinity, econDischargePowerKw:10  },
-  { id:'C15', label:'Option C 15kW', short:'C \u2014 1\u00d711 / 15kW dis', cfgColor:'#16a34a', pvFromId:'C',
-    econChargePowerKw:Infinity, econDischargePowerKw:15  },
-];
+// Economic comparison uses only configurations A, F, and G.
+const ECON_COMPARISON_CONFIG_IDS = ['A', 'F', 'G'];
 
 function getEconomicComparisonConfigs() {
-  return [
-    ...CONFIGS.filter(cfg => ECON_COMPARISON_CONFIG_IDS.includes(cfg.id)),
-    ...ECON_ABC_VARIANTS,
-  ];
+  return CONFIGS.filter(cfg => ECON_COMPARISON_CONFIG_IDS.includes(cfg.id));
 }
 function getConfigEconomicLimits(cfg) {
   // Sub-variants (A5/A10/…) inherit standby and efficiency from their parent
@@ -1773,8 +1665,6 @@ function formatEconomicLimitsText(econ, pvLimit = '') {
 // ── Inverter specs per configuration (WP6) ─────────────────────────────────
 const INVERTER_SPECS = {
   A: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
-  B: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
-  C: { VmpptMin:60,  VmpptMax:500,  ImaxPerMppt:22, totalPowerW:null },
   F: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:16000 },
   G: { VmpptMin:120, VmpptMax:1000, ImaxPerMppt:25, totalPowerW:24000 },
 };
@@ -1798,7 +1688,7 @@ function applyInverterClipping(mpp, spec) {
 const FEED_IN_FACTOR  = 0.70;  // feed-in ≈ 70 % of APX spot (no saldering / direct feed-in)
 const PRICE_SALDERING    = 0.26;  // €/kWh — kept for reference / heatmap € fallback
 const PRICE_NO_SALDERING = 0.08;  // €/kWh — kept for reference / heatmap € fallback
-const CONFIG_COST = { A:850, B:850, C:850, D:650, E:650, F:1205, G:1805, H:850, I:850, J:850, K:850, L:900, M:900 }; // € installed cost
+const CONFIG_COST = { A:850, F:1205, G:1805 }; // € installed cost
 const MIN_ROI_DISPLAY_YEARS = 5;
 
 // ── Battery storage constants (64 kWh system, already paid for) ──────────────
@@ -2046,14 +1936,7 @@ function drawGroupDividers() {
   const id = highlightedConfig;
   ctx.strokeStyle = '#f59e0b88'; ctx.lineWidth = 1.5; ctx.setLineDash([4,3]);
 
-  if (id === 'A' || id === 'B') {
-    for (const sepRow of [1, 4]) {
-      const rctA = panelRect(sepRow, 0);
-      const y = rctA.y + rctA.h + GAP/2;
-      ctx.beginPath(); ctx.moveTo(PAD_L-4, y); ctx.lineTo(PAD_L + COLS*(PW+GAP)-GAP+4, y); ctx.stroke();
-    }
-  }
-  if (id === 'D' || id === 'E') {
+  if (id === 'A') {
     for (const sepRow of [1, 4]) {
       const rctA = panelRect(sepRow, 0);
       const y = rctA.y + rctA.h + GAP/2;
@@ -2062,29 +1945,6 @@ function drawGroupDividers() {
   }
   if (id === 'F' || id === 'G') {
     for (const sepCol of [2, 5]) {
-      const rctA = panelRect(0, sepCol);
-      const x = rctA.x + rctA.w + GAP/2;
-      ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
-    }
-  }
-  if (id === 'D' || id === 'E') {
-    for (const sepCol of [2, 5]) {
-      const rctA = panelRect(0, sepCol);
-      const x = rctA.x + rctA.w + GAP/2;
-      ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
-    }
-  }
-  // Column dividers for H/I (3 col groups: 0-2 | 3-5 | 6-8)
-  if (id === 'H' || id === 'I') {
-    for (const sepCol of [2, 5]) {
-      const rctA = panelRect(0, sepCol);
-      const x = rctA.x + rctA.w + GAP/2;
-      ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
-    }
-  }
-  // Column dividers for J/K (5 col groups: 0-1 | 2-3 | 4-5 | 6-7 | 8)
-  if (id === 'J' || id === 'K') {
-    for (const sepCol of [1, 3, 5, 7]) {
       const rctA = panelRect(0, sepCol);
       const x = rctA.x + rctA.w + GAP/2;
       ctx.beginPath(); ctx.moveTo(x, PAD_T - 4); ctx.lineTo(x, canvas.height - PAD_B + 4); ctx.stroke();
@@ -5095,6 +4955,8 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
       surplusPv * chargeEff,
       totalStoreCap,
     );
+    // Grid pre-charge uses the same inverter-level charge efficiency as PV
+    // charging; discharge efficiency is applied later when stored energy is used.
     const gridStoreCap = allowGridPrecharge
       ? Math.min(gridPrechargePowerKw * chargeEff, totalStoreCap)
       : 0;
@@ -5414,8 +5276,8 @@ async function runEconSim() {
   const hpWinterKwh = parseFloat(document.getElementById('econHpSlider').value);
   const sellFactor  = parseFloat(document.getElementById('econSellFactorSlider').value) / 100;
   const batCapKwh   = parseFloat(document.getElementById('econBatSizeSelect').value);
-  const useBattery  = document.getElementById('econBatteryToggle').checked;
-  const useGridPrecharge = document.getElementById('econGridPrechargeToggle').checked;
+  const useBattery  = true;         // battery always enabled
+  const useGridPrecharge = true;    // grid pre-charge always enabled
   const zeroExport  = document.getElementById('econZeroExportToggle').checked;
 
   let weatherForLoad = lastHistoricalWeather;
@@ -5556,12 +5418,8 @@ async function runEconSim() {
   const bestId = ids.length ? ids.reduce((best, id) =>
     econResults[id].annualSavingsBat > econResults[best].annualSavingsBat ? id : best, ids[0]) : null;
   const bestEcon = bestId ? econResults[bestId] : null;
-  const v2ResDiv = document.getElementById('v2-results');
-  const v3ResDiv = document.getElementById('v3-results');
-  if (v2ResDiv) v2ResDiv.style.display = 'none';
-  if (v3ResDiv) v3ResDiv.style.display = 'none';
 
-  if (useBattery && batteryParams.useV4Euro && bestEcon && bestEcon.v4Result) {
+  if (batteryParams.useV4Euro && bestEcon && bestEcon.v4Result) {
     const v4ResDiv = document.getElementById('v4-results');
     const v4SavEl = document.getElementById('v4Savings');
     const v4DeltaEl = document.getElementById('v4DeltaV3');
@@ -5585,11 +5443,7 @@ async function runEconSim() {
       window.drawDispatchVisualizer(v4Result.hourlyPlan, v4Result.batteryCapacityKwh || batCapKwh);
     }
   } else {
-    const v2ResDiv = document.getElementById('v2-results');
-    const v3ResDiv = document.getElementById('v3-results');
     const v4ResDiv = document.getElementById('v4-results');
-    if (v2ResDiv) v2ResDiv.style.display = 'none';
-    if (v3ResDiv) v3ResDiv.style.display = 'none';
     if (v4ResDiv) v4ResDiv.style.display = 'none';
     if (typeof window.drawV3CashflowChart === 'function') {
       window.drawV3CashflowChart(null);
@@ -5612,7 +5466,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
   const worstSavings = Math.min(...savingsArr);
   const bestCfgId    = ids[savingsArr.indexOf(bestSavings)];
   const best = econResults[bestCfgId];
-  const useBat = document.getElementById('econBatteryToggle').checked;
+  const useBat = true; // battery always enabled
 
   // ── Metrics cards ────────────────────────────────────────────────────────
   const cards = [
@@ -5716,7 +5570,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
 
   // ── SOC trace chart ───────────────────────────────────────────────────────
   const bestEcon = econResults[bestCfgId];
-  if (bestEcon && bestEcon.socTrace && document.getElementById('econBatteryToggle').checked) {
+  if (bestEcon && bestEcon.socTrace) {
     const socc = document.getElementById('econSocChart');
     const socW = socc.parentElement.clientWidth || 600;
     socc.width = socW; socc.height = 120;
@@ -5771,7 +5625,7 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
     `V4 comparison: <b style="color:#4ade80">Option ${bestCfgId}</b> saves `
     + `<b style="color:#4ade80">€${shade_delta.toFixed(0)}/yr more</b> `
     + `than worst Option ${worstCfgId} `
-    + `among A/C/F/G.`;
+    + `among A/F/G.`;
 
   // ── Note ─────────────────────────────────────────────────────────────────
   const _tax   = parseFloat(document.getElementById('econEnergyTaxSlider').value);
@@ -5784,8 +5638,9 @@ function displayEconResults(econResults, batCapKwh, elapsedMs) {
     `sell = APX + ${_verkoop} ct/kWh verkoop opslag. ` +
     `Base load ${document.getElementById('econBaseLoadSlider').value} kWh/d + ` +
     `HP winter ${document.getElementById('econHpSlider').value} kWh/d (electrical). ` +
-    `Battery converter efficiency: A/C 92.5% AC→bat and 92.5% bat→AC; F/G ${(CHARGE_EFF_PV * 100).toFixed(0)}%/${(DISCHARGE_EFF * 100).toFixed(0)}%. ` +
-    `Economic comparison uses V4 optimizer for Options A, C, F and G only; A/C=\u221e kW charge, 18 kW discharge, 200 W standby; F=16 kW PV/10 kW battery, G=24 kW PV/10 kW battery. ` +
+    `Battery converter efficiency: A 92.5% AC→bat and 92.5% bat→AC; F/G ${(CHARGE_EFF_PV * 100).toFixed(0)}%/${(DISCHARGE_EFF * 100).toFixed(0)}%. ` +
+    `Economic comparison uses V4 optimizer for Options A, F and G; A=\u221e kW charge, 18 kW discharge, 200 W standby; F=16 kW PV/10 kW battery, G=24 kW PV/10 kW battery. ` +
+    `Grid pre-charge always enabled. ` +
     `Battery degradation excluded. ` +
     `Heat pump COP not modeled. 5% SOC floor for all discharge strategies.`;
 
@@ -5834,19 +5689,11 @@ function displaySimResults(monthlyEnergy, noShadeEnergy, weatherMode,
   lastSimResults = monthlyEnergy;
   lastSimNoShade = noShadeEnergy;
   lastSimWeather = weatherMode;
-  // Cache new fields for saldering-toggle re-render
-  if (panelEnergyFlat !== undefined) {
-    lastSimPanelEnergy = panelEnergyFlat;
-    lastSimNoShadePanelEnergy = noShadePanelEnergyFlat;
-    lastSimRevenueDynamic = revenueDynamic;
-    lastSimNoShadeRevenueDynamic = noShadeRevenueDynamic;
-  } else {
-    // Called from saldering toggle — reuse cached values
-    panelEnergyFlat = lastSimPanelEnergy;
-    noShadePanelEnergyFlat = lastSimNoShadePanelEnergy;
-    revenueDynamic = lastSimRevenueDynamic;
-    noShadeRevenueDynamic = lastSimNoShadeRevenueDynamic;
-  }
+  // Cache panel energy and revenue for potential future re-renders
+  lastSimPanelEnergy = panelEnergyFlat;
+  lastSimNoShadePanelEnergy = noShadePanelEnergyFlat;
+  lastSimRevenueDynamic = revenueDynamic;
+  lastSimNoShadeRevenueDynamic = noShadeRevenueDynamic;
   // Cache hourly PV arrays for battery economic simulation
   if (hourlyPvKwh) {
     lastHourlyPvKwh = hourlyPvKwh;
@@ -6189,11 +6036,7 @@ document.getElementById('abortSimBtn').addEventListener('click', () => {
   document.getElementById('simStatusLabel').textContent = 'Aborted.';
 });
 
-// Saldering toggle
-const salEl = document.getElementById('salderingToggle');
-if (salEl) salEl.addEventListener('change', () => {
-  if (lastSimResults) displaySimResults(lastSimResults, lastSimNoShade, lastSimWeather);
-});
+// Saldering model is always post-2027 (bare APX). No toggle needed.
 
 // Google Maps buttons
 document.getElementById('toggleGoogleMapBtn').addEventListener('click', toggleOSMMap);
@@ -6215,57 +6058,12 @@ window.addEventListener('resize', () => {
  * Must be called once after the economic panel HTML is in the DOM.
  */
 function initBatteryV2UI() {
-  const useAdv  = document.getElementById('useAdvancedStrategy');
-  const spread  = document.getElementById('minSpread');
-  const mult    = document.getElementById('selfMultiplier');
   const runBtn  = document.getElementById('runV2Btn');
 
-  if (!useAdv) return; // panel not present yet
+  if (!runBtn) return; // panel not present yet
 
-  // Slider: min profit spread
-  spread.addEventListener('input', function () {
-    batteryParams.minProfitSpread = parseFloat(this.value);
-    document.getElementById('spreadVal').textContent = parseFloat(this.value).toFixed(2);
-  });
-
-  // Slider: self-use premium multiplier
-  mult.addEventListener('input', function () {
-    batteryParams.selfUseMultiplier = parseFloat(this.value);
-    document.getElementById('multiplierVal').textContent = parseFloat(this.value).toFixed(2);
-  });
-
-  // Horizon selector: update forecastHorizon and re-run if results available
-  const horizonSel = document.getElementById('horizonSelect');
-  if (horizonSel) {
-    horizonSel.addEventListener('change', function () {
-      batteryParams.forecastHorizon = parseInt(this.value);
-      if (lastEconResults) setTimeout(runEconSim, 20);
-    });
-  }
-
-  // V3 toggle: update useV3DP
-  const useV3El = document.getElementById('useV3DP');
-  if (useV3El) {
-    useV3El.addEventListener('change', function () {
-      batteryParams.useV3DP = this.checked;
-      if (lastEconResults) setTimeout(runEconSim, 20);
-    });
-  }
-
-  // V4 toggle: update full-year euro optimizer
-  const useV4El = document.getElementById('useV4Euro');
-  if (useV4El) {
-    useV4El.addEventListener('change', function () {
-      batteryParams.useV4Euro = this.checked;
-      if (lastEconResults) setTimeout(runEconSim, 20);
-    });
-  }
-
-  // Re-run button: update batteryParams and re-run economic simulation
+  // Re-run button: re-run economic simulation with current settings
   runBtn.addEventListener('click', function () {
-    batteryParams.useAdvancedStrategy = useAdv.checked;
-    if (useV3El) batteryParams.useV3DP = useV3El.checked;
-    if (useV4El) batteryParams.useV4Euro = useV4El.checked;
     if (lastEconResults) {
       document.getElementById('econStatusLabel').textContent = 'Computing…';
       document.getElementById('econStatusLabel').style.color = '#fbbf24';
@@ -6349,7 +6147,7 @@ function initBatteryV2UI() {
     ctx.fillStyle = '#9ca3af';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('V3 monthly cashflow for best config', ML, 14);
+    ctx.fillText('V4 monthly cashflow for best config', ML, 14);
     let lx = ML + 188;
     series.forEach(s => {
       ctx.fillStyle = s.color; ctx.fillRect(lx, 7, 7, 7);
@@ -6492,13 +6290,8 @@ document.getElementById('runEconBtn').addEventListener('click', () => {
 // Export CSV
 document.getElementById('econExportBtn').addEventListener('click', exportEconCsv);
 
-// Battery toggle: re-run econ sim if results already shown
-document.getElementById('econBatteryToggle').addEventListener('change', () => {
-  if (lastEconResults) setTimeout(runEconSim, 20);
-});
-document.getElementById('econGridPrechargeToggle').addEventListener('change', () => {
-  if (lastEconResults) setTimeout(runEconSim, 20);
-});
+// Battery: always enabled — no toggle or listener needed.
+// Grid pre-charge: always enabled — no toggle or listener needed.
 document.getElementById('econZeroExportToggle').addEventListener('change', () => {
   if (lastEconResults) setTimeout(runEconSim, 20);
 });
