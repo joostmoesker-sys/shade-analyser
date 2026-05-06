@@ -1289,8 +1289,10 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     pvExport = Math.min(surplusPv, remainingGridExportCap);
     revenue += pvExport * sellPrice;
     remainingGridExportCap -= pvExport;
+    curtailedPv += Math.max(0, surplusPv - pvExport);
+  } else if (surplusPv > eps) {
+    curtailedPv += surplusPv;
   }
-  curtailedPv += Math.max(0, surplusPv - pvExport);
 
   if (batteryExport > eps) {
     if (batteryExport > remainingGridExportCap + eps) return null;
@@ -1516,7 +1518,7 @@ self.onmessage = function(e) {
 
   const { cfgId, pvKwh, econLoadKwh, baselineLoadKwh, tariffs, sellTariffs,
           useBattery, useGridPrecharge, zeroExport, batCapKwh, sellFactor,
-          chargePowerKw, dischargePowerKw, chargeEff, dischargeEff } = msg;
+          chargePowerKw, dischargePowerKw, chargeEff, dischargeEff, maxGridExportKw } = msg;
 
   const noBat = simulateNoBatteryEconomics(pvKwh, econLoadKwh, tariffs, {
     sellFactor,
@@ -1540,7 +1542,7 @@ self.onmessage = function(e) {
       chargeEff,
       dischargeEff,
       gridPrechargePowerKw,
-      maxGridExportKw: MAX_GRID_EXPORT_KW,
+      maxGridExportKw: maxGridExportKw ?? MAX_GRID_EXPORT_KW,
       baselineLoadKwh,
     });
   }
@@ -1747,6 +1749,7 @@ function getConfigEconomicLimits(cfg) {
   return {
     chargePowerKw,
     dischargePowerKw,
+    maxGridExportKw: MAX_GRID_EXPORT_KW,
     standbyKw: cfg.econStandbyKw ?? parentCfg?.econStandbyKw ?? 0,
     chargeEff: cfg.econChargeEff ?? parentCfg?.econChargeEff ?? CHARGE_EFF_PV,
     dischargeEff: cfg.econDischargeEff ?? parentCfg?.econDischargeEff ?? DISCHARGE_EFF,
@@ -1762,7 +1765,7 @@ function formatEconomicLimitsText(econ, pvLimit = '') {
   const prefix = pvLimit ? `${pvLimit} · ` : '';
   const standbyText = econ.standbyKw > 0 ? ` · ${(econ.standbyKw * 1000).toFixed(0)} W standby` : '';
   const effText = ` · ${formatConverterEfficiency(econ.chargeEff, econ.dischargeEff)}`;
-  return `${prefix}${formatPowerLimitKw(econ.chargePowerKw)} charge / ${formatPowerLimitKw(econ.dischargePowerKw)} discharge · ${MAX_GRID_EXPORT_KW} kW grid export cap${standbyText}${effText}`;
+  return `${prefix}${formatPowerLimitKw(econ.chargePowerKw)} charge / ${formatPowerLimitKw(econ.dischargePowerKw)} discharge · ${formatPowerLimitKw(econ.maxGridExportKw)} grid export cap${standbyText}${effText}`;
 }
 
 // ── Inverter specs per configuration (WP6) ─────────────────────────────────
@@ -5148,8 +5151,10 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     pvExport = Math.min(surplusPv, remainingGridExportCap);
     revenue += pvExport * sellPrice;
     remainingGridExportCap -= pvExport;
+    curtailedPv += Math.max(0, surplusPv - pvExport);
+  } else if (surplusPv > eps) {
+    curtailedPv += surplusPv;
   }
-  curtailedPv += Math.max(0, surplusPv - pvExport);
 
   if (batteryExport > eps) {
     if (batteryExport > remainingGridExportCap + eps) return null;
@@ -5489,6 +5494,7 @@ async function runEconSim() {
         monthlySavingsNoBat: noBatMonthlySavings,
         chargePowerKw: limits.chargePowerKw,
         dischargePowerKw: limits.dischargePowerKw,
+        maxGridExportKw: limits.maxGridExportKw,
         standbyKw: limits.standbyKw,
         chargeEff: limits.chargeEff,
         dischargeEff: limits.dischargeEff,
@@ -5529,6 +5535,7 @@ async function runEconSim() {
       sellFactor,
       chargePowerKw: limits.chargePowerKw,
       dischargePowerKw: limits.dischargePowerKw,
+      maxGridExportKw: limits.maxGridExportKw,
       chargeEff: limits.chargeEff,
       dischargeEff: limits.dischargeEff,
     }, [pvCopy.buffer, loadCopy.buffer, baselineCopy.buffer, tariffCopy.buffer, sellCopy.buffer]);
