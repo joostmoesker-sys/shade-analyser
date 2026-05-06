@@ -26,6 +26,8 @@ Implemented in this slice
 - Added address/postcode search via OpenStreetMap Nominatim in the Locatie workflow.
 - Added map click location selection that updates project name, latitude and longitude fields.
 - Added basic map pan/zoom controls while preserving existing PV-array and shadow-object overlay rendering for phase-2 work.
+- Hardened the map canvas so it no longer appears blank when OSM tiles fail: added visible fallback styling, tile loading/error status, explicit layer stacking, resize-aware tile layout, and deferred first render.
+- Added debounced address autocomplete against Nominatim with request cancellation and selectable suggestions.
 
 Next planned implementation items
 ---------------------------------
