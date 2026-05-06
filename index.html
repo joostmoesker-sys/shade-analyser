@@ -1231,9 +1231,9 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
   if (delta > eps) {
     const totalStoreCap = Math.min(chargePowerKw * chargeEff, Math.max(0, batCapKwh - curSoc));
     const pvStoreCap = Math.min(surplusPv * chargeEff, totalStoreCap);
+    // Grid pre-charge uses the same inverter-level charge efficiency as PV
+    // charging; discharge efficiency is applied later when stored energy is used.
     const gridStoreCap = allowGridPrecharge
-      // Grid pre-charge uses the same inverter-level charge efficiency as PV
-      // charging; discharge efficiency is applied later when stored energy is used.
       ? Math.min(gridPrechargePowerKw * chargeEff, totalStoreCap)
       : 0;
 
@@ -5097,9 +5097,9 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
       surplusPv * chargeEff,
       totalStoreCap,
     );
+    // Grid pre-charge uses the same inverter-level charge efficiency as PV
+    // charging; discharge efficiency is applied later when stored energy is used.
     const gridStoreCap = allowGridPrecharge
-      // Grid pre-charge uses the same inverter-level charge efficiency as PV
-      // charging; discharge efficiency is applied later when stored energy is used.
       ? Math.min(gridPrechargePowerKw * chargeEff, totalStoreCap)
       : 0;
 
