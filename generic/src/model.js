@@ -71,6 +71,11 @@ export function createProject() {
           baseKwhPerDay: 10,
           heatPumpWinterKwhPerDay: 18,
         },
+        tariff: {
+          buyEurPerKwh: 0.31,
+          sellEurPerKwh: 0.09,
+          importBalancingCostEurPerKwh: 0.02,
+        },
         results: null,
       },
     ],
@@ -203,6 +208,7 @@ export function normalizeProject(value) {
     inverters: Array.isArray(scenario.inverters) && scenario.inverters.length ? scenario.inverters : [createInverter()],
     battery: { ...fallback.scenarios[0].battery, ...(scenario.battery ?? {}) },
     load: { ...fallback.scenarios[0].load, ...(scenario.load ?? {}) },
+    tariff: { ...fallback.scenarios[0].tariff, ...(scenario.tariff ?? {}) },
     results: scenario.results ?? null,
   }));
 

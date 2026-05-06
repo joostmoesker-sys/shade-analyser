@@ -1,8 +1,8 @@
 import { findInverter, findPanelType } from "./model.js";
 
-// Approximate cold-open-circuit uplift for Dutch winter validation.
+// Approximate cold-open-circuit uplift for Dutch winter validation; assumes a cold clear morning around -10 °C.
 const COLD_VOC_TEMPERATURE_FACTOR = 1.12;
-// Approximate hot-MPPT voltage derate for summer roof temperatures.
+// Approximate hot-MPPT voltage derate for summer roof validation; assumes hot modules around 70 °C.
 const HOT_VMP_TEMPERATURE_FACTOR = 0.85;
 
 export function validateProject(project, scenario) {

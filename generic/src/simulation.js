@@ -5,10 +5,11 @@ const MONTHS = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "
 const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const DUTCH_YIELD_FACTORS = [0.025, 0.045, 0.085, 0.115, 0.135, 0.135, 0.13, 0.115, 0.085, 0.06, 0.04, 0.025];
 const HEAT_PUMP_FACTORS = [1, 0.9, 0.65, 0.35, 0.12, 0.02, 0, 0, 0.12, 0.35, 0.7, 0.95];
-const IMPORT_BALANCING_COST_EUR_PER_KWH = 0.02;
-// Fast-preview assumption: a fixed share of production is consumed instantly before battery dispatch.
+// Fast-preview assumption: a fixed share of PV is consumed instantly before battery dispatch.
+// The default 45% is a moderate household daytime-use proxy until hourly load profiles are implemented.
 const DIRECT_CONSUMPTION_FACTOR = 0.45;
 // Fast-preview assumption: at most this share of unused battery throughput is economically exported.
+// The default 35% avoids over-valuing arbitrage before the future dynamic-price optimizer is implemented.
 const BATTERY_EXPORT_FRACTION = 0.35;
 // Fast-preview battery caps: avoid unrealistic monthly throughput from a small battery.
 const MAX_MONTHLY_STORAGE_CYCLES = 24;
@@ -17,7 +18,7 @@ const DAILY_BATTERY_FULL_POWER_HOURS = 3;
 const MIN_ORIENTATION_FACTOR = 0.62;
 const ORIENTATION_COSINE_WEIGHT = 0.18;
 const ORIENTATION_BASE_FACTOR = 0.82;
-// Tilt approximation centered around a typical Dutch annual optimum.
+// Tilt approximation centered around a typical Dutch annual optimum; this should become latitude-dependent outside the Netherlands.
 const MIN_TILT_FACTOR = 0.78;
 const OPTIMAL_TILT_DEG = 35;
 const TILT_PENALTY_SPAN_DEG = 160;
@@ -51,9 +52,9 @@ export function runPreviewSimulation(project, scenario) {
   const selfConsumptionKwh = Math.min(yearlyPvKwh, directSelfUseKwh + battery.batteryToLoadKwh);
   const exportKwh = Math.max(0, yearlyPvKwh - selfConsumptionKwh + battery.batteryExportKwh);
   const importKwh = Math.max(0, yearlyLoadKwh - selfConsumptionKwh);
-  const buyPrice = 0.31;
-  const sellPrice = 0.09;
-  const annualValueEur = selfConsumptionKwh * buyPrice + exportKwh * sellPrice - importKwh * IMPORT_BALANCING_COST_EUR_PER_KWH;
+  const annualValueEur = selfConsumptionKwh * scenario.tariff.buyEurPerKwh +
+    exportKwh * scenario.tariff.sellEurPerKwh -
+    importKwh * scenario.tariff.importBalancingCostEurPerKwh;
 
   return {
     validation,
@@ -142,7 +143,7 @@ function simulateBatteryEconomics(monthlyPvKwh, monthlyLoadKwh, battery) {
     };
   }
 
-  // Split round-trip efficiency evenly across charge and discharge in this monthly balance model.
+  // sqrt converts round-trip efficiency to one-way efficiency, splitting losses evenly across charge and discharge.
   const efficiency = Math.sqrt((battery.roundTripEfficiencyPct ?? 90) / 100);
   const standbyLossKwh = battery.standbyW * 24 * 365 / 1000;
   let chargedKwh = 0;

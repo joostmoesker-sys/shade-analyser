@@ -687,7 +687,9 @@ function importProject(event) {
   const reader = new FileReader();
   reader.addEventListener("load", () => {
     try {
-      state.project = normalizeProject(JSON.parse(String(reader.result)));
+      const parsedProject = JSON.parse(String(reader.result));
+      assertImportLooksLikeProject(parsedProject);
+      state.project = normalizeProject(parsedProject);
       state.selectedId = null;
       persist();
       render();
@@ -700,6 +702,15 @@ function importProject(event) {
     }
   });
   reader.readAsText(file);
+}
+
+function assertImportLooksLikeProject(value) {
+  if (!value || typeof value !== "object") {
+    throw new TypeError("De JSON-root moet een projectobject zijn.");
+  }
+  if (!("schemaVersion" in value) || !("location" in value) || !Array.isArray(value.scenarios)) {
+    throw new TypeError("Verwachte projectvelden ontbreken.");
+  }
 }
 
 function showNotification(type, title, message) {
