@@ -3,6 +3,8 @@
 Interactive client-side simulation tool for investigating the effect of shade on a rectangular PV array.  
 No server, no build step — open `index.html` directly in any modern browser.
 
+> Planning the generic rewrite? See the [PRD for the generic PV, shadow, and battery simulator](docs/generic-pv-battery-shadow-tool-prd.md).
+
 ---
 
 ## Features
