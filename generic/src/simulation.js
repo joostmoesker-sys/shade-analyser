@@ -64,7 +64,7 @@ export function runPreviewSimulation(project, scenario) {
       assumptions: [
         "Maandelijkse Nederlandse opbrengstfactoren in plaats van historische uurlijkse weerdata.",
         "Eenvoudige schaduwfactor op basis van afstand, hoogte en dichtheid van handmatig geplaatste objecten.",
-        "Serie-per-rij en parallel-per-MPPT als eerste bekabelingsmodel.",
+        "Configureerbare preview-bekabeling met rijstrings, kolomstrings of één volledige seriestring per array.",
         "Eenvoudige maandbalans voor accu en economische waarde.",
       ],
       yearlyPvKwh,
