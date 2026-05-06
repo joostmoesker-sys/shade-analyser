@@ -3625,6 +3625,8 @@ function normaliseHistoricalWeather(raw, lat, lng) {
     let d = Math.max(0, Number(dni[h]) || 0);
     let f = Math.max(0, Number(dhi[h]) || 0);
     if (d === 0 && f === 0 && g > 0) {
+      // Conservative Erbs-style fallback for missing beam/diffuse fields: NL cloudiness often leaves
+      // a substantial diffuse share, so split GHI into 35% diffuse and 65% beam-equivalent input.
       f = g * 0.35;
       d = g * 0.65;
     }
@@ -3870,6 +3872,8 @@ function formatROI(cost, annualProfit) {
  * @returns Float64Array(8760) — kWh per hour
  */
 function heatPumpCOP(outdoorTempC) {
+  // Simple air-source heat-pump COP curve for low-temperature heating:
+  // about 2.75 at −5°C, improving by ~0.085 COP/°C, clamped to realistic operating bounds.
   return Math.max(1.8, Math.min(5.2, 2.75 + 0.085 * (outdoorTempC + 5)));
 }
 
@@ -3898,6 +3902,8 @@ function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDail
   const hpSum = hpShape.reduce((a, b) => a + b, 0);
   const hpNorm = hpShape.map(x => x / hpSum);
   const hasHourlyTemp = hourlyOutdoorTempC && hourlyOutdoorTempC.length >= 8760;
+  // Dutch heating assumptions: indoor gains keep heating mostly off above 16°C;
+  // −5°C is a representative winter design point for Limburg heat-pump sizing.
   const heatBalanceTempC = 16;
   const designOutdoorTempC = -5;
   const designThermalKwhPerDay = hpWinterDailyKwh * heatPumpCOP(designOutdoorTempC);
@@ -3914,6 +3920,7 @@ function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDail
       let hpKwh;
       if (hasHourlyTemp) {
         const outdoor = hourlyOutdoorTempC[idx];
+        // Allow up to 135% of design heat demand during colder-than-design snaps.
         const heatFrac = Math.max(0, Math.min(1.35, (heatBalanceTempC - outdoor) / (heatBalanceTempC - designOutdoorTempC)));
         const thermalKwh = (designThermalKwhPerDay / 24) * heatFrac;
         hpKwh = thermalKwh / heatPumpCOP(outdoor);
