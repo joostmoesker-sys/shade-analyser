@@ -477,7 +477,7 @@ let MAX_SHADOW_LEN, MAX_SHADOW_AXIS;
 let PANEL_POS;   // precomputed flat [{x,y}], length ROWS*COLS
 let DOY_TO_MONTH; // precomputed int[365], 0-11
 let INVERTER_SPECS_W; // inverter specs for clipping
-let DYNAMIC_PRICES; // Float64, length 8760, flat [day-of-year hour]
+let DYNAMIC_PRICES; // Float64, length 8760, flat [hourIdx 0-8759]
 let HOURLY_WEATHER; // optional historical weather arrays, length 8760
 
 // ── DST for Neer NL, 2024 reference year ───────────────────────────────────
@@ -986,7 +986,7 @@ self.onmessage = function(e) {
 
       // Accumulate per-panel energy using half-cut model:
       // when shaded, one half-string is at shade*G and the other at full G.
-      const dynPrice = DYNAMIC_PRICES ? DYNAMIC_PRICES[hourIdx] : NaN;
+      const dynPrice = DYNAMIC_PRICES ? DYNAMIC_PRICES[hourIdx] : NaN; // NaN = explicit "no price available" sentinel.
       for (let i = 0; i < ROWS * COLS; i++) {
         const sh = _shade[i];
         const Gu = _irr[i];
@@ -1597,8 +1597,12 @@ const HOURLY_APX_PRICE_2025 = [
 const RAW_APX_PRICE_SOURCE_2025 = 'Energy-Charts API NL-LU day-ahead spot prices 2025';
 const HOURS_PER_YEAR_2025 = 365 * 24;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const MIN_RAW_APX_HOURS_2025 = Math.floor(HOURS_PER_YEAR_2025 * 0.97); // DST/time-zone edge gaps are filled by fallback.
+const MIN_RAW_APX_HOURS_2025 = Math.floor(HOURS_PER_YEAR_2025 * 0.97); // Individual gaps are filled; require ≥97% raw coverage.
+const MIN_SYNTHETIC_APX_PRICE = 0.005;
+const MAX_SYNTHETIC_APX_PRICE = 0.80;
+const EUR_MWH_UNIT_DETECTION_THRESHOLD = 5; // Values above this are treated as EUR/MWh and converted to EUR/kWh.
 let rawApxPriceCache2025 = null;
+let apxPriceProfileCache2025 = null;
 
 function syntheticApxPriceForHourIndex(hourIdx) {
   const doy = Math.floor(hourIdx / 24) + 1;
@@ -1611,7 +1615,7 @@ function syntheticApxPriceForHourIndex(hourIdx) {
   const dailyVar = 1 + 0.10 * Math.sin(doy * 1.7 + month * 0.4);
   let p = HOURLY_APX_PRICE_2025[month][h];
   if (isWknd) p *= 0.82;
-  return Math.max(0.005, Math.min(0.80, p * dailyVar));
+  return Math.max(MIN_SYNTHETIC_APX_PRICE, Math.min(MAX_SYNTHETIC_APX_PRICE, p * dailyVar));
 }
 
 function generateSyntheticApxPrices2025() {
@@ -1650,7 +1654,7 @@ function normaliseRawApxPrices2025(raw) {
 
   if (!rawPrices.length) throw new Error('No hourly price points in APX response');
   const maxAbs = rawPrices.reduce((m, p) => Math.max(m, Math.abs(p)), 0);
-  const priceScale = maxAbs > 5 ? 1000 : 1; // Energy-Charts reports EUR/MWh; app uses EUR/kWh.
+  const priceScale = maxAbs > EUR_MWH_UNIT_DETECTION_THRESHOLD ? 1000 : 1; // Energy-Charts reports EUR/MWh; app uses EUR/kWh.
   const fmt = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Amsterdam',
     year: 'numeric',
@@ -1687,7 +1691,7 @@ function normaliseRawApxPrices2025(raw) {
     }
   }
   if (rawHours < MIN_RAW_APX_HOURS_2025) {
-    throw new Error(`Incomplete APX price response: mapped ${rawHours}/${prices.length} hours; expected at least ${MIN_RAW_APX_HOURS_2025} hours (97% coverage)`);
+    throw new Error(`Incomplete APX price response: ${rawHours}/${prices.length} valid hours; expected at least ${MIN_RAW_APX_HOURS_2025} hours (97% coverage)`);
   }
   prices.rawHours = rawHours;
   prices.source = RAW_APX_PRICE_SOURCE_2025;
@@ -1715,12 +1719,14 @@ async function loadRawApxPrices2025() {
 }
 
 async function getApxPrices2025() {
+  if (apxPriceProfileCache2025) return apxPriceProfileCache2025;
   try {
-    return await loadRawApxPrices2025();
+    apxPriceProfileCache2025 = await loadRawApxPrices2025();
   } catch (err) {
     console.warn('Raw hourly 2025 APX prices unavailable; using synthetic fallback matrix.', err);
-    return generateSyntheticApxPrices2025();
+    apxPriceProfileCache2025 = generateSyntheticApxPrices2025();
   }
+  return apxPriceProfileCache2025;
 }
 
 // ── Block structure helpers ────────────────────────────────────────────────
