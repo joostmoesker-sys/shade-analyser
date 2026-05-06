@@ -22,12 +22,17 @@ import { runPreviewSimulation } from "./simulation.js";
 import { validateProject } from "./validation.js";
 import { buildWiringSummary, WIRING_MODES } from "./wiring.js";
 
+const LOCATION_SEARCH_DEBOUNCE_MS = 350;
+const LOCATION_SEARCH_MIN_LENGTH = 3;
+
 const state = {
   project: loadProject(),
   activeStep: "location",
   selectedId: null,
   map: null,
   drag: null,
+  searchTimer: null,
+  searchAbortController: null,
 };
 
 const dom = {};
@@ -36,6 +41,8 @@ document.addEventListener("DOMContentLoaded", () => {
   bindDom();
   bindEvents();
   render();
+  new ResizeObserver(() => renderOsmMap()).observe(dom.osmMap);
+  requestAnimationFrame(renderOsmMap);
 });
 
 window.addEventListener("resize", () => {
@@ -58,6 +65,7 @@ function bindDom() {
     "projectTree",
     "osmMap",
     "tileLayer",
+    "mapStatus",
     "sceneCanvas",
     "zoomOutBtn",
     "zoomInBtn",
@@ -132,6 +140,7 @@ function bindEvents() {
   dom.zoomOutBtn.addEventListener("click", () => zoomMap(-1));
   dom.zoomInBtn.addEventListener("click", () => zoomMap(1));
   dom.locationSearchBtn.addEventListener("click", searchLocation);
+  dom.locationSearchInput.addEventListener("input", scheduleLocationAutocomplete);
   dom.locationSearchInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -529,19 +538,52 @@ function renderCanvas(scenario) {
 function renderOsmMap() {
   ensureMapState();
   const rect = dom.osmMap.getBoundingClientRect();
-  const width = Math.max(1, rect.width);
-  const height = Math.max(1, rect.height);
+  if (rect.width < 10 || rect.height < 10) {
+    requestAnimationFrame(renderOsmMap);
+    return;
+  }
+
+  const width = Math.round(rect.width);
+  const height = Math.round(rect.height);
   const layout = buildTileLayout(state.map.centerLatitude, state.map.centerLongitude, state.map.zoom, width, height);
+  const generation = (state.map.tileGeneration ?? 0) + 1;
+  state.map.tileGeneration = generation;
+  dom.osmMap.classList.remove("tiles-failed");
+  setMapStatus(layout.tiles.length ? "Kaart laden…" : "Geen kaarttegels gevonden voor deze locatie.");
+
+  let loaded = 0;
+  let failed = 0;
+
+  const updateTileStatus = () => {
+    if (state.map?.tileGeneration !== generation) return;
+    const completed = loaded + failed;
+    if (failed === layout.tiles.length && layout.tiles.length) {
+      dom.osmMap.classList.add("tiles-failed");
+      setMapStatus("OSM-kaarttegels konden niet laden. Je kunt nog steeds zoeken of coördinaten selecteren op de fallback-kaart.");
+    } else if (completed === layout.tiles.length) {
+      setMapStatus(failed ? "Sommige OSM-kaarttegels konden niet laden." : "");
+    }
+  };
+
   dom.tileLayer.replaceChildren(...layout.tiles.map((tile) => {
     const image = document.createElement("img");
-    image.src = `https://tile.openstreetmap.org/${tile.z}/${tile.x}/${tile.y}.png`;
     image.alt = "";
     image.loading = "lazy";
-    image.referrerPolicy = "no-referrer";
     image.style.left = `${tile.left}px`;
     image.style.top = `${tile.top}px`;
     image.width = TILE_SIZE;
     image.height = TILE_SIZE;
+    image.addEventListener("load", () => {
+      loaded += 1;
+      image.dataset.loaded = "true";
+      updateTileStatus();
+    });
+    image.addEventListener("error", () => {
+      failed += 1;
+      image.hidden = true;
+      updateTileStatus();
+    });
+    image.src = `https://tile.openstreetmap.org/${tile.z}/${tile.x}/${tile.y}.png`;
     return image;
   }));
 }
@@ -740,28 +782,59 @@ function runAllScenarios() {
   showNotification("ok", "Scenario's gesimuleerd", `${completed} van ${state.project.scenarios.length} scenario's hebben geldige previewresultaten.`);
 }
 
-async function searchLocation() {
+function scheduleLocationAutocomplete() {
+  window.clearTimeout(state.searchTimer);
+  const query = dom.locationSearchInput.value.trim();
+
+  if (query.length < LOCATION_SEARCH_MIN_LENGTH) {
+    abortLocationSearch();
+    dom.locationSearchResults.replaceChildren(
+      searchStatus(`Typ minimaal ${LOCATION_SEARCH_MIN_LENGTH} tekens voor adres-suggesties.`),
+    );
+    return;
+  }
+
+  state.searchTimer = window.setTimeout(() => {
+    searchLocation({ autocomplete: true });
+  }, LOCATION_SEARCH_DEBOUNCE_MS);
+}
+
+async function searchLocation(options = {}) {
   const query = dom.locationSearchInput.value.trim();
   if (!query) {
     showNotification("error", "Geen zoekterm", "Voer een adres, plaats of postcode in om te zoeken.");
     return;
   }
 
-  dom.locationSearchResults.replaceChildren(searchStatus("Zoeken…"));
+  abortLocationSearch();
+  const controller = new AbortController();
+  state.searchAbortController = controller;
+  dom.locationSearchResults.replaceChildren(searchStatus(options.autocomplete ? "Suggesties laden…" : "Zoeken…"));
+
   try {
-    const url = new URL("https://nominatim.openstreetmap.org/search");
-    url.searchParams.set("format", "jsonv2");
-    url.searchParams.set("limit", "5");
-    url.searchParams.set("addressdetails", "1");
-    url.searchParams.set("q", query);
-    const response = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!response.ok) throw new Error(`Nominatim antwoordde met HTTP-status ${response.status}.`);
-    const results = await response.json();
+    const results = await fetchLocationResults(query, controller.signal);
+    if (state.searchAbortController !== controller) return;
     renderLocationSearchResults(Array.isArray(results) ? results : []);
   } catch (error) {
+    if (error.name === "AbortError") return;
     dom.locationSearchResults.replaceChildren(searchStatus("Zoeken mislukt. Controleer de internetverbinding of probeer later opnieuw."));
-    showNotification("error", "Locatie zoeken mislukt", error.message);
+    if (!options.autocomplete) showNotification("error", "Locatie zoeken mislukt", error.message);
+  } finally {
+    if (state.searchAbortController === controller) state.searchAbortController = null;
   }
+}
+
+async function fetchLocationResults(query, signal) {
+  const url = new URL("https://nominatim.openstreetmap.org/search");
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("limit", "6");
+  url.searchParams.set("addressdetails", "1");
+  url.searchParams.set("dedupe", "1");
+  url.searchParams.set("accept-language", "nl");
+  url.searchParams.set("q", query);
+  const response = await fetch(url, { headers: { Accept: "application/json" }, signal });
+  if (!response.ok) throw new Error(`Nominatim antwoordde met HTTP-status ${response.status}.`);
+  return response.json();
 }
 
 function renderLocationSearchResults(results) {
@@ -788,6 +861,11 @@ function renderLocationSearchResults(results) {
     });
     return button;
   }));
+}
+
+function abortLocationSearch() {
+  state.searchAbortController?.abort();
+  state.searchAbortController = null;
 }
 
 function selectMapLocation(event) {
@@ -1048,6 +1126,11 @@ function searchStatus(text) {
   item.className = "muted";
   item.textContent = text;
   return item;
+}
+
+function setMapStatus(text) {
+  dom.mapStatus.textContent = text;
+  dom.mapStatus.hidden = !text;
 }
 
 function mpptOptions(scenario, array) {
