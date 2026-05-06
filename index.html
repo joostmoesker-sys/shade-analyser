@@ -1151,6 +1151,7 @@ const CHARGE_EFF_PV                   = 0.95;
 const DISCHARGE_EFF                   = 0.95;
 const SELL_PRICE_FACTOR_DEF           = 0.85;
 const MAX_GRID_PRECHARGE_POWER_KW     = 8;
+const MAX_GRID_EXPORT_KW              = 17;
 
 function simulateNoBatteryEconomics(pvHourly, loadHourly, tariffs, opts) {
   opts = opts || {};
@@ -1170,7 +1171,7 @@ function simulateNoBatteryEconomics(pvHourly, loadHourly, tariffs, opts) {
     const sellPrice = sellTariffs ? sellTariffs[h] : buyPrice * sellFactor;
     const month = new Date(2025, 0, Math.floor(h / 24) + 1).getMonth();
     const self = Math.min(pv, load);
-    const exported = zeroExport ? 0 : Math.max(0, pv - load);
+    const exported = zeroExport ? 0 : Math.min(Math.max(0, pv - load), MAX_GRID_EXPORT_KW);
     const imported = Math.max(0, load - pv);
     const base = baselineLoadHourly[h] * buyPrice;
     const cost = imported * buyPrice;
@@ -1209,6 +1210,7 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     params.gridPrechargePowerKw != null ? params.gridPrechargePowerKw : MAX_GRID_PRECHARGE_POWER_KW,
     chargePowerKw,
   );
+  const maxGridExportKw = params.maxGridExportKw != null ? params.maxGridExportKw : MAX_GRID_EXPORT_KW;
 
   if (nextSoc < minSoc - eps || nextSoc > batCapKwh + eps) return null;
 
@@ -1277,17 +1279,22 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     if (remainingDelivered > eps) {
       if (zeroExport || loadDeficit > eps || sellPrice <= 0) return null;
       batteryExport = remainingDelivered;
-      revenue += batteryExport * sellPrice;
     }
 
     batteryDischargeDrawn = draw;
   }
 
+  let remainingGridExportCap = zeroExport ? 0 : maxGridExportKw;
   if (!zeroExport && sellPrice > 0 && surplusPv > eps) {
-    pvExport = surplusPv;
+    pvExport = Math.min(surplusPv, remainingGridExportCap);
     revenue += pvExport * sellPrice;
-  } else {
-    curtailedPv = surplusPv;
+    remainingGridExportCap -= pvExport;
+  }
+  curtailedPv += Math.max(0, surplusPv - pvExport);
+
+  if (batteryExport > eps) {
+    if (batteryExport > remainingGridExportCap + eps) return null;
+    revenue += batteryExport * sellPrice;
   }
 
   const cashflow = revenue - importCost;
@@ -1322,6 +1329,7 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options) {
     options.gridPrechargePowerKw ?? MAX_GRID_PRECHARGE_POWER_KW,
     chargePowerKw,
   );
+  const maxGridExportKw = options.maxGridExportKw ?? MAX_GRID_EXPORT_KW;
   const usePrecharge = options.useGridPrecharge ?? false;
   const baselineLoadKwh = options.baselineLoadKwh ?? loadKwh;
   const nH = Math.min(8760, pvKwh.length, loadKwh.length, baselineLoadKwh.length, tariffs.length);
@@ -1344,6 +1352,7 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options) {
     chargeEff,
     dischargeEff,
     gridPrechargePowerKw,
+    maxGridExportKw,
   };
 
   let dpNext = new Float64Array(states);
@@ -1531,6 +1540,7 @@ self.onmessage = function(e) {
       chargeEff,
       dischargeEff,
       gridPrechargePowerKw,
+      maxGridExportKw: MAX_GRID_EXPORT_KW,
       baselineLoadKwh,
     });
   }
@@ -1797,6 +1807,7 @@ const DISCHARGE_EFF           = 0.95;  // battery → load/grid one-way efficien
 const GRID_ROUNDTRIP_EFF      = 0.80;  // grid → battery → grid round-trip efficiency
 const MAX_BATTERY_POWER_KW    = 15;    // realistic inverter/battery power limit (kW)
 const MAX_GRID_PRECHARGE_POWER_KW = 8; // grid draw limit for optional pre-charge (kW)
+const MAX_GRID_EXPORT_KW      = 17;    // maximum net export through the grid meter (kW)
 const PRECHARGE_SPREAD_HOURS  = 4;     // spread pre-charge across low-price hours
 const TERMINAL_SOC_VALUE_DISCOUNT = 0.9; // discount uncertain value beyond DP horizon
 const EXPORT_SOC_LIMIT_FRACTION = 0.7; // conservative fraction of export-available SOC
@@ -4317,7 +4328,7 @@ function simulateNoBatteryEconomics(pvHourly, loadHourly, tariffs, opts = {}) {
     const sellPrice = sellTariffs ? sellTariffs[h] : buyPrice * sellFactor;
     const month = new Date(2025, 0, Math.floor(h / 24) + 1).getMonth();
     const self = Math.min(pv, load);
-    const exported = zeroExport ? 0 : Math.max(0, pv - load);
+    const exported = zeroExport ? 0 : Math.min(Math.max(0, pv - load), MAX_GRID_EXPORT_KW);
     const imported = Math.max(0, load - pv);
     const base = baselineLoadHourly[h] * buyPrice;
     const cost = imported * buyPrice;
@@ -5055,6 +5066,7 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     params.gridPrechargePowerKw ?? MAX_GRID_PRECHARGE_POWER_KW,
     chargePowerKw,
   );
+  const maxGridExportKw = params.maxGridExportKw ?? MAX_GRID_EXPORT_KW;
 
   if (nextSoc < minSoc - eps || nextSoc > batCapKwh + eps) return null;
 
@@ -5126,17 +5138,22 @@ function evaluateV4Transition(pv, load, buyPrice, sellPrice, curSoc, nextSoc, pa
     if (remainingDelivered > eps) {
       if (zeroExport || loadDeficit > eps || sellPrice <= 0) return null;
       batteryExport = remainingDelivered;
-      revenue += batteryExport * sellPrice;
     }
 
     batteryDischargeDrawn = draw;
   }
 
+  let remainingGridExportCap = zeroExport ? 0 : maxGridExportKw;
   if (!zeroExport && sellPrice > 0 && surplusPv > eps) {
-    pvExport = surplusPv;
+    pvExport = Math.min(surplusPv, remainingGridExportCap);
     revenue += pvExport * sellPrice;
-  } else {
-    curtailedPv = surplusPv;
+    remainingGridExportCap -= pvExport;
+  }
+  curtailedPv += Math.max(0, surplusPv - pvExport);
+
+  if (batteryExport > eps) {
+    if (batteryExport > remainingGridExportCap + eps) return null;
+    revenue += batteryExport * sellPrice;
   }
 
   const cashflow = revenue - importCost;
@@ -5172,6 +5189,7 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
     options.gridPrechargePowerKw ?? MAX_GRID_PRECHARGE_POWER_KW,
     chargePowerKw,
   );
+  const maxGridExportKw = options.maxGridExportKw ?? MAX_GRID_EXPORT_KW;
   const baselineLoadKwh = options.baselineLoadKwh ?? loadKwh;
   const nH           = Math.min(8760, pvKwh.length, loadKwh.length, baselineLoadKwh.length, tariffs.length);
 
@@ -5197,6 +5215,7 @@ function simulateBatteryAndEconomicsV4(pvKwh, loadKwh, tariffs, options = {}) {
     chargeEff,
     dischargeEff,
     gridPrechargePowerKw,
+    maxGridExportKw,
   };
 
   let dpNext = new Float64Array(states);
