@@ -1,5 +1,5 @@
-import { findInverter, findPanelType } from "./model.js";
 import { validateProject } from "./validation.js";
+import { buildWiringSummary } from "./wiring.js";
 
 const MONTHS = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
 const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -86,18 +86,16 @@ export function runPreviewSimulation(project, scenario) {
 }
 
 function simulateArray(project, scenario, array) {
-  const panel = findPanelType(project, array.panelTypeId);
-  const inverter = findInverter(scenario, array.inverterId);
-  const mppt = inverter.mppts[array.mpptIndex ?? 0];
-  const dcKwp = array.rows * array.columns * panel.pmaxW / 1000;
+  const wiring = buildWiringSummary(project, scenario, array);
+  const dcKwp = wiring.dcKw;
   const orientationFactor = Math.max(
     MIN_ORIENTATION_FACTOR,
     Math.cos(toRad(array.azimuthDeg - 180)) * ORIENTATION_COSINE_WEIGHT + ORIENTATION_BASE_FACTOR,
   );
   const tiltFactor = Math.max(MIN_TILT_FACTOR, 1 - Math.abs(array.tiltDeg - OPTIMAL_TILT_DEG) / TILT_PENALTY_SPAN_DEG);
   const shadowLossPct = estimateShadowLoss(scenario, array);
-  const inverterFactor = Math.min(1, (inverter.efficiencyPct ?? 96) / 100);
-  const mpptClipFactor = Math.min(1, mppt.maxPowerKw / Math.max(dcKwp, 0.1));
+  const inverterFactor = Math.min(1, (wiring.inverter.efficiencyPct ?? 96) / 100);
+  const mpptClipFactor = Math.min(1, wiring.mppt.maxPowerKw / Math.max(dcKwp, 0.1));
   const annualKwh = dcKwp * DUTCH_BASE_YIELD_KWH_PER_KWP * orientationFactor * tiltFactor * (1 - shadowLossPct / 100) * inverterFactor * mpptClipFactor;
 
   return {
@@ -105,6 +103,9 @@ function simulateArray(project, scenario, array) {
     name: array.name,
     dcKwp,
     panelCount: array.rows * array.columns,
+    wiringMode: wiring.mode.label,
+    stringCount: wiring.strings.length,
+    panelsPerString: wiring.panelsPerString,
     shadowLossPct,
     clippingLossPct: (1 - mpptClipFactor) * 100,
     annualKwh,

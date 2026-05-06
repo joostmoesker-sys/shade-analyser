@@ -98,6 +98,9 @@
         <div class="button-row">
           <button id="addTreeBtn" type="button">Boom toevoegen</button>
           <button id="addBuildingBtn" type="button">Gebouw toevoegen</button>
+          <button id="addChimneyBtn" type="button">Schoorsteen</button>
+          <button id="addDormerBtn" type="button">Dakkapel</button>
+          <button id="addFreeObjectBtn" type="button">Vrij object</button>
         </div>
         <div id="objectEditor" class="editor-stack"></div>
       </section>
@@ -106,8 +109,11 @@
         <h2>PV-arrays</h2>
         <div class="button-row">
           <button id="addArrayBtn" type="button">Array toevoegen</button>
+          <button id="addPanelTypeBtn" type="button">Paneeltype toevoegen</button>
         </div>
         <div id="arrayEditor" class="editor-stack"></div>
+        <h3>Paneeldatabase</h3>
+        <div id="panelTypeEditor" class="editor-stack"></div>
       </section>
 
       <section id="wiringSection" class="card workflow-section" hidden>
@@ -165,14 +171,44 @@
       <section id="simulationSection" class="card workflow-section" hidden>
         <h2>Simulatie</h2>
         <p class="muted">Deze eerste slice gebruikt een snelle jaarlijkse preview met vaste maandfactoren. De modulaire structuur is voorbereid op uurlijkse weerdata en workers.</p>
+        <h3>Weerdata & tarieven</h3>
+        <div class="grid two">
+          <label>
+            Weerbron
+            <select id="weatherProfileInput">
+              <option value="dutch-average">Nederland gemiddeld</option>
+              <option value="coastal">Kustprofiel</option>
+              <option value="inland">Binnenlandprofiel</option>
+            </select>
+          </label>
+          <label>
+            Weerjaar
+            <input id="weatherYearInput" type="number" min="2000" max="2100" step="1" />
+          </label>
+          <label>
+            Inkoopprijs (€/kWh)
+            <input id="tariffBuyInput" type="number" min="0" step="0.001" />
+          </label>
+          <label>
+            Terugleverprijs (€/kWh)
+            <input id="tariffSellInput" type="number" min="0" step="0.001" />
+          </label>
+          <label>
+            Importbalanscorrectie (€/kWh)
+            <input id="tariffImportCostInput" type="number" min="0" step="0.001" />
+          </label>
+        </div>
         <div id="validationList" class="validation-list"></div>
         <button id="runSimulationBtnSecondary" type="button" class="primary full">Preview simulatie draaien</button>
       </section>
 
       <section id="resultsSection" class="card workflow-section" hidden>
         <h2>Resultaten</h2>
+        <button id="exportCsvBtn" type="button">Export resultaten CSV</button>
         <div id="resultCards" class="result-cards"></div>
         <div id="monthlyChart" class="monthly-chart" aria-label="Maandopbrengst grafiek"></div>
+        <h3>Verlies- en arraydetails</h3>
+        <div id="lossDetails" class="editor-stack"></div>
       </section>
     </aside>
   </main>

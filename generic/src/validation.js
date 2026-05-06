@@ -1,4 +1,4 @@
-import { findInverter, findPanelType } from "./model.js";
+import { buildWiringSummary } from "./wiring.js";
 
 // Approximate cold-open-circuit uplift for Dutch winter validation; assumes a cold clear morning around -10 °C.
 const COLD_VOC_TEMPERATURE_FACTOR = 1.12;
@@ -45,16 +45,14 @@ export function validateProject(project, scenario) {
 }
 
 function validateArray(project, scenario, array, messages) {
-  const panel = findPanelType(project, array.panelTypeId);
-  const inverter = findInverter(scenario, array.inverterId);
-  const mppt = inverter?.mppts?.[array.mpptIndex ?? 0];
+  const wiring = buildWiringSummary(project, scenario, array);
 
-  if (!panel) {
+  if (!wiring.panel) {
     messages.push(error(array.name, "Paneeltype ontbreekt."));
     return;
   }
 
-  if (!inverter || !mppt) {
+  if (!wiring.inverter || !wiring.mppt) {
     messages.push(error(array.name, "Array is niet gekoppeld aan een geldige inverter/MPPT."));
     return;
   }
@@ -64,32 +62,27 @@ function validateArray(project, scenario, array, messages) {
     return;
   }
 
-  const panelsPerString = array.columns;
-  const parallelStrings = array.rows;
-  const coldVoc = panelsPerString * panel.voc * COLD_VOC_TEMPERATURE_FACTOR;
-  const hotVmpp = panelsPerString * panel.vmp * HOT_VMP_TEMPERATURE_FACTOR;
-  const stringCurrent = panel.imp * parallelStrings;
-  const stringIsc = panel.isc * parallelStrings;
-  const dcKw = array.rows * array.columns * panel.pmaxW / 1000;
+  const coldVoc = wiring.coldVocV * COLD_VOC_TEMPERATURE_FACTOR;
+  const hotVmpp = wiring.hotVmppV * HOT_VMP_TEMPERATURE_FACTOR;
 
-  if (coldVoc > mppt.maxVoltage) {
-    messages.push(error(array.name, `Koude Voc ${round(coldVoc)} V is hoger dan MPPT max ${mppt.maxVoltage} V.`));
+  if (coldVoc > wiring.mppt.maxVoltage) {
+    messages.push(error(array.name, `Koude Voc ${round(coldVoc)} V is hoger dan MPPT max ${wiring.mppt.maxVoltage} V.`));
   }
 
-  if (hotVmpp < mppt.minVoltage) {
-    messages.push(error(array.name, `Warme Vmpp ${round(hotVmpp)} V is lager dan MPPT minimum ${mppt.minVoltage} V.`));
+  if (hotVmpp < wiring.mppt.minVoltage) {
+    messages.push(error(array.name, `Warme Vmpp ${round(hotVmpp)} V is lager dan MPPT minimum ${wiring.mppt.minVoltage} V.`));
   }
 
-  if (stringCurrent > mppt.maxCurrent) {
-    messages.push(error(array.name, `Parallelstroom ${round(stringCurrent)} A is hoger dan MPPT max ${mppt.maxCurrent} A.`));
+  if (wiring.currentA > wiring.mppt.maxCurrent) {
+    messages.push(error(array.name, `Parallelstroom ${round(wiring.currentA)} A is hoger dan MPPT max ${wiring.mppt.maxCurrent} A.`));
   }
 
-  if (stringIsc > mppt.maxIsc) {
-    messages.push(error(array.name, `Kortsluitstroom ${round(stringIsc)} A is hoger dan MPPT Isc max ${mppt.maxIsc} A.`));
+  if (wiring.iscA > wiring.mppt.maxIsc) {
+    messages.push(error(array.name, `Kortsluitstroom ${round(wiring.iscA)} A is hoger dan MPPT Isc max ${wiring.mppt.maxIsc} A.`));
   }
 
-  if (dcKw > mppt.maxPowerKw) {
-    messages.push(warning(array.name, `DC-vermogen ${round(dcKw)} kWp is hoger dan MPPT richtwaarde ${mppt.maxPowerKw} kW; clipping kan optreden.`));
+  if (wiring.dcKw > wiring.mppt.maxPowerKw) {
+    messages.push(warning(array.name, `DC-vermogen ${round(wiring.dcKw)} kWp is hoger dan MPPT richtwaarde ${wiring.mppt.maxPowerKw} kW; clipping kan optreden.`));
   }
 }
 

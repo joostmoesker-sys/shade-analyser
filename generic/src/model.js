@@ -71,6 +71,12 @@ export function createProject() {
           baseKwhPerDay: 10,
           heatPumpWinterKwhPerDay: 18,
         },
+        weather: {
+          source: "preview-monthly-profile",
+          year: 2025,
+          profile: "dutch-average",
+          completenessPct: 100,
+        },
         tariff: {
           buyEurPerKwh: 0.31,
           sellEurPerKwh: 0.09,
@@ -112,6 +118,51 @@ export function createBuilding(x = 650, y = 330) {
   };
 }
 
+export function createChimney(x = 560, y = 260) {
+  return {
+    id: makeId("chimney"),
+    type: "chimney",
+    name: "Schoorsteen",
+    x,
+    y,
+    widthM: 0.8,
+    depthM: 0.8,
+    heightM: 2.2,
+    rotationDeg: 0,
+    shadeDensityPct: 100,
+  };
+}
+
+export function createDormer(x = 580, y = 310) {
+  return {
+    id: makeId("dormer"),
+    type: "dormer",
+    name: "Dakkapel",
+    x,
+    y,
+    widthM: 4,
+    depthM: 2.2,
+    heightM: 1.8,
+    rotationDeg: 0,
+    shadeDensityPct: 95,
+  };
+}
+
+export function createFreeObject(x = 610, y = 340) {
+  return {
+    id: makeId("free"),
+    type: "free",
+    name: "Vrij object",
+    x,
+    y,
+    widthM: 3,
+    depthM: 3,
+    heightM: 3,
+    rotationDeg: 0,
+    shadeDensityPct: 80,
+  };
+}
+
 export function createArray(x = 500, y = 320) {
   return {
     id: makeId("array"),
@@ -131,6 +182,22 @@ export function createArray(x = 500, y = 320) {
     wiring: {
       mode: "series-per-row-parallel",
     },
+  };
+}
+
+export function createPanelType() {
+  return {
+    id: makeId("panel"),
+    manufacturer: "Custom",
+    model: "Handmatig paneel",
+    pmaxW: 420,
+    vmp: 32,
+    imp: 13.1,
+    voc: 39,
+    isc: 13.8,
+    widthM: 1.13,
+    heightM: 1.72,
+    tempCoeffPmaxPct: -0.3,
   };
 }
 
@@ -208,6 +275,7 @@ export function normalizeProject(value) {
     inverters: Array.isArray(scenario.inverters) && scenario.inverters.length ? scenario.inverters : [createInverter()],
     battery: { ...fallback.scenarios[0].battery, ...(scenario.battery ?? {}) },
     load: { ...fallback.scenarios[0].load, ...(scenario.load ?? {}) },
+    weather: { ...fallback.scenarios[0].weather, ...(scenario.weather ?? {}) },
     tariff: { ...fallback.scenarios[0].tariff, ...(scenario.tariff ?? {}) },
     results: scenario.results ?? null,
   }));

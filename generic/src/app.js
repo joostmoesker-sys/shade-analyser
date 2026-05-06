@@ -3,7 +3,11 @@ import {
   clone,
   createArray,
   createBuilding,
+  createChimney,
+  createDormer,
+  createFreeObject,
   createInverter,
+  createPanelType,
   createProject,
   createTree,
   duplicateScenario,
@@ -15,6 +19,7 @@ import {
 } from "./model.js";
 import { runPreviewSimulation } from "./simulation.js";
 import { validateProject } from "./validation.js";
+import { buildWiringSummary, WIRING_MODES } from "./wiring.js";
 
 const state = {
   project: loadProject(),
@@ -49,9 +54,14 @@ function bindDom() {
     "locationLonInput",
     "addTreeBtn",
     "addBuildingBtn",
+    "addChimneyBtn",
+    "addDormerBtn",
+    "addFreeObjectBtn",
     "objectEditor",
     "addArrayBtn",
+    "addPanelTypeBtn",
     "arrayEditor",
+    "panelTypeEditor",
     "wiringEditor",
     "addInverterBtn",
     "inverterEditor",
@@ -64,9 +74,16 @@ function bindDom() {
     "gridChargeInput",
     "batteryExportInput",
     "validationList",
+    "weatherProfileInput",
+    "weatherYearInput",
+    "tariffBuyInput",
+    "tariffSellInput",
+    "tariffImportCostInput",
     "runSimulationBtnSecondary",
+    "exportCsvBtn",
     "resultCards",
     "monthlyChart",
+    "lossDetails",
     "exportDialog",
     "exportText",
     "notificationRegion",
@@ -95,8 +112,13 @@ function bindEvents() {
   dom.runSimulationBtnSecondary.addEventListener("click", runSimulation);
   dom.addTreeBtn.addEventListener("click", () => addSceneObject(createTree()));
   dom.addBuildingBtn.addEventListener("click", () => addSceneObject(createBuilding()));
+  dom.addChimneyBtn.addEventListener("click", () => addSceneObject(createChimney()));
+  dom.addDormerBtn.addEventListener("click", () => addSceneObject(createDormer()));
+  dom.addFreeObjectBtn.addEventListener("click", () => addSceneObject(createFreeObject()));
   dom.addArrayBtn.addEventListener("click", addArray);
+  dom.addPanelTypeBtn.addEventListener("click", addPanelType);
   dom.addInverterBtn.addEventListener("click", addInverter);
+  dom.exportCsvBtn.addEventListener("click", exportResultsCsv);
 
   bindInput(dom.projectNameInput, (value) => { state.project.name = value; });
   bindInput(dom.scenarioSelect, (value) => {
@@ -116,6 +138,11 @@ function bindEvents() {
   bindNumber(dom.batteryStandbyInput, (value, scenario) => { scenario.battery.standbyW = value; });
   bindCheckbox(dom.gridChargeInput, (value, scenario) => { scenario.battery.gridChargeAllowed = value; });
   bindCheckbox(dom.batteryExportInput, (value, scenario) => { scenario.battery.exportAllowed = value; });
+  bindInput(dom.weatherProfileInput, (value, scenario) => { scenario.weather.profile = value; });
+  bindNumber(dom.weatherYearInput, (value, scenario) => { scenario.weather.year = Math.round(value); });
+  bindNumber(dom.tariffBuyInput, (value, scenario) => { scenario.tariff.buyEurPerKwh = value; });
+  bindNumber(dom.tariffSellInput, (value, scenario) => { scenario.tariff.sellEurPerKwh = value; });
+  bindNumber(dom.tariffImportCostInput, (value, scenario) => { scenario.tariff.importBalancingCostEurPerKwh = value; });
 }
 
 function render() {
@@ -127,9 +154,11 @@ function render() {
   renderLocation();
   renderObjectEditor(scenario);
   renderArrayEditor(scenario);
+  renderPanelTypeEditor(scenario);
   renderWiringEditor(scenario);
   renderInverterEditor(scenario);
   renderBatteryEditor(scenario);
+  renderSimulationSettings(scenario);
   renderValidation(scenario);
   renderResults(scenario);
   renderCanvas(scenario);
@@ -246,6 +275,10 @@ function renderArrayEditor(scenario) {
       numberField("Azimuth (°)", array.azimuthDeg, (value) => { array.azimuthDeg = value; }),
       numberField("Hoogte (m)", array.heightM, (value) => { array.heightM = value; }),
       numberField("Rijafstand (m)", array.rowSpacingM, (value) => { array.rowSpacingM = value; }),
+      selectField("Bekabelingsmodus", array.wiring?.mode ?? "series-per-row-parallel", WIRING_MODES.map((mode) => ({
+        value: mode.id,
+        label: mode.label,
+      })), (value) => { array.wiring = { ...(array.wiring ?? {}), mode: value }; }),
       selectField("Inverter", array.inverterId, scenario.inverters.map((inverter) => ({
         value: inverter.id,
         label: inverter.name,
@@ -264,16 +297,51 @@ function renderArrayEditor(scenario) {
   dom.arrayEditor.replaceChildren(...editors);
 }
 
+function renderPanelTypeEditor(scenario) {
+  const usedPanelTypeIds = new Set(scenario.arrays.map((array) => array.panelTypeId));
+  const editors = state.project.panelTypes.map((panel) => {
+    const item = editorItem(`${panel.manufacturer} ${panel.model}`, panel.id);
+    item.append(
+      field("Fabrikant", panel.manufacturer, (value) => { panel.manufacturer = value; }),
+      field("Model", panel.model, (value) => { panel.model = value; }),
+      numberField("Pmax (Wp)", panel.pmaxW, (value) => { panel.pmaxW = value; }),
+      numberField("Vmp (V)", panel.vmp, (value) => { panel.vmp = value; }),
+      numberField("Imp (A)", panel.imp, (value) => { panel.imp = value; }),
+      numberField("Voc (V)", panel.voc, (value) => { panel.voc = value; }),
+      numberField("Isc (A)", panel.isc, (value) => { panel.isc = value; }),
+      numberField("Breedte (m)", panel.widthM, (value) => { panel.widthM = value; }),
+      numberField("Hoogte (m)", panel.heightM, (value) => { panel.heightM = value; }),
+      numberField("Tempco Pmax (%/°C)", panel.tempCoeffPmaxPct, (value) => { panel.tempCoeffPmaxPct = value; }),
+    );
+
+    if (!usedPanelTypeIds.has(panel.id) && state.project.panelTypes.length > 1) {
+      item.append(removeButton("Paneeltype verwijderen", () => {
+        state.project.panelTypes = state.project.panelTypes.filter((candidate) => candidate.id !== panel.id);
+        persist();
+        render();
+      }));
+    }
+
+    return item;
+  });
+
+  dom.panelTypeEditor.replaceChildren(...editors);
+}
+
 function renderWiringEditor(scenario) {
   const rows = scenario.arrays.map((array) => {
-    const panel = findPanelType(state.project, array.panelTypeId);
-    const inverter = findInverter(scenario, array.inverterId);
-    const mppt = inverter?.mppts?.[array.mpptIndex ?? 0];
+    const wiring = buildWiringSummary(state.project, scenario, array);
     const item = editorItem(array.name, array.id);
     const text = document.createElement("p");
     text.className = "muted";
-    text.textContent = `${array.rows} parallelle strings × ${array.columns} panelen serie → ${inverter?.name ?? "geen inverter"} / ${mppt?.name ?? "geen MPPT"} · ${panel?.pmaxW ?? 0} Wp per paneel`;
+    text.textContent = `${wiring.mode.label}: ${wiring.parallelStrings} strings × ${wiring.panelsPerString} panelen serie → ${wiring.inverter?.name ?? "geen inverter"} / ${wiring.mppt?.name ?? "geen MPPT"} · ${wiring.panel?.pmaxW ?? 0} Wp per paneel`;
     item.append(text);
+    wiring.strings.forEach((string) => {
+      const detail = document.createElement("div");
+      detail.className = "muted";
+      detail.textContent = `${string.name}: ${string.panelCount} panelen serie`;
+      item.append(detail);
+    });
     return item;
   });
   dom.wiringEditor.replaceChildren(...rows);
@@ -332,6 +400,14 @@ function renderBatteryEditor(scenario) {
   dom.batteryExportInput.checked = scenario.battery.exportAllowed;
 }
 
+function renderSimulationSettings(scenario) {
+  setValue(dom.weatherProfileInput, scenario.weather.profile);
+  setValue(dom.weatherYearInput, scenario.weather.year);
+  setValue(dom.tariffBuyInput, scenario.tariff.buyEurPerKwh);
+  setValue(dom.tariffSellInput, scenario.tariff.sellEurPerKwh);
+  setValue(dom.tariffImportCostInput, scenario.tariff.importBalancingCostEurPerKwh);
+}
+
 function renderValidation(scenario) {
   const messages = validateProject(state.project, scenario);
   dom.validationList.replaceChildren(...messages.map((message) => {
@@ -354,6 +430,7 @@ function renderResults(scenario) {
     empty.textContent = "Nog geen simulatie uitgevoerd.";
     dom.resultCards.replaceChildren(empty);
     dom.monthlyChart.replaceChildren();
+    dom.lossDetails.replaceChildren();
     return;
   }
 
@@ -378,6 +455,19 @@ function renderResults(scenario) {
     bar.title = `${month.label}: ${format(month.pvKwh)} kWh PV, ${format(month.loadKwh)} kWh verbruik`;
     bar.append(fill, label);
     return bar;
+  }));
+
+  dom.lossDetails.replaceChildren(...results.arrays.map((array) => {
+    const item = document.createElement("div");
+    item.className = "editor-item";
+    item.append(
+      textLine(array.name, `${format(array.annualKwh)} kWh/jaar`),
+      textLine("DC vermogen", `${format(array.dcKwp)} kWp`),
+      textLine("Bekabeling", `${array.wiringMode}: ${array.stringCount} × ${array.panelsPerString}`),
+      textLine("Schaduwverlies", `${format(array.shadowLossPct)}%`),
+      textLine("Clippingverlies", `${format(array.clippingLossPct)}%`),
+    );
+    return item;
   }));
 }
 
@@ -430,7 +520,7 @@ function renderSceneObject(svg, object) {
       width,
       height,
       rx: 4,
-      fill: "#f97316",
+      fill: objectFill(object.type),
       "fill-opacity": 0.56,
       stroke: object.id === state.selectedId ? "#7dd3fc" : "#fed7aa",
       "stroke-width": object.id === state.selectedId ? 4 : 2,
@@ -492,6 +582,15 @@ function addArray() {
   render();
 }
 
+function addPanelType() {
+  const panel = createPanelType();
+  state.project.panelTypes.push(panel);
+  state.selectedId = panel.id;
+  state.activeStep = "arrays";
+  persist();
+  render();
+}
+
 function addInverter() {
   const scenario = findScenario(state.project);
   const inverter = createInverter();
@@ -502,6 +601,39 @@ function addInverter() {
   state.activeStep = "inverters";
   persist();
   render();
+}
+
+function exportResultsCsv() {
+  const scenario = findScenario(state.project);
+  if (!scenario.results) {
+    showNotification("error", "Geen resultaten", "Draai eerst een preview simulatie voordat je CSV exporteert.");
+    return;
+  }
+
+  const rows = [
+    ["month", "pv_kwh", "load_kwh"],
+    ...scenario.results.monthly.map((month) => [month.label, roundForCsv(month.pvKwh), roundForCsv(month.loadKwh)]),
+    [],
+    ["array", "annual_kwh", "dc_kwp", "wiring_mode", "strings", "panels_per_string", "shadow_loss_pct", "clipping_loss_pct"],
+    ...scenario.results.arrays.map((array) => [
+      array.name,
+      roundForCsv(array.annualKwh),
+      roundForCsv(array.dcKwp),
+      array.wiringMode,
+      array.stringCount,
+      array.panelsPerString,
+      roundForCsv(array.shadowLossPct),
+      roundForCsv(array.clippingLossPct),
+    ]),
+  ];
+  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${state.project.name.replaceAll(/\W+/g, "-").toLowerCase()}-${scenario.name.replaceAll(/\W+/g, "-").toLowerCase()}-results.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function runSimulation() {
@@ -637,6 +769,13 @@ function resultCard(label, value) {
   return item;
 }
 
+function textLine(label, value) {
+  const line = document.createElement("div");
+  line.className = "muted";
+  line.textContent = `${label}: ${value}`;
+  return line;
+}
+
 function mpptOptions(scenario, array) {
   const inverter = findInverter(scenario, array.inverterId);
   return (inverter?.mppts ?? []).map((mppt, index) => ({
@@ -750,4 +889,20 @@ function clear(element) {
 
 function format(value) {
   return new Intl.NumberFormat("nl-NL", { maximumFractionDigits: 0 }).format(value);
+}
+
+function objectFill(type) {
+  if (type === "chimney") return "#ef4444";
+  if (type === "dormer") return "#a855f7";
+  if (type === "free") return "#eab308";
+  return "#f97316";
+}
+
+function roundForCsv(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
