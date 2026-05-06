@@ -1,0 +1,361 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b1120;
+  --panel: #111827;
+  --panel-soft: #162033;
+  --border: #263348;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --accent: #38bdf8;
+  --accent-strong: #0284c7;
+  --danger: #fb7185;
+  --warning: #fbbf24;
+  --success: #34d399;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top left, #173356, var(--bg) 38rem);
+  color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+.file-button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #1f2937;
+  color: var(--text);
+  padding: 8px 11px;
+  cursor: pointer;
+}
+
+button:hover,
+.file-button:hover {
+  border-color: var(--accent);
+}
+
+button.primary {
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  border-color: #7dd3fc;
+  color: #04111f;
+  font-weight: 700;
+}
+
+button.full { width: 100%; }
+
+input,
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #0f172a;
+  color: var(--text);
+  padding: 8px 10px;
+}
+
+label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: clamp(1.4rem, 2vw, 2.2rem);
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.subtitle {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.header-actions,
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.button-row.end { justify-content: flex-end; }
+
+.file-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.file-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: minmax(240px, 310px) minmax(420px, 1fr) minmax(320px, 430px);
+  gap: 16px;
+  padding: 16px;
+}
+
+.project-panel,
+.editor-panel {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+
+.card,
+.canvas-panel {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.22);
+}
+
+.card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.workflow-nav {
+  display: grid;
+  gap: 6px;
+}
+
+.workflow-nav button {
+  width: 100%;
+  text-align: left;
+}
+
+.workflow-nav button[aria-current="true"] {
+  border-color: var(--accent);
+  background: #12304a;
+}
+
+.project-tree,
+.editor-stack,
+.validation-list,
+.result-cards {
+  display: grid;
+  gap: 8px;
+}
+
+.tree-item,
+.editor-item,
+.validation-item,
+.result-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-soft);
+  padding: 10px;
+}
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.tree-item.selected {
+  border-color: var(--accent);
+}
+
+.tree-item small,
+.muted {
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  gap: 10px;
+}
+
+.grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.check-row input {
+  width: auto;
+}
+
+.canvas-panel {
+  min-height: 710px;
+  overflow: hidden;
+}
+
+.canvas-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: #0d1628;
+}
+
+.canvas-toolbar span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend i {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.legend-array { background: #38bdf8; }
+.legend-tree { background: #22c55e; border-radius: 50% !important; }
+.legend-building { background: #f97316; }
+
+#sceneCanvas {
+  display: block;
+  width: 100%;
+  height: min(72vh, 720px);
+  min-height: 620px;
+  background:
+    linear-gradient(#16243a 1px, transparent 1px),
+    linear-gradient(90deg, #16243a 1px, transparent 1px),
+    #0b1220;
+  background-size: 40px 40px;
+}
+
+.canvas-shape {
+  cursor: pointer;
+}
+
+.canvas-shape.selected {
+  filter: drop-shadow(0 0 8px rgb(56 189 248 / 0.9));
+}
+
+.validation-item.warning { border-color: var(--warning); }
+.validation-item.error { border-color: var(--danger); }
+.validation-item.ok { border-color: var(--success); }
+
+.result-card strong {
+  display: block;
+  font-size: 1.35rem;
+  color: var(--accent);
+}
+
+.monthly-chart {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  align-items: end;
+  min-height: 150px;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #0f172a;
+}
+
+.bar {
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  gap: 4px;
+  height: 120px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.bar-fill {
+  width: 100%;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, #facc15, #f97316);
+}
+
+#exportDialog {
+  width: min(900px, 92vw);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+#exportDialog::backdrop {
+  background: rgb(0 0 0 / 0.65);
+}
+
+#exportText {
+  min-height: 420px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (max-width: 1180px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .grid.two {
+    grid-template-columns: 1fr;
+  }
+}

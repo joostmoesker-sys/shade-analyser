@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Generic PV Battery Shadow Tool</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">Generic rewrite foundation</p>
+      <h1>PV-, schaduw- en accusimulator</h1>
+      <p class="subtitle">Eerste generieke implementatie op basis van het PRD: projectmodel, canvas, validatie, scenario's en exports.</p>
+    </div>
+    <div class="header-actions">
+      <button id="newProjectBtn" type="button">Nieuw project</button>
+      <button id="saveProjectBtn" type="button">Opslaan</button>
+      <button id="exportProjectBtn" type="button">Export JSON</button>
+      <label class="file-button">
+        Import JSON
+        <input id="importProjectInput" type="file" accept="application/json,.json" />
+      </label>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <aside class="project-panel">
+      <section class="card">
+        <h2>Project</h2>
+        <label>
+          Naam
+          <input id="projectNameInput" type="text" />
+        </label>
+        <label>
+          Scenario
+          <select id="scenarioSelect"></select>
+        </label>
+        <div class="button-row">
+          <button id="duplicateScenarioBtn" type="button">Scenario kopiëren</button>
+          <button id="runSimulationBtn" type="button" class="primary">Preview simulatie</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Workflow</h2>
+        <nav id="workflowNav" class="workflow-nav" aria-label="Workflow"></nav>
+      </section>
+
+      <section class="card">
+        <h2>Projectboom</h2>
+        <div id="projectTree" class="project-tree"></div>
+      </section>
+    </aside>
+
+    <section class="canvas-panel">
+      <div class="canvas-toolbar">
+        <div>
+          <strong>Projectcanvas</strong>
+          <span id="canvasHint">Plaats arrays en schaduwobjecten in een generiek lokaal coördinatenvlak.</span>
+        </div>
+        <div class="legend">
+          <span><i class="legend-array"></i>PV-array</span>
+          <span><i class="legend-tree"></i>Boom</span>
+          <span><i class="legend-building"></i>Gebouw</span>
+        </div>
+      </div>
+      <svg id="sceneCanvas" viewBox="0 0 1000 620" role="img" aria-label="Projectcanvas met PV-arrays en schaduwobjecten"></svg>
+    </section>
+
+    <aside class="editor-panel">
+      <section id="locationSection" class="card workflow-section">
+        <h2>Locatie</h2>
+        <div class="grid two">
+          <label>
+            Locatienaam
+            <input id="locationNameInput" type="text" />
+          </label>
+          <label>
+            Referentiehoogte (m)
+            <input id="locationElevationInput" type="number" step="1" />
+          </label>
+          <label>
+            Latitude
+            <input id="locationLatInput" type="number" step="0.000001" />
+          </label>
+          <label>
+            Longitude
+            <input id="locationLonInput" type="number" step="0.000001" />
+          </label>
+        </div>
+      </section>
+
+      <section id="objectsSection" class="card workflow-section" hidden>
+        <h2>Schaduwobjecten</h2>
+        <div class="button-row">
+          <button id="addTreeBtn" type="button">Boom toevoegen</button>
+          <button id="addBuildingBtn" type="button">Gebouw toevoegen</button>
+        </div>
+        <div id="objectEditor" class="editor-stack"></div>
+      </section>
+
+      <section id="arraysSection" class="card workflow-section" hidden>
+        <h2>PV-arrays</h2>
+        <div class="button-row">
+          <button id="addArrayBtn" type="button">Array toevoegen</button>
+        </div>
+        <div id="arrayEditor" class="editor-stack"></div>
+      </section>
+
+      <section id="wiringSection" class="card workflow-section" hidden>
+        <h2>Bekabeling</h2>
+        <p class="muted">MVP-model: elke array gebruikt één seriestring per rij; rijen worden parallel op de gekozen MPPT gezet.</p>
+        <div id="wiringEditor" class="editor-stack"></div>
+      </section>
+
+      <section id="invertersSection" class="card workflow-section" hidden>
+        <h2>Inverters</h2>
+        <div class="button-row">
+          <button id="addInverterBtn" type="button">Inverter toevoegen</button>
+        </div>
+        <div id="inverterEditor" class="editor-stack"></div>
+      </section>
+
+      <section id="batterySection" class="card workflow-section" hidden>
+        <h2>Accu & verbruik</h2>
+        <div class="grid two">
+          <label>
+            Basisverbruik (kWh/dag)
+            <input id="dailyLoadInput" type="number" min="0" step="0.1" />
+          </label>
+          <label>
+            Warmtepomp winter (kWh/dag)
+            <input id="heatPumpWinterInput" type="number" min="0" step="0.1" />
+          </label>
+          <label>
+            Accu capaciteit (kWh)
+            <input id="batteryCapacityInput" type="number" min="0" step="0.1" />
+          </label>
+          <label>
+            Accu vermogen (kW)
+            <input id="batteryPowerInput" type="number" min="0" step="0.1" />
+          </label>
+          <label>
+            Round-trip efficiëntie (%)
+            <input id="batteryEfficiencyInput" type="number" min="1" max="100" step="0.1" />
+          </label>
+          <label>
+            Standby verbruik (W)
+            <input id="batteryStandbyInput" type="number" min="0" step="1" />
+          </label>
+        </div>
+        <label class="check-row">
+          <input id="gridChargeInput" type="checkbox" />
+          Grid pre-charge toegestaan
+        </label>
+        <label class="check-row">
+          <input id="batteryExportInput" type="checkbox" />
+          Accu-export toegestaan
+        </label>
+      </section>
+
+      <section id="simulationSection" class="card workflow-section" hidden>
+        <h2>Simulatie</h2>
+        <p class="muted">Deze eerste slice gebruikt een snelle jaarlijkse preview met vaste maandfactoren. De modulaire structuur is voorbereid op uurlijkse weerdata en workers.</p>
+        <div id="validationList" class="validation-list"></div>
+        <button id="runSimulationBtnSecondary" type="button" class="primary full">Preview simulatie draaien</button>
+      </section>
+
+      <section id="resultsSection" class="card workflow-section" hidden>
+        <h2>Resultaten</h2>
+        <div id="resultCards" class="result-cards"></div>
+        <div id="monthlyChart" class="monthly-chart" aria-label="Maandopbrengst grafiek"></div>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="exportDialog">
+    <form method="dialog">
+      <h2>Project JSON</h2>
+      <textarea id="exportText" readonly></textarea>
+      <div class="button-row end">
+        <button value="close" type="submit">Sluiten</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
