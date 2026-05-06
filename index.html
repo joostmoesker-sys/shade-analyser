@@ -3625,8 +3625,9 @@ function normaliseHistoricalWeather(raw, lat, lng) {
     let d = Math.max(0, Number(dni[h]) || 0);
     let f = Math.max(0, Number(dhi[h]) || 0);
     if (d === 0 && f === 0 && g > 0) {
-      // Simplified conservative fallback for missing beam/diffuse fields: NL cloudiness often leaves
-      // a substantial diffuse share, so use a fixed 35% diffuse / 65% beam-equivalent GHI split.
+      // Conservative engineering estimate for missing beam/diffuse fields, not a cited irradiance
+      // decomposition model: NL cloudiness often leaves a substantial diffuse share, so use a
+      // fixed 35% diffuse / 65% beam-equivalent GHI split.
       f = g * 0.35;
       d = g * 0.65;
     }
@@ -3873,8 +3874,8 @@ function formatROI(cost, annualProfit) {
  */
 function heatPumpCOP(outdoorTempC) {
   // Simplified air-source heat-pump COP curve for low-temperature heating.
-  // Actual COP varies by model and flow temperature; this approximates 2.75 at −5°C,
-  // improving by ~0.085 COP/°C, clamped to realistic operating bounds.
+  // Actual COP varies by model and flow temperature; these are engineering approximations based on
+  // typical Dutch air-to-water units: ~2.75 at −5°C, improving by ~0.085 COP/°C, clamped to bounds.
   return Math.max(1.8, Math.min(5.2, 2.75 + 0.085 * (outdoorTempC + 5)));
 }
 
@@ -3903,8 +3904,8 @@ function precomputeYearlyLoad(baseDailyKwh = BASE_LOAD_DEFAULT_KWH, hpWinterDail
   const hpSum = hpShape.reduce((a, b) => a + b, 0);
   const hpNorm = hpShape.map(x => x / hpSum);
   const hasHourlyTemp = hourlyOutdoorTempC && hourlyOutdoorTempC.length >= 8760;
-  // Dutch heating assumptions: indoor gains keep heating mostly off above 16°C;
-  // −5°C is a representative winter design point for Limburg heat-pump sizing.
+  // Engineering sizing assumptions for Dutch/Limburg conditions, not code-standard citations:
+  // indoor gains keep heating mostly off above 16°C; −5°C represents a cold winter design point.
   const heatBalanceTempC = 16;
   const designOutdoorTempC = -5;
   const designThermalKwhPerDay = hpWinterDailyKwh * heatPumpCOP(designOutdoorTempC);
