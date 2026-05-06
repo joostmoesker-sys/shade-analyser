@@ -1762,7 +1762,7 @@ function formatEconomicLimitsText(econ, pvLimit = '') {
   const prefix = pvLimit ? `${pvLimit} · ` : '';
   const standbyText = econ.standbyKw > 0 ? ` · ${(econ.standbyKw * 1000).toFixed(0)} W standby` : '';
   const effText = ` · ${formatConverterEfficiency(econ.chargeEff, econ.dischargeEff)}`;
-  return `${prefix}${formatPowerLimitKw(econ.chargePowerKw)} charge / ${formatPowerLimitKw(econ.dischargePowerKw)} discharge${standbyText}${effText}`;
+  return `${prefix}${formatPowerLimitKw(econ.chargePowerKw)} charge / ${formatPowerLimitKw(econ.dischargePowerKw)} discharge · ${MAX_GRID_EXPORT_KW} kW grid export cap${standbyText}${effText}`;
 }
 
 // ── Inverter specs per configuration (WP6) ─────────────────────────────────
