@@ -6,6 +6,27 @@ const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const DUTCH_YIELD_FACTORS = [0.025, 0.045, 0.085, 0.115, 0.135, 0.135, 0.13, 0.115, 0.085, 0.06, 0.04, 0.025];
 const HEAT_PUMP_FACTORS = [1, 0.9, 0.65, 0.35, 0.12, 0.02, 0, 0, 0.12, 0.35, 0.7, 0.95];
 const IMPORT_BALANCING_COST_EUR_PER_KWH = 0.02;
+// Fast-preview assumption: a fixed share of production is consumed instantly before battery dispatch.
+const DIRECT_CONSUMPTION_FACTOR = 0.45;
+// Fast-preview assumption: at most this share of unused battery throughput is economically exported.
+const BATTERY_EXPORT_FRACTION = 0.35;
+// Fast-preview battery cap: avoid unrealistic monthly throughput from a small battery.
+const DAILY_BATTERY_CYCLES = 3;
+// Orientation approximation around due south for Dutch roof-mounted arrays.
+const MIN_ORIENTATION_FACTOR = 0.62;
+const ORIENTATION_COSINE_WEIGHT = 0.18;
+const ORIENTATION_BASE_FACTOR = 0.82;
+// Tilt approximation centered around a typical Dutch annual optimum.
+const MIN_TILT_FACTOR = 0.78;
+const OPTIMAL_TILT_DEG = 35;
+const TILT_PENALTY_SPAN_DEG = 160;
+// Shadow reach approximations convert object dimensions to local canvas influence distance.
+const TREE_HEIGHT_SHADOW_MULTIPLIER = 12;
+const TREE_CROWN_SHADOW_MULTIPLIER = 8;
+const BUILDING_HEIGHT_SHADOW_MULTIPLIER = 9;
+const SOUTH_BIAS_Y_THRESHOLD = -80;
+const NORTH_OBJECT_SHADOW_BIAS = 0.55;
+const SHADOW_LOSS_SCALE = 16;
 
 export function runPreviewSimulation(project, scenario) {
   const validation = validateProject(project, scenario);
@@ -23,7 +44,7 @@ export function runPreviewSimulation(project, scenario) {
   );
   const yearlyLoadKwh = sum(monthlyLoadKwh);
   const battery = simulateBatteryEconomics(monthlyPvKwh, monthlyLoadKwh, scenario.battery);
-  const directSelfUseKwh = monthlyPvKwh.reduce((total, pv, month) => total + Math.min(pv, monthlyLoadKwh[month] * 0.45), 0);
+  const directSelfUseKwh = monthlyPvKwh.reduce((total, pv, month) => total + Math.min(pv, monthlyLoadKwh[month] * DIRECT_CONSUMPTION_FACTOR), 0);
   const selfConsumptionKwh = Math.min(yearlyPvKwh, directSelfUseKwh + battery.batteryToLoadKwh);
   const exportKwh = Math.max(0, yearlyPvKwh - selfConsumptionKwh + battery.batteryExportKwh);
   const importKwh = Math.max(0, yearlyLoadKwh - selfConsumptionKwh);
@@ -65,8 +86,11 @@ function simulateArray(project, scenario, array) {
   const inverter = findInverter(scenario, array.inverterId);
   const mppt = inverter.mppts[array.mpptIndex ?? 0];
   const dcKwp = array.rows * array.columns * panel.pmaxW / 1000;
-  const orientationFactor = Math.max(0.62, Math.cos(toRad(array.azimuthDeg - 180)) * 0.18 + 0.82);
-  const tiltFactor = Math.max(0.78, 1 - Math.abs(array.tiltDeg - 35) / 160);
+  const orientationFactor = Math.max(
+    MIN_ORIENTATION_FACTOR,
+    Math.cos(toRad(array.azimuthDeg - 180)) * ORIENTATION_COSINE_WEIGHT + ORIENTATION_BASE_FACTOR,
+  );
+  const tiltFactor = Math.max(MIN_TILT_FACTOR, 1 - Math.abs(array.tiltDeg - OPTIMAL_TILT_DEG) / TILT_PENALTY_SPAN_DEG);
   const shadowLossPct = estimateShadowLoss(scenario, array);
   const inverterFactor = Math.min(1, (inverter.efficiencyPct ?? 96) / 100);
   const mpptClipFactor = Math.min(1, mppt.maxPowerKw / Math.max(dcKwp, 0.1));
@@ -94,9 +118,11 @@ function estimateShadowLoss(scenario, array) {
     const distance = Math.hypot(dx, dy);
     const density = (object.shadeDensityPct ?? 100) / 100;
     const height = object.heightM ?? 4;
-    const reach = object.type === "tree" ? height * 12 + (object.crownRadiusM ?? 0) * 8 : height * 9;
-    const southBias = dy > -80 ? 1 : 0.55;
-    const contribution = Math.max(0, 1 - distance / reach) * density * southBias * 16;
+    const reach = object.type === "tree"
+      ? height * TREE_HEIGHT_SHADOW_MULTIPLIER + (object.crownRadiusM ?? 0) * TREE_CROWN_SHADOW_MULTIPLIER
+      : height * BUILDING_HEIGHT_SHADOW_MULTIPLIER;
+    const southBias = dy > SOUTH_BIAS_Y_THRESHOLD ? 1 : NORTH_OBJECT_SHADOW_BIAS;
+    const contribution = Math.max(0, 1 - distance / reach) * density * southBias * SHADOW_LOSS_SCALE;
     loss += contribution;
   }
 
@@ -123,17 +149,17 @@ function simulateBatteryEconomics(monthlyPvKwh, monthlyLoadKwh, battery) {
   for (let month = 0; month < 12; month += 1) {
     const pv = monthlyPvKwh[month];
     const load = monthlyLoadKwh[month];
-    const direct = Math.min(pv, load * 0.45);
+    const direct = Math.min(pv, load * DIRECT_CONSUMPTION_FACTOR);
     const surplus = Math.max(0, pv - direct);
     const deficit = Math.max(0, load - direct);
     const monthlyThroughputCap = battery.capacityKwh * 24;
-    const charge = Math.min(surplus, monthlyThroughputCap, battery.maxPowerKw * MONTH_DAYS[month] * 3);
+    const charge = Math.min(surplus, monthlyThroughputCap, battery.maxPowerKw * MONTH_DAYS[month] * DAILY_BATTERY_CYCLES);
     const delivered = Math.min(deficit, charge * efficiency);
     chargedKwh += charge;
     batteryToLoadKwh += delivered;
 
     if (battery.exportAllowed) {
-      batteryExportKwh += Math.max(0, charge * efficiency - delivered) * 0.35;
+      batteryExportKwh += Math.max(0, charge * efficiency - delivered) * BATTERY_EXPORT_FRACTION;
     }
   }
 

@@ -219,7 +219,9 @@ export function clone(value) {
 
 function normalizeSceneObject(object) {
   if (!object || typeof object !== "object") return object;
-  if (object.type === "tree" && object.shadeDensityPct == null && object.densityPct != null) {
+  const hasNoShadeDensity = object.shadeDensityPct === null || object.shadeDensityPct === undefined;
+  const hasLegacyDensity = object.densityPct !== null && object.densityPct !== undefined;
+  if (object.type === "tree" && hasNoShadeDensity && hasLegacyDensity) {
     const normalized = { ...object, shadeDensityPct: object.densityPct };
     delete normalized.densityPct;
     return normalized;

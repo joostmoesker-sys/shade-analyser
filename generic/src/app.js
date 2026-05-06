@@ -692,7 +692,8 @@ function importProject(event) {
       render();
     } catch (error) {
       const reason = error instanceof SyntaxError ? "Het bestand bevat geen geldige JSON." : "De projectstructuur kon niet worden gelezen.";
-      alert(`${reason} Details: ${error.message}`);
+      const guidance = "Gebruik een export uit deze generic tool met schemaVersion, location, panelTypes en scenarios.";
+      alert(`${reason} ${guidance} Details: ${error.message}`);
     } finally {
       event.target.value = "";
     }
